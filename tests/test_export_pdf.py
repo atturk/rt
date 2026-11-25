@@ -139,6 +139,27 @@ def test_export_lesson_pdf_with_simulated_browser(api_client, ws, monkeypatch):
     assert mock_page.pdf.called
 
 
+def test_export_pdf_without_rt_qr_when_preference_is_off(api_client, ws, monkeypatch):
+    """Con pdf.qr-sito = false il PDF esce senza timbro: niente seconda pagina di stampa."""
+    from rt.services.preferences_service import save_preference
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = api_client.get("/api/v1/lessons").json()[0]["id"]
+    mock_browser = MagicMock()
+    mock_page = mock_browser.new_context.return_value.new_page.return_value
+    mock_page.pdf.return_value = b"%PDF-1.4 senza qr"
+    monkeypatch.setattr("rt.llm.enrichment_media.launch_capture_browser", lambda p, **kw: mock_browser)
+
+    save_preference(lessons_router.PDF_QR_PREFERENCE, False)
+    res = api_client.get(f"/api/v1/lessons/{lid}/export?format=pdf")
+    assert res.status_code == 200
+    assert res.content == b"%PDF-1.4 senza qr"
+    mock_page.evaluate.assert_not_called()
+    mock_page.set_content.assert_not_called()
+    assert mock_page.pdf.call_count == 1
+
+
 def test_pdf_uses_the_local_port_behind_tailscale_serve():
     """Da https://mac.ts.net (Tailscale Serve) l'URL non ha porta: conta quella del server."""
     from starlette.requests import Request
@@ -217,6 +238,7 @@ def test_export_lesson_real_pdf_with_three_images(ws, monkeypatch):
         "\n\n![slide 1 pagina 1](assets/images/slide1.png)"
         "\n\n![slide 2 pagina 2](assets/images/slide2.png)"
         "\n\n![slide 3](assets/images/slide3.png)\n"
+        + "".join(f"\n\nParagrafo di verifica impaginazione {i}. " * 12 for i in range(18))
     )
 
     # Aggiorna rielaborato.md e il file deliverable
@@ -254,11 +276,79 @@ def test_export_lesson_real_pdf_with_three_images(ws, monkeypatch):
         assert pdf_bytes.startswith(b"%PDF")
 
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        assert doc.page_count >= 2
         imgs = [doc.extract_image(img[0]) for pg in doc for img in pg.get_images()]
         assert len(imgs) == 3
         for im in imgs:
             assert im["width"] <= 1600
             assert im["height"] <= 1600
+
+        p1_text = doc[0].get_text()
+        p2_text = doc[1].get_text()
+        assert "Rielaborato con RT" in p1_text
+        assert "Rielaborato con RT" not in p2_text
+        p1_uris = [lnk.get("uri", "") for lnk in doc[0].get_links()]
+        p2_uris = [lnk.get("uri", "") for lnk in doc[1].get_links()]
+        assert any("atturk.github.io/rt" in u for u in p1_uris)
+        assert not any("atturk.github.io/rt" in u for u in p2_uris)
     finally:
         server.should_exit = True
         thread.join(timeout=5)
+
+
+def test_stamp_first_page_overlays_only_page_one_and_preserves_text_and_link():
+    pymupdf = pytest.importorskip("pymupdf")
+
+    base = pymupdf.open()
+    p1 = base.new_page(width=595, height=842)
+    p1.insert_text((72, 100), "Contenuto prima pagina")
+    p2 = base.new_page(width=595, height=842)
+    p2.insert_text((72, 100), "Contenuto seconda pagina")
+    base_bytes = base.tobytes()
+
+    stamp = pymupdf.open()
+    sp = stamp.new_page(width=595, height=842)
+    sp.insert_text((420, 30), "Rielaborato con RT")
+    sp.insert_link({
+        "kind": pymupdf.LINK_URI,
+        "from": pymupdf.Rect(420, 15, 540, 45),
+        "uri": "https://atturk.github.io/rt/",
+    })
+    stamp_bytes = stamp.tobytes()
+
+    out_bytes = lessons_router._stamp_first_page(base_bytes, stamp_bytes)
+    out = pymupdf.open(stream=out_bytes, filetype="pdf")
+    assert out.page_count == 2
+    assert "Contenuto prima pagina" in out[0].get_text()
+    assert "Rielaborato con RT" in out[0].get_text()
+    assert any("atturk.github.io/rt" in lnk.get("uri", "") for lnk in out[0].get_links())
+    assert "Contenuto seconda pagina" in out[1].get_text()
+    assert "Rielaborato con RT" not in out[1].get_text()
+    assert not any("atturk.github.io/rt" in lnk.get("uri", "") for lnk in out[1].get_links())
+
+
+def test_stamp_first_page_inserts_fallback_link_if_stamp_has_no_links():
+    pymupdf = pytest.importorskip("pymupdf")
+
+    base = pymupdf.open()
+    base.new_page(width=595, height=842).insert_text((72, 100), "Pagina")
+    stamp = pymupdf.open()
+    stamp.new_page(width=595, height=842).insert_text((420, 30), "Rielaborato con RT")
+
+    out_bytes = lessons_router._stamp_first_page(base.tobytes(), stamp.tobytes())
+    out = pymupdf.open(stream=out_bytes, filetype="pdf")
+    uris = [lnk.get("uri", "") for lnk in out[0].get_links()]
+    assert lessons_router.RT_SITE_URL in uris
+
+
+def test_stamp_first_page_returns_original_pdf_on_error(caplog):
+    pymupdf = pytest.importorskip("pymupdf")
+
+    base = pymupdf.open()
+    base.new_page(width=595, height=842).insert_text((72, 100), "Originale")
+    original = base.tobytes()
+
+    with caplog.at_level("WARNING"):
+        res = lessons_router._stamp_first_page(original, b"not-a-valid-pdf")
+    assert res == original
+    assert any("timbro QR" in rec.message for rec in caplog.records)

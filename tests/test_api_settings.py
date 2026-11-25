@@ -16,7 +16,7 @@ BOT = "987654321:AAH-segreto-bot-telegram-zyxwvu"
 STT = "stt-segreto-chiave-5555-abcdef"
 SECRETS = (KEY_A, KEY_B, BOT, STT)
 JOBS = ("outline", "rewrite", "review", "recall", "image_description",
-        "enrichment_writer", "enrichment_visualizer", "enrichment_image")
+        "enrichment_writer", "enrichment_visualizer", "enrichment_image", "study_chat")
 
 
 @pytest.fixture
@@ -198,32 +198,71 @@ def test_preferences_persist(api_client, api_token, ws):
     # Default snapshot
     data = api_client.get("/api/v1/settings").json()
     assert data["preferences"] == {
+        "modalita_scaletta": "auto",
         "secondi_approvazione": 10,
         "sfondo_gruppi": "colori",
         "modalita_arricchimento": "manuale",
+        "chiusura_x": "background",
     }
 
     # Update preferences
     res = api_client.put(
         "/api/v1/settings/preferences",
         json={
+            "modalita_scaletta": "timer",
             "secondi_approvazione": 20,
             "sfondo_gruppi": "grigi",
             "modalita_arricchimento": "automatica",
+            "chiusura_x": "esci",
         },
     )
     assert res.status_code == 200, res.text
     assert res.json()["preferences"] == {
+        "modalita_scaletta": "timer",
         "secondi_approvazione": 20,
         "sfondo_gruppi": "grigi",
         "modalita_arricchimento": "automatica",
+        "chiusura_x": "esci",
     }
 
     # Persists to fresh app
     fresh_data = fresh(api_token).get("/api/v1/settings").json()
     assert fresh_data["preferences"] == {
+        "modalita_scaletta": "timer",
         "secondi_approvazione": 20,
         "sfondo_gruppi": "grigi",
         "modalita_arricchimento": "automatica",
+        "chiusura_x": "esci",
     }
+
+
+def test_save_single_preference_preserves_other_settings(api_client, ws):
+    from pathlib import Path
+    import yaml
+    from rt.services.settings_service import general_config_path, save_preferences
+
+    path = general_config_path(Path.cwd())
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    data.setdefault("ui", {}).update({
+        "theme": "light",
+        "outline_mode": "timer",
+        "outline_auto_approval_seconds": 25,
+        "close_action": "quit",
+    })
+    data.setdefault("review", {})["parallel_units"] = 7
+    data.setdefault("telegram", {})["enabled"] = True
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+
+    save_preferences(Path.cwd(), {"sfondo_gruppi": "grigi"})
+    with open(path, encoding="utf-8") as f:
+        after = yaml.safe_load(f)
+    assert after["ui"]["group_background"] == "gray"
+    assert after["ui"]["theme"] == "light"
+    assert after["ui"]["outline_mode"] == "timer"
+    assert after["ui"]["outline_auto_approval_seconds"] == 25
+    assert after["ui"]["close_action"] == "quit"
+    assert after["review"]["parallel_units"] == 7
+    assert after["telegram"]["enabled"] is True
 

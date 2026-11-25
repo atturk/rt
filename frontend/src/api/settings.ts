@@ -55,6 +55,13 @@ export function useSetTelegramEnabled() {
   return useSettingsMutation((enabled: boolean) => unwrap(api.PUT('/api/v1/settings/telegram/enabled', { body: { enabled } })))
 }
 
+/** Quali eventi inviano notifiche Telegram. */
+export function useSetTelegramNotify() {
+  return useSettingsMutation((notify: Record<string, boolean>) =>
+    unwrap(api.PUT('/api/v1/settings/telegram/notify', { body: { notify } })),
+  )
+}
+
 export function useSaveTelegram() {
   return useSettingsMutation((body: Schemas['TelegramIn']) => unwrap(api.PUT('/api/v1/settings/telegram', { body })))
 }
@@ -75,8 +82,14 @@ export function useAddModel() {
 }
 
 export function useAssignPhase() {
-  return useSettingsMutation(({ job, connection, model }: { job: string; connection: string; model: string }) =>
-    unwrap(api.PUT('/api/v1/settings/phases/{job}', { params: { path: { job } }, body: { connection, model } })),
+  return useSettingsMutation(({ job, connection, model, batch }: { job: string; connection: string; model: string; batch?: boolean }) =>
+    unwrap(api.PUT('/api/v1/settings/phases/{job}', { params: { path: { job } }, body: { connection, model, batch: batch ?? false } })),
+  )
+}
+
+export function useClearPhase() {
+  return useSettingsMutation((job: string) =>
+    unwrap(api.DELETE('/api/v1/settings/phases/{job}', { params: { path: { job } } })),
   )
 }
 
@@ -84,7 +97,7 @@ export function useAssignPhase() {
 export function useAssignAllPhases() {
   return useSettingsMutation(async ({ jobs, connection, model }: { jobs: string[]; connection: string; model: string }) => {
     for (const job of jobs) {
-      await unwrap(api.PUT('/api/v1/settings/phases/{job}', { params: { path: { job } }, body: { connection, model } }))
+      await unwrap(api.PUT('/api/v1/settings/phases/{job}', { params: { path: { job } }, body: { connection, model, batch: false } }))
     }
   })
 }

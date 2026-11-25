@@ -8,7 +8,7 @@ import { api } from '@/api/client'
 import { PREFERENCES_KEY } from '@/lib/preferences'
 import { getZoom, resetZoom, setZoom } from '@/lib/zoom'
 import { getSavedStudyTextScale } from '@/lib/studyText'
-import { AppearanceSection } from './preferences'
+import { AppearanceSection, OutlineSettingsSection, SpeedSection } from './preferences'
 import { testSettings } from './testSettings'
 
 // In jsdom il canvas non misura: tutti i font risultano installati.
@@ -117,6 +117,16 @@ it('Testo dello Studio: Seravek salva study.text-font e 120% porta la scala a 1,
   expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'study.player-follows-unit' } }, body: false })
 })
 
+it('PDF esportati: logo e QR di RT sono attivi e si spegne salvando pdf.qr-sito', async () => {
+  const put = vi.spyOn(api, 'PUT').mockImplementation(((_path: string, { body }: { body: unknown }) =>
+    Promise.resolve({ data: body, response: new Response('{}') })) as never)
+  render(<QueryClientProvider client={client}><AppearanceSection settings={testSettings} /></QueryClientProvider>)
+  const qr = screen.getByRole('switch', { name: 'Logo e QR di RT («Rielaborato con RT») nella prima pagina' })
+  expect(qr).toHaveAttribute('aria-checked', 'true')
+  await userEvent.click(qr)
+  expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'pdf.qr-sito' } }, body: false })
+})
+
 it('Fonti: i default per tipo di file, con Solo immagini l’uso si spegne e la guida si sceglie nell’import', async () => {
   const { SourceDefaultsSection } = await import('./preferences')
   const stored: Record<string, unknown> = {}
@@ -134,4 +144,49 @@ it('Fonti: i default per tipo di file, con Solo immagini l’uso si spegne e la 
   await userEvent.click(slide.getByRole('button', { name: 'Solo immagini' }))
   expect(slide.getByRole('button', { name: 'Solo immagini' })).toHaveAttribute('aria-pressed', 'true')
   expect(slide.getByRole('button', { name: 'Integra: può aggiungere unità' })).toHaveAttribute('aria-disabled', 'true')
+})
+
+it('Scaletta: in auto e manual nasconde i secondi, in timer li mostra e li salva', async () => {
+  const put = vi.spyOn(api, 'PUT').mockImplementation(((_path: string, { body }: { body: Record<string, unknown> }) =>
+    Promise.resolve({ data: { ...testSettings, preferences: { ...testSettings.preferences, ...body } }, response: new Response('{}') })) as never)
+  render(<QueryClientProvider client={client}><OutlineSettingsSection settings={testSettings} /></QueryClientProvider>)
+
+  expect(screen.getByTestId('pref-scaletta-mode')).toHaveTextContent('Procedi da sola')
+  expect(screen.queryByLabelText('Approva da sola dopo (secondi)')).toBeNull()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Approvazione della scaletta' }))
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Attendi qualche secondo' }))
+  expect(put).toHaveBeenCalledWith('/api/v1/settings/preferences', { body: expect.objectContaining({ modalita_scaletta: 'timer' }) })
+  const secondsInput = screen.getByLabelText('Approva da sola dopo (secondi)')
+  expect(secondsInput).toHaveValue(10)
+
+  await userEvent.clear(secondsInput)
+  await userEvent.type(secondsInput, '25')
+  secondsInput.blur()
+  await vi.waitFor(() => {
+    expect(put).toHaveBeenLastCalledWith('/api/v1/settings/preferences', {
+      body: expect.objectContaining({ modalita_scaletta: 'timer', secondi_approvazione: 25 }),
+    })
+  })
+
+  await userEvent.click(screen.getByRole('button', { name: 'Approvazione della scaletta' }))
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Aspetta sempre me' }))
+  expect(put).toHaveBeenLastCalledWith('/api/v1/settings/preferences', { body: expect.objectContaining({ modalita_scaletta: 'manual' }) })
+  expect(screen.queryByLabelText('Approva da sola dopo (secondi)')).toBeNull()
+})
+
+it('Fonti: intestazione delle colonne una volta sola nella matrice', async () => {
+  const { SourceDefaultsSection } = await import('./preferences')
+  render(<QueryClientProvider client={client}><SourceDefaultsSection /></QueryClientProvider>)
+  expect(screen.getAllByText('Cosa usare')).toHaveLength(1)
+  expect(screen.getAllByText('Come usarla')).toHaveLength(1)
+})
+
+it('Velocità: Lavora in parallelo salva context_mode all quando spento', async () => {
+  const put = vi.spyOn(api, 'PUT').mockResolvedValue({ data: testSettings, response: new Response('{}') } as never)
+  render(<QueryClientProvider client={client}><SpeedSection settings={testSettings} /></QueryClientProvider>)
+  const sw = screen.getByRole('switch', { name: 'Lavora in parallelo' })
+  expect(sw).toHaveAttribute('aria-checked', 'true')
+  await userEvent.click(sw)
+  expect(put).toHaveBeenCalledWith('/api/v1/settings/rewrite', { body: { context_mode: 'all' } })
 })

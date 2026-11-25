@@ -340,13 +340,13 @@ describe('lettura veloce', () => {
 it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
   renderStudy()
   fireEvent.mouseEnter(screen.getByTestId('highlight-pen'))
-  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · E · seleziona il testo, prima o dopo/ })).toBeVisible()
+  expect(await screen.findByRole('tooltip', { name: 'Evidenziatore giallo' })).toBeVisible()
   fireEvent.mouseLeave(screen.getByTestId('highlight-pen'))
   fireEvent.mouseEnter(screen.getByTestId('highlight-eraser'))
-  expect(await screen.findByRole('tooltip', { name: /Gomma · clic su/ })).toBeVisible()
+  expect(await screen.findByRole('tooltip', { name: 'Gomma' })).toBeVisible()
 })
 
-it('selezione e poi V apre la verifica con la quote giusta e hlMode resta null', async () => {
+it('selezione con V o clic sul testo non apre alcun popup e V è inerte', async () => {
   renderStudy()
   await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
   const text = screen.getByTestId('study-text')
@@ -356,11 +356,12 @@ it('selezione e poi V apre la verifica con la quote giusta e hlMode resta null',
   sel.addRange(range)
 
   fireEvent.keyDown(window, { key: 'v' })
+  fireEvent.mouseUp(text)
 
-  await waitFor(() => expect(screen.getByTestId('study-note-popup')).toBeInTheDocument())
-  expect(screen.getByTestId('study-note-popup')).toHaveTextContent('rene')
   expect(text).not.toHaveAttribute('data-hl-mode')
-  expect(screen.getByTestId('highlight-verifica')).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.queryByTestId('study-note-popup')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('highlight-verifica')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('highlight-chiedi')).not.toBeInTheDocument()
 })
 
 it('selezione e poi E crea l’evidenziazione nel colore corrente', async () => {
@@ -382,39 +383,44 @@ it('selezione e poi E crea l’evidenziazione nel colore corrente', async () => 
   expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'false')
 })
 
-it('selezione e poi clic sul pulsante Verifica fa lo stesso', async () => {
+it('il pulsante Chat e il tasto C aprono/chiudono il pannello; zen e lettura veloce lo nascondono e ripristinano', async () => {
   renderStudy()
   await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
-  const text = screen.getByTestId('study-text')
-  const range = sourceRange(text, 3, 7)!
-  const sel = window.getSelection()!
-  sel.removeAllRanges()
-  sel.addRange(range)
 
-  const btnV = screen.getByTestId('highlight-verifica')
-  fireEvent.pointerDown(btnV)
-  fireEvent.click(btnV)
+  const chatBtn = screen.getByTestId('study-chat-btn')
+  fireEvent.click(chatBtn)
+  expect(await screen.findByTestId('study-chat-panel')).toBeInTheDocument()
 
-  await waitFor(() => expect(screen.getByTestId('study-note-popup')).toBeInTheDocument())
-  expect(screen.getByTestId('study-note-popup')).toHaveTextContent('rene')
-  expect(text).not.toHaveAttribute('data-hl-mode')
-  expect(btnV).toHaveAttribute('aria-pressed', 'false')
-})
+  // Con focus dentro la Chat tutte le scorciatoie dello Studio sono disattivate
+  const chatInput = screen.getByTestId('study-chat-input')
+  chatInput.focus()
+  fireEvent.keyDown(chatInput, { key: 'z' })
+  fireEvent.keyDown(chatInput, { key: 'e' })
+  fireEvent.keyDown(chatInput, { key: 'c' })
+  expect(screen.getByTestId('study')).not.toHaveAttribute('data-zen')
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.getByTestId('study-chat-panel')).toBeInTheDocument()
 
-it('senza selezione V accende la modalità come oggi', async () => {
-  renderStudy()
-  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
-  const text = screen.getByTestId('study-text')
-  window.getSelection()?.removeAllRanges()
+  // Zen nasconde la Chat e C non fa nulla; uscendo da Zen riappare
+  fireEvent.keyDown(window, { key: 'z' })
+  expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  expect(screen.queryByTestId('study-chat-panel')).not.toBeInTheDocument()
+  fireEvent.keyDown(window, { key: 'c' })
+  expect(screen.queryByTestId('study-chat-panel')).not.toBeInTheDocument()
+  fireEvent.keyDown(window, { key: 'z' })
+  expect(screen.getByTestId('study')).not.toHaveAttribute('data-zen')
+  expect(await screen.findByTestId('study-chat-panel')).toBeInTheDocument()
 
-  const btnV = screen.getByTestId('highlight-verifica')
-  expect(btnV).toHaveAttribute('aria-pressed', 'false')
-
-  fireEvent.keyDown(window, { key: 'v' })
-
-  expect(btnV).toHaveAttribute('aria-pressed', 'true')
-  expect(text).toHaveAttribute('data-hl-mode', 'verifica')
-  expect(screen.queryByTestId('study-note-popup')).not.toBeInTheDocument()
+  // Lettura veloce nasconde la Chat e C non fa nulla; uscendo riappare
+  await waitFor(() => expect(screen.getByTestId('study-rsvp-btn')).not.toHaveAttribute('aria-disabled', 'true'))
+  fireEvent.keyDown(window, { key: 'l' })
+  expect(screen.getByTestId('study')).toHaveAttribute('data-rsvp', 'true')
+  expect(screen.queryByTestId('study-chat-panel')).not.toBeInTheDocument()
+  fireEvent.keyDown(window, { key: 'c' })
+  expect(screen.queryByTestId('study-chat-panel')).not.toBeInTheDocument()
+  fireEvent.keyDown(window, { key: 'l' })
+  await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
+  expect(await screen.findByTestId('study-chat-panel')).toBeInTheDocument()
 })
 
 it('selezione e poi G toglie le evidenziazioni che toccano la selezione', async () => {
@@ -458,18 +464,8 @@ it('E e G attivano e tolgono lo strumento, ⇧E cambia colore; esclusi i campi',
   expect(screen.getByTestId('highlight-pen')).toHaveAttribute('data-color', '1')
 })
 
-it('con Chiedi o Verifica aperti le scorciatoie degli strumenti funzionano, con altri dialoghi no', () => {
+it('con un dialogo aperto le scorciatoie degli strumenti non si attivano', () => {
   renderStudy()
-  const popup = document.createElement('div')
-  popup.setAttribute('role', 'dialog')
-  popup.dataset.testid = 'study-note-popup'
-  popup.append(document.createElement('button'))
-  document.body.append(popup)
-  fireEvent.keyDown(window, { key: 'g' })
-  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'true')
-  fireEvent.keyDown(popup.firstChild!, { key: 'e' })
-  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'true')
-  popup.remove()
   const other = document.createElement('div')
   other.setAttribute('role', 'dialog')
   document.body.append(other)

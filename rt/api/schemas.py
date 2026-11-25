@@ -305,6 +305,7 @@ class OutlineMacro(BaseModel):
 class Outline(BaseModel):
     lesson_title: str
     macro_sections: List[OutlineMacro]
+    generated_topics: List[str] = Field(default_factory=list, description="Argomenti generati dall'IA, uno per voce")
     approval: Optional[Dict[str, Any]] = None
     approved: bool
     expires_at: Optional[str] = None
@@ -397,7 +398,7 @@ class Message(BaseModel):
 class Job(BaseModel):
     id: str
     type: str
-    state: str = Field(description="queued | running | waiting_for_decision | succeeded | failed | cancelled")
+    state: str = Field(description="queued | running | waiting_for_decision | waiting_for_provider | succeeded | failed | cancelled")
     lesson_id: Optional[int] = None
     lesson_path: Optional[str] = None
     payload: Dict[str, Any] = {}
@@ -496,6 +497,7 @@ class RecallSavedEvaluation(BaseModel):
     completezza: Optional[int] = None
     attinenza: Optional[int] = None
     domanda_followup: Optional[str] = None
+    parte_mancante: Optional[str] = None
     followup_question: Optional[str] = None
     followup_answer: Optional[str] = None
     followup_evaluation: Optional[str] = None
@@ -639,6 +641,7 @@ class RecallAnswerRecord(BaseModel):
     completezza: Optional[int] = None
     attinenza: Optional[int] = None
     domanda_followup: Optional[str] = None
+    parte_mancante: Optional[str] = None
     followup_question: Optional[str] = None
     followup_answer: Optional[str] = None
     followup_evaluation: Optional[str] = None
@@ -885,7 +888,7 @@ class StudyNoteView(BaseModel):
     id: int
     lesson_id: int
     unit_id: str
-    kind: Literal["verifica", "chiedi"]
+    kind: Literal["verifica", "chiedi", "chat"]
     anchor: Dict[str, Any]
     unit_fingerprint: str
     request: str
@@ -906,6 +909,36 @@ class StudyNoteApplyResponse(BaseModel):
     applied_decision_id: int
     issue_id: str
     note: StudyNoteView
+
+
+class StudyChatMessageView(BaseModel):
+    id: int
+    lesson_id: int
+    role: Literal["user", "assistant"]
+    content: str
+    content_html: str = Field("", description="Markdown reso con il renderer sicuro di RT; HTML grezzo escapato")
+    images: List[str] = Field(default_factory=list)
+    image_urls: List[str] = Field(default_factory=list)
+    unit_id: str
+    model: Optional[str] = None
+    cost: Optional[float] = None
+    error: Optional[str] = None
+    saved_note_id: Optional[int] = None
+    created_at: Optional[str] = None
+
+
+class StudyChatSendResponse(BaseModel):
+    user_message: StudyChatMessageView
+    assistant_message: StudyChatMessageView
+
+
+class StudyChatSaveResponse(BaseModel):
+    message: StudyChatMessageView
+    note: StudyNoteView
+
+
+class StudyChatTranscribeResponse(BaseModel):
+    text: str
 
 
 # ---------------------------------------------------------------------------

@@ -90,3 +90,37 @@ def test_non_didactic_units_skip_types_and_enrichment(tmp_path, monkeypatch):
     es.analyze(path,mock=True)
     assert draft.units[0].unit_id not in es.load(path).assessments
     assert draft.units[1].unit_id in es.load(path).assessments
+
+
+def test_classify_units_runs_in_parallel(tmp_path, monkeypatch):
+    import threading
+    import time
+    path = setup_mock_lesson(tmp_path, num_units=4)
+    cfg = RTConfig(jev=JevConfig(relevance_mode="shadow", relevance_model="typesafe/jev-1.13"))
+    for service in (classifier, question_types, section_labels, unit_relevance):
+        monkeypatch.setattr(service, "load_config", lambda: cfg)
+    monkeypatch.setattr(section_labels, "refresh", lambda *a, **kw: {})
+    from rt.services.jev_mapping import template
+    cfg.jev.relevance_decision = template("relevance", "choice", cfg.jev)
+
+    lock = threading.Lock()
+    active = [0]
+    max_active = [0]
+
+    def slow_call_jev(*args, **kwargs):
+        with lock:
+            active[0] += 1
+            max_active[0] = max(max_active[0], active[0])
+        time.sleep(0.08)
+        with lock:
+            active[0] -= 1
+        return JevResponse(model="m", answers={
+            "rilevanza": JevChoiceAnswer(choice="didactic", confidence=.95),
+            "tipo_consigliato": JevChoiceAnswer(choice="mirata", confidence=.95),
+        })
+
+    with patch("rt.llm.jev_client.call_jev", slow_call_jev):
+        res = classifier.classify_units(path)
+    assert max_active[0] >= 2
+    assert len(res["relevance"]) == 4
+    assert len(res["question_types"]) == 4

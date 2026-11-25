@@ -8,6 +8,7 @@ import {
   Copy,
   ExternalLink,
   HelpCircle,
+  MessageSquare,
   Trash2,
 } from 'lucide-react'
 import { useStudyNotes, useApplyStudyNote, useDeleteStudyNote, type StudyNote } from '@/api/studyNotes'
@@ -48,7 +49,6 @@ export function StudyNotesPanel({
 
   const [internalNoteId, setInternalNoteId] = useState<number | null>(null)
   const activeNoteId = selectedNoteId !== undefined ? selectedNoteId : internalNoteId
-  const [filter, setFilter] = useState<'tutte' | 'verifica' | 'chiedi'>('tutte')
   const [copied, setCopied] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
 
@@ -77,9 +77,11 @@ export function StudyNotesPanel({
   // Vista 1: Dettaglio di una singola voce
   if (activeNote) {
     const isVerifica = activeNote.kind === 'verifica'
-    const resp = activeNote.response as { esito?: string; spiegazione?: string; correzione?: string; sources?: Array<{ title?: string; url?: string }> } | undefined
+    const isChat = activeNote.kind === 'chat'
+    const resp = activeNote.response as { esito?: string; spiegazione?: string; text?: string; correzione?: string; sources?: Array<{ title?: string; url?: string }> } | undefined
     const anchorObj = activeNote.anchor as { quote?: string } | undefined
     const quote = String(anchorObj?.quote || activeNote.current_quote || '')
+    const answerText = resp?.spiegazione || resp?.text || ''
     const verdict = resp?.esito
     const fix = resp?.correzione
     const isApplied = !!activeNote.applied_decision_id
@@ -99,7 +101,10 @@ export function StudyNotesPanel({
             Torna alla lista
           </Button>
           <span className="text-meta font-medium text-foreground flex items-center gap-1.5">
-            <span>{isVerifica ? 'Verifica' : 'Chiedi'} · unità {activeNote.unit_id}</span>
+            <span>
+              {isVerifica ? 'Verifica' : isChat ? 'Chat' : 'Chiedi'}
+              {activeNote.unit_id ? ` · unità ${activeNote.unit_id}` : ''}
+            </span>
             {activeNote.precedente && (
               <Tooltip content="Precedente all'ultima aggiunta di fonti">
                 {(trigger) => (
@@ -116,7 +121,7 @@ export function StudyNotesPanel({
           </span>
         </div>
 
-        {activeNote.anchor_state === 'cambiata' && (
+        {!isChat && activeNote.anchor_state === 'cambiata' && (
           <div className="flex items-start gap-2 rounded-md bg-warning/10 p-2.5 text-meta text-warning">
             <AlertCircle className="size-4 shrink-0 mt-0.5" aria-hidden />
             <span>
@@ -125,24 +130,28 @@ export function StudyNotesPanel({
           </div>
         )}
 
-        {activeNote.anchor_state === 'non_ritrovata' && (
+        {!isChat && activeNote.anchor_state === 'non_ritrovata' && (
           <div className="flex items-start gap-2 rounded-md bg-destructive/10 p-2.5 text-meta text-destructive">
             <AlertCircle className="size-4 shrink-0 mt-0.5" aria-hidden />
             <span>Passaggio non ritrovato. L'ultima volta era nell'unità {activeNote.unit_id}.</span>
           </div>
         )}
 
-        <div>
-          <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Testo di partenza</span>
-          <div className="mt-1 min-w-0 rounded-md border border-border/60 bg-muted/30 p-2.5 italic text-foreground [overflow-wrap:anywhere]" data-testid="detail-quote">
-            <MathText text={quote} />
+        {(!isChat || quote) && (
+          <div>
+            <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Testo di partenza</span>
+            <div className="mt-1 min-w-0 rounded-md border border-border/60 bg-muted/30 p-2.5 italic text-foreground [overflow-wrap:anywhere]" data-testid="detail-quote">
+              <MathText text={quote} />
+            </div>
           </div>
-        </div>
+        )}
 
         {activeNote.request && (
           <div>
-            <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Richiesta</span>
-            <div className="mt-1 text-meta text-foreground" data-testid="detail-request">
+            <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">
+              {isChat ? 'Domanda' : 'Richiesta'}
+            </span>
+            <div className="mt-1 text-meta text-foreground [overflow-wrap:anywhere]" data-testid="detail-request">
               <MathText text={activeNote.request} />
             </div>
           </div>
@@ -158,7 +167,7 @@ export function StudyNotesPanel({
 
         <div>
           <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Risposta</span>
-          <NoteHtml html={activeNote.spiegazione_html} text={resp?.spiegazione} className="rt-document rt-reading mt-1 text-body leading-relaxed text-foreground [overflow-wrap:anywhere]" testId="detail-answer" />
+          <NoteHtml html={activeNote.spiegazione_html} text={answerText} className="rt-document rt-reading mt-1 text-body leading-relaxed text-foreground [overflow-wrap:anywhere]" testId="detail-answer" />
         </div>
 
         {fix && (
@@ -238,7 +247,7 @@ export function StudyNotesPanel({
                   {...trigger}
                   label="Copia la risposta"
                   icon={Copy}
-                  onClick={() => handleCopy(resp?.spiegazione || '')}
+                  onClick={() => handleCopy(answerText)}
                   data-testid="detail-copy"
                 />
               )}
@@ -276,10 +285,8 @@ export function StudyNotesPanel({
   }
 
   // Vista 2: Elenco delle voci raggruppate per unità
-  const filteredNotes = notes.filter((n) => {
-    if (filter === 'tutte') return true
-    return n.kind === filter
-  })
+  // Una sola lista: verifiche e domande di prima e risposte salvate dalla chat.
+  const filteredNotes = notes
 
   // Raggruppamento per unit_id
   const notesByUnit: Record<string, StudyNote[]> = {}
@@ -291,33 +298,11 @@ export function StudyNotesPanel({
 
   return (
     <div className="flex flex-col gap-3 text-body" data-testid="study-notes-panel">
-      {/* Filtro Tutte / Verifiche / Chiedi */}
-      <div className="flex rounded-lg bg-muted p-0.5" role="group" aria-label="Filtro voci">
-        {(['tutte', 'verifica', 'chiedi'] as const).map((key) => {
-          const label = key === 'tutte' ? 'Tutte' : key === 'verifica' ? 'Verifiche' : 'Chiedi'
-          const active = filter === key
-          return (
-            <button
-              key={key}
-              type="button"
-              className={`flex-1 rounded-md py-1 text-center text-meta font-medium transition-colors ${
-                active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-              }`}
-              aria-pressed={active}
-              onClick={() => setFilter(key)}
-              data-testid={`filter-${key}`}
-            >
-              {label}
-            </button>
-          )
-        })}
-      </div>
-
       {isLoading && <p className="text-meta text-muted-foreground">Caricamento voci…</p>}
 
       {!isLoading && filteredNotes.length === 0 && (
         <p className="py-6 text-center text-meta text-muted-foreground" data-testid="empty-notes-message">
-          Nessuna voce salvata. Seleziona un passaggio nello Studio con V (Verifica) o C (Chiedi).
+          Nessun messaggio salvato. Nella chat dello Studio (C) salva una risposta con l'icona del segnalibro.
         </p>
       )}
 
@@ -328,15 +313,17 @@ export function StudyNotesPanel({
             return (
               <div key={unitId} className="flex flex-col gap-1.5" data-testid={`notes-unit-${unitId}`}>
                 <div className="flex items-center justify-between text-meta font-semibold text-foreground">
-                  <span>Unità {unitId}</span>
+                  <span>{unitId ? `Unità ${unitId}` : 'Lezione'}</span>
                   <span className="text-muted-foreground">{list.length}</span>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {list.map((note) => {
                     const isVerifica = note.kind === 'verifica'
+                    const isChat = note.kind === 'chat'
                     const resp = note.response as { esito?: string; spiegazione?: string; correzione?: string } | undefined
                     const anchorObj = note.anchor as { quote?: string } | undefined
                     const quote = String(note.current_quote || anchorObj?.quote || '')
+                    const title = isChat ? (note.request || 'Domanda in chat') : quote
                     const verdict = resp?.esito
                     const isApplied = !!note.applied_decision_id
 
@@ -352,11 +339,13 @@ export function StudyNotesPanel({
                           <div className="flex items-center gap-1.5 min-w-0">
                             {isVerifica ? (
                               <CheckCircle2 className="size-3.5 shrink-0 text-[#155f52]" aria-hidden />
+                            ) : isChat ? (
+                              <MessageSquare className="size-3.5 shrink-0 text-[#155f52] dark:text-[#7fd3bf]" aria-hidden />
                             ) : (
                               <HelpCircle className="size-3.5 shrink-0 text-[#c7761a]" aria-hidden />
                             )}
                             <span className="truncate text-meta font-medium text-foreground">
-                              <MathText text={quote} />
+                              <MathText text={title} />
                             </span>
                             {note.precedente && (
                               <Tooltip content="Precedente all'ultima aggiunta di fonti">
@@ -385,11 +374,15 @@ export function StudyNotesPanel({
 
                         <div className="flex flex-wrap items-center gap-1 text-[12px] text-muted-foreground">
                           {note.created_at ? <span>{formatDateTime(note.created_at)}</span> : null}
-                          {note.request && <span>· con richiesta</span>}
-                          {note.anchor_state === 'cambiata' && (
+                          {isChat ? (
+                            <span>· dalla chat</span>
+                          ) : (
+                            note.request && <span>· con richiesta</span>
+                          )}
+                          {!isChat && note.anchor_state === 'cambiata' && (
                             <span className="text-warning font-medium">· testo cambiato</span>
                           )}
-                          {note.anchor_state === 'non_ritrovata' && (
+                          {!isChat && note.anchor_state === 'non_ritrovata' && (
                             <span className="text-destructive font-medium">· passaggio non ritrovato</span>
                           )}
                         </div>

@@ -22,3 +22,15 @@ export function useTelegramTest() {
     onSettled: () => client.invalidateQueries({ queryKey: telegramKeys.notifications }),
   })
 }
+
+/** Svuota lo storico delle notifiche inviate in RT (i messaggi su Telegram restano). */
+export function useClearTelegramNotifications() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE('/api/v1/telegram/notifications')),
+    onSuccess: () => {
+      client.setQueryData(telegramKeys.notifications, [])
+      void client.invalidateQueries({ queryKey: telegramKeys.notifications })
+    },
+  })
+}

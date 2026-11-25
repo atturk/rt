@@ -186,77 +186,161 @@ def analysis_policy(cfg, mock=False):
 
 
 def analyze(lesson_dir, *, mock=False, ctx=None, force=False, unit_ids=None):
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from contextvars import copy_context
     from rt.llm.jev_client import JevNoulQuestion, JevNoulAnswer
     from rt.llm.client import LLMClient
-    cfg = load_config().enrichment
+    full_cfg = load_config()
+    cfg = full_cfg.enrichment
     rows = units(lesson_dir)
     from types import SimpleNamespace
     from rt.services.unit_relevance import included_ids, _path
     relevance_view = "resolved" if fs.isfile(_path(lesson_dir, "resolved")) else "draft"
     allowed = included_ids(lesson_dir, [SimpleNamespace(unit_id=u["id"], title=u["title"], content=u["content"]) for u in rows], view=relevance_view)
     rows = [u for u in rows if u["id"] in allowed]
-    policy = analysis_policy(load_config(), mock)
+    policy = analysis_policy(full_cfg, mock)
+
+    initial_state = load(lesson_dir)
+    pending = []
     for index, unit in enumerate(rows):
         raise_if_cancelled()
         if unit_ids is not None and unit["id"] not in unit_ids:
             continue
-        if ctx:
-            ctx.progress("enrichment", index, len(rows), f"Analisi {unit['id']}")
         key = digest([source_hash(unit), policy])
-        if not force and load(lesson_dir).assessments.get(unit["id"]) == key:
+        if not force and initial_state.assessments.get(unit["id"]) == key:
             continue
+        pending.append((index, unit, key))
+
+    if not pending:
+        if ctx:
+            ctx.progress("enrichment", len(rows), len(rows), "Suggerimenti pronti")
+        return {"suggestions": sum(e.status == "suggestion" for e in view(lesson_dir)["elements"])}
+
+    def _analyze_one(unit, key):
+        raise_if_cancelled()
+        text = f"Subunità {unit['id']}: {unit['title']}\n\n{unit['content']}"
+        if mock:
+            utilities = {"visualization": 0.92, "infographic": 0.1}
+        else:
+            reply = decision(
+                text,
+                {
+                    kind: JevNoulQuestion(
+                        instructions=instruction
+                        + " Valuta solo il beneficio didattico concreto. Rispondi no per prosa organizzativa, ripetizioni, dati mancanti o beneficio marginale. Entrambi i tipi possono essere utili, o nessuno."
+                    )
+                    for kind, instruction in UTILITY.items()
+                },
+                lesson_dir=lesson_dir,
+                job_name="enrichment_decision",
+                unit_id=unit["id"],
+            )
+            if any(not isinstance(reply.answers.get(k), JevNoulAnswer) for k in UTILITY):
+                raise ValueError("Risposta di utilità incompleta")
+            utilities = {k: reply.answers[k].noul for k in UTILITY}
+
+        ideas = []
+        old = load(lesson_dir)
+        for kind, score in utilities.items():
+            previous = next((e for e in old.elements if e.unit_id == unit["id"] and e.kind == kind and not e.manual), None)
+            if score < cfg.utility_threshold or previous and (
+                previous.edited or previous.status in ("dismissed", "ready", "queued", "generating", "error", "deleted")
+            ):
+                continue
+            prepared = (
+                IdeaText(
+                    title=f"Esplora {unit['title']}"[:120],
+                    description="Rappresentazione dei concetti dell'unità.",
+                    prompt=f"Rappresenta fedelmente i concetti di {unit['title']}.",
+                    mode="interactive",
+                )
+                if mock
+                else LLMClient().call_structured(
+                    prompt=f"Tipo: {kind}\n{text}",
+                    system_prompt=WRITER_SYSTEM,
+                    response_model=IdeaText,
+                    job_name="enrichment_writer",
+                    unit_id=unit["id"],
+                    lesson_dir=lesson_dir,
+                )
+            )
+            if kind == "infographic":
+                prepared.mode = "static"
+            ideas.append(
+                Element(
+                    **prepared.model_dump(),
+                    id=previous.id if previous else uuid.uuid4().hex,
+                    unit_id=unit["id"],
+                    kind=kind,
+                    source_hash=source_hash(unit),
+                    utility=score,
+                )
+            )
+        return utilities, ideas
+
+    max_workers = max(1, min(full_cfg.pipeline.parallel_pages, len(pending)))
+    done_count = 0
+    deferred_calls = []
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="rt-enrichment") as pool:
+        futures = {}
         try:
-            text = f"Subunità {unit['id']}: {unit['title']}\n\n{unit['content']}"
-            if mock:
-                utilities = {"visualization": 0.92, "infographic": 0.1}
-            else:
-                reply = decision(text, {kind: JevNoulQuestion(instructions=instruction +
-                    " Valuta solo il beneficio didattico concreto. Rispondi no per prosa organizzativa, ripetizioni, dati mancanti o beneficio marginale. Entrambi i tipi possono essere utili, o nessuno.")
-                    for kind, instruction in UTILITY.items()}, lesson_dir=lesson_dir,
-                    job_name="enrichment_decision", unit_id=unit["id"])
-                if any(not isinstance(reply.answers.get(k), JevNoulAnswer) for k in UTILITY):
-                    raise ValueError("Risposta di utilità incompleta")
-                utilities = {k: reply.answers[k].noul for k in UTILITY}
-            ideas = []
-            old = load(lesson_dir)
-            for kind, score in utilities.items():
-                previous = next((e for e in old.elements if e.unit_id == unit["id"] and e.kind == kind and not e.manual), None)
-                if score < cfg.utility_threshold or previous and (previous.edited or previous.status in
-                        ("dismissed", "ready", "queued", "generating", "error", "deleted")):
-                    continue
-                prepared = (IdeaText(title=f"Esplora {unit['title']}"[:120], description="Rappresentazione dei concetti dell'unità.",
-                                    prompt=f"Rappresenta fedelmente i concetti di {unit['title']}.", mode="interactive")
-                            if mock else LLMClient().call_structured(prompt=f"Tipo: {kind}\n{text}",
-                                    system_prompt=WRITER_SYSTEM, response_model=IdeaText,
-                                    job_name="enrichment_writer", unit_id=unit["id"], lesson_dir=lesson_dir))
-                if kind == "infographic":
-                    prepared.mode = "static"
-                ideas.append(Element(**prepared.model_dump(), id=previous.id if previous else uuid.uuid4().hex,
-                                     unit_id=unit["id"], kind=kind, source_hash=source_hash(unit), utility=score))
-            with lesson_lock(lesson_dir):
-                state = load(lesson_dir)
-                # Re-read to preserve dismissals/edits performed while the model was working.
-                for candidate in ideas:
-                    previous = next((e for e in state.elements if e.id == candidate.id), None)
-                    if previous and (previous.edited or previous.status not in ("suggestion", "suppressed")):
+            for index, unit, key in pending:
+                raise_if_cancelled()
+                futures[pool.submit(copy_context().run, _analyze_one, unit, key)] = (index, unit, key)
+            for fut in as_completed(futures):
+                raise_if_cancelled()
+                index, unit, key = futures[fut]
+                try:
+                    utilities, ideas = fut.result()
+                except Exception as exc:
+                    from rt.llm.errors import DeferredCall, DeferredPhase
+                    if isinstance(exc, (DeferredCall, DeferredPhase)):
+                        deferred_calls.append(exc)
                         continue
-                    state.elements = [e for e in state.elements if e.id != candidate.id]
-                    state.elements.append(candidate)
-                for e in state.elements:
-                    if e.unit_id == unit["id"]:
-                        e.stale = e.source_hash != source_hash(unit)
-                        if e.kind in utilities and not e.edited and not e.manual:
-                            e.utility = utilities[e.kind]
-                state.assessment_metadata[unit["id"]] = {"at": datetime.now(timezone.utc).isoformat(), "error": None, "key": key, "utilities": utilities}
-                state.assessments[unit["id"]] = key
-                _rank(state, cfg, len(rows))
-                save(lesson_dir, state)
-        except Exception as exc:
-            with lesson_lock(lesson_dir):
-                state = load(lesson_dir)
-                state.assessment_metadata[unit["id"]] = {"at": datetime.now(timezone.utc).isoformat(), "error": str(exc), "key": key}
-                save(lesson_dir, state)
+                    for f in futures:
+                        f.cancel()
+                    with lesson_lock(lesson_dir):
+                        state = load(lesson_dir)
+                        state.assessment_metadata[unit["id"]] = {
+                            "at": datetime.now(timezone.utc).isoformat(),
+                            "error": str(exc),
+                            "key": key,
+                        }
+                        save(lesson_dir, state)
+                    raise
+                with lesson_lock(lesson_dir):
+                    state = load(lesson_dir)
+                    # Re-read to preserve dismissals/edits performed while the model was working.
+                    for candidate in ideas:
+                        previous = next((e for e in state.elements if e.id == candidate.id), None)
+                        if previous and (previous.edited or previous.status not in ("suggestion", "suppressed")):
+                            continue
+                        state.elements = [e for e in state.elements if e.id != candidate.id]
+                        state.elements.append(candidate)
+                    for e in state.elements:
+                        if e.unit_id == unit["id"]:
+                            e.stale = e.source_hash != source_hash(unit)
+                            if e.kind in utilities and not e.edited and not e.manual:
+                                e.utility = utilities[e.kind]
+                    state.assessment_metadata[unit["id"]] = {
+                        "at": datetime.now(timezone.utc).isoformat(),
+                        "error": None,
+                        "key": key,
+                        "utilities": utilities,
+                    }
+                    state.assessments[unit["id"]] = key
+                    _rank(state, cfg, len(rows))
+                    save(lesson_dir, state)
+                done_count += 1
+                if ctx:
+                    ctx.progress("enrichment", done_count, len(pending), f"Analisi {unit['id']}")
+        except BaseException:
+            for f in futures:
+                f.cancel()
             raise
+    if deferred_calls:
+        from rt.llm.deferred import raise_deferred_phase
+        raise_deferred_phase(deferred_calls, phase="enrichment")
     if ctx:
         ctx.progress("enrichment", len(rows), len(rows), "Suggerimenti pronti")
     return {"suggestions": sum(e.status == "suggestion" for e in view(lesson_dir)["elements"])}

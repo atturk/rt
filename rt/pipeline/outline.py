@@ -196,6 +196,10 @@ def _run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False)
             if topics_res and topics_res.argomenti:
                 outline.generated_topics = [t.strip() for t in topics_res.argomenti if t.strip()]
         except Exception as e:
+            from rt.llm.cancel import RunCancelled
+            from rt.llm.errors import DeferredCall, DeferredPhase
+            if isinstance(e, (RunCancelled, DeferredCall, DeferredPhase)):
+                raise
             print(f"⚠️  Generazione automatica argomenti non riuscita: {e}")
 
     # Salvataggio atomico

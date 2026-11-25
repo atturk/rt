@@ -6,7 +6,8 @@ Assegnazione delle pagine dei materiali alle sottounità didattiche (MF1).
 - MF1b: Valutazione sì/no tramite Jev Decision API con aggregazione a macro-unità (>= 3).
 - MF1c-MF1e: Integrazione nella pipeline prima della rielaborazione.
 """
-from rt.core.archive import page_image_path
+from rt.core.archive import file_type, page_image_path
+from rt.core.captions import page_alt
 
 import json
 import math
@@ -19,6 +20,10 @@ from rt.llm.cancel import RunCancelled
 from rt.core.lesson_paths import lesson_path
 from rt.core.models import Outline, Segment, SegmentsData
 from rt.storage import fs
+
+DIDACTIC_THRESHOLD = 0.85
+OFF_TOPIC_THRESHOLD = 0.2
+DUPLICATE_JACCARD_THRESHOLD = 0.8
 
 # Intercalari del parlato e stopwords italiane
 ITALIAN_STOPWORDS: Set[str] = {
@@ -351,6 +356,50 @@ def transcript_windows(page_text, transcript, idf=None):
     return [windows[i] for _, i in sorted(best, key=lambda item: item[1])]
 
 
+def _source_label(source: Any) -> str:
+    """Restituisce il nome file leggibile della fonte per i log."""
+    file_attr = getattr(source, "file", None)
+    if file_attr:
+        return os.path.basename(file_attr)
+    return str(getattr(source, "id", "") or "?")
+
+
+def _outcome_label(
+    assigned_units: List[str],
+    assigned_macros: List[str],
+    page: Dict[str, Any],
+) -> str:
+    """Etichetta sintetica dell'esito della classificazione per api.log."""
+    if page.get("off_topic"):
+        return "fuori tema"
+    if page.get("unplaced"):
+        return "non collocata"
+    if assigned_units:
+        return f"sottounità {assigned_units[0]}"
+    if assigned_macros:
+        return f"macro {assigned_macros[0]}"
+    return "introduttiva"
+
+
+def _log_page_classification(
+    source: Any,
+    page: Dict[str, Any],
+    candidates: List[CandidateSubunit],
+    probabilities: Dict[str, float],
+    outcome: str,
+) -> None:
+    """Scrive una riga di log per pagina in api.log."""
+    file_label = _source_label(source)
+    page_num = page.get("numero", "?")
+    cand_ids = [c.unit_id for c in candidates]
+    probs_rounded = {k: round(float(v), 3) for k, v in probabilities.items()}
+    print(
+        f"📎 Materiale {file_label} p.{page_num}: candidate {cand_ids} "
+        f"probabilità {probs_rounded} → {outcome}",
+        flush=True,
+    )
+
+
 def classify_material_page(
     page: Dict[str, Any],
     candidates: List[CandidateSubunit],
@@ -361,6 +410,7 @@ def classify_material_page(
     mock: bool = False,
     ctx: Any = None,
     idf: Optional[Dict[str, float]] = None,
+    cache_lock: Any = None,
 ) -> Tuple[List[str], List[str]]:
     """
     Classifica una pagina rispetto alle sottounità candidate usando Jev (MF1b).
@@ -370,6 +420,10 @@ def classify_material_page(
     """
     if not candidates and not page.get("testo", "").strip() and not page.get("immagini"):
         page["unplaced"] = False
+        page["off_topic"] = False
+        page["_didactic_ok"] = False
+        page["_best_prob"] = 0.0
+        _log_page_classification(source, page, candidates, {}, "introduttiva")
         return [], []
 
     from rt.core.config import load_config, classifier_job
@@ -380,6 +434,10 @@ def classify_material_page(
     cfg = classifier_job(load_config(), "images")
     if cfg.mode == "off":
         page["unplaced"] = False
+        page["off_topic"] = False
+        page["_didactic_ok"] = False
+        page["_best_prob"] = 0.0
+        _log_page_classification(source, page, candidates, {}, "classificatore spento")
         return [], []
 
     threshold = cfg.threshold if getattr(cfg, "threshold", None) is not None else 0.7
@@ -420,8 +478,12 @@ def classify_material_page(
         candidates_text,
     ])
 
+    from contextlib import nullcontext
+    lock = cache_lock if cache_lock is not None else nullcontext()
+
     probabilities: Dict[str, float] = {}
-    entry = cached.get(pid, {})
+    with lock:
+        entry = dict(cached.get(pid, {}))
     if entry.get("key") == key and "probabilities" in entry:
         probabilities = entry["probabilities"]
     elif force_mock:
@@ -430,8 +492,9 @@ def classify_material_page(
             q_key = f"unit_{c.unit_id.replace('.', '_')}"
             probabilities[q_key] = 0.9 if idx == 0 else 0.1
         probabilities['didactic_content'] = 0.9
-        cached[pid] = {"key": key, "probabilities": probabilities}
-        _write_json(lesson_dir, CACHE_FILE, cached)
+        with lock:
+            cached[pid] = {"key": key, "probabilities": probabilities}
+            _write_json(lesson_dir, CACHE_FILE, cached)
     else:
         try:
             if ctx:
@@ -449,17 +512,48 @@ def classify_material_page(
                     probabilities[k] = ans.noul
                 else:
                     probabilities[k] = 0.0
-            cached[pid] = {"key": key, "probabilities": probabilities}
-            _write_json(lesson_dir, CACHE_FILE, cached)
+            with lock:
+                cached[pid] = {"key": key, "probabilities": probabilities}
+                _write_json(lesson_dir, CACHE_FILE, cached)
         except RunCancelled:
             raise
         except Exception:
             # Il classificatore spento o in errore: nessuna pagina assegnata, la lezione si fa lo stesso
             page["unplaced"] = False
+            page["off_topic"] = False
+            page["_didactic_ok"] = False
+            page["_best_prob"] = 0.0
+            _log_page_classification(source, page, candidates, {}, "errore classificatore")
             return [], []
 
-    if probabilities.get('didactic_content', 0.0) < threshold:
+    if probabilities.get('didactic_content', 0.0) < DIDACTIC_THRESHOLD:
         page["unplaced"] = False
+        page["off_topic"] = False
+        page["_didactic_ok"] = False
+        page["_best_prob"] = 0.0
+        _log_page_classification(source, page, candidates, probabilities, "introduttiva")
+        return [], []
+
+    if not candidates:
+        page["unplaced"] = True
+        page["off_topic"] = False
+        page["_didactic_ok"] = True
+        page["_best_prob"] = 0.0
+        _log_page_classification(source, page, candidates, probabilities, "non collocata")
+        return [], []
+
+    best_candidate = max(
+        candidates,
+        key=lambda c: probabilities.get(f"unit_{c.unit_id.replace('.', '_')}", 0.0),
+    )
+    best_prob = probabilities.get(f"unit_{best_candidate.unit_id.replace('.', '_')}", 0.0)
+    page["_didactic_ok"] = True
+    page["_best_prob"] = best_prob
+
+    if best_prob < OFF_TOPIC_THRESHOLD:
+        page["unplaced"] = False
+        page["off_topic"] = True
+        _log_page_classification(source, page, candidates, probabilities, "fuori tema")
         return [], []
 
     # Sottounità approvate con probabilità >= soglia
@@ -477,15 +571,17 @@ def classify_material_page(
 
     if not approved_candidates:
         page["unplaced"] = True
-        if candidates:
-            best = max(candidates, key=lambda c: probabilities.get(f"unit_{c.unit_id.replace('.', '_')}", 0.0))
-            return [], [best.macro_id]
-        return [], []
+        page["off_topic"] = False
+        _log_page_classification(source, page, candidates, probabilities, "non collocata")
+        return [], [best_candidate.macro_id]
 
     page["unplaced"] = False
+    page["off_topic"] = False
     best = max(approved_candidates, key=lambda c: probabilities[f"unit_{c.unit_id.replace('.', '_')}"])
     if len(by_macro[best.macro_id]) >= 3:
+        _log_page_classification(source, page, candidates, probabilities, f"macro {best.macro_id}")
         return [], [best.macro_id]
+    _log_page_classification(source, page, candidates, probabilities, f"sottounità {best.unit_id}")
     return [best.unit_id], []
 
 
@@ -497,7 +593,7 @@ class PageSourceIdentity:
 
 
 def place_page_in_outline(page, corpus, idf, source, lesson_dir, cached, *, mock=False, ctx=None,
-                          mock_fallback=False):
+                          mock_fallback=False, cache_lock=None):
     """Candidate TF-IDF e stessa decisione per import materiali e Arricchimento.
 
     Il fallback serve soltanto a conservare i fixture storici dell'import in mock.
@@ -512,9 +608,10 @@ def place_page_in_outline(page, corpus, idf, source, lesson_dir, cached, *, mock
     if not candidates and mock and mock_fallback and corpus and page_dict.get("testo", "").strip():
         entry = corpus[0]
         candidates = [CandidateSubunit(entry.unit_id, entry.macro_id, entry.title, entry.transcript, 1.0)]
-    res = classify_material_page(page_dict, candidates, source, lesson_dir, cached, mock=mock, ctx=ctx, idf=idf)
-    if "unplaced" in page_dict:
-        page["unplaced"] = page_dict["unplaced"]
+    res = classify_material_page(page_dict, candidates, source, lesson_dir, cached, mock=mock, ctx=ctx, idf=idf, cache_lock=cache_lock)
+    for flag in ("unplaced", "off_topic", "_didactic_ok", "_best_prob"):
+        if flag in page_dict:
+            page[flag] = page_dict[flag]
     return res
 
 
@@ -525,6 +622,112 @@ def append_page_placements(units, macros, image_hash, assigned_units, assigned_m
             hashes = target.setdefault(section_id, [])
             if image_hash not in hashes:
                 hashes.append(image_hash)
+
+
+def _page_title_and_tokens(text: str) -> Tuple[str, Set[str]]:
+    """Estrae il titolo normalizzato (prima riga non vuota) e i token del testo."""
+    title = ""
+    for line in (text or "").splitlines():
+        cleaned = " ".join(line.lower().split())
+        if cleaned:
+            title = cleaned
+            break
+    tokens = set(tokenize_text(text or ""))
+    if not tokens:
+        tokens = set(re.findall(r"[0-9a-zA-ZàèéìòùÀÈÉÌÒÙ]+", (text or "").lower()))
+    return title, tokens
+
+
+def _are_duplicate_pages(
+    title_a: str,
+    tokens_a: Set[str],
+    title_b: str,
+    tokens_b: Set[str],
+) -> bool:
+    """Due pagine sono doppie se hanno lo stesso titolo (prima riga) e Jaccard dei token >= 0,8."""
+    if not title_a or title_a != title_b or not tokens_a or not tokens_b:
+        return False
+    union = tokens_a | tokens_b
+    return bool(union) and (len(tokens_a & tokens_b) / len(union)) >= DUPLICATE_JACCARD_THRESHOLD
+
+
+def resolve_duplicate_pages(records: List[Dict[str, Any]]) -> None:
+    """Allinea le pagine doppie alla collocazione della copia con la probabilità più alta."""
+    by_title: Dict[str, List[int]] = {}
+    tokens_by_idx: Dict[int, Set[str]] = {}
+    title_by_idx: Dict[int, str] = {}
+
+    for idx, rec in enumerate(records):
+        page = rec["page"]
+        if rec.get("used_image_decision") or page.get("mapping_skip"):
+            continue
+        text = page.get("mapping_text", page.get("testo", ""))
+        title, tokens = _page_title_and_tokens(text)
+        if not title or not tokens:
+            continue
+        title_by_idx[idx] = title
+        tokens_by_idx[idx] = tokens
+        by_title.setdefault(title, []).append(idx)
+
+    for indices in by_title.values():
+        if len(indices) < 2:
+            continue
+        visited: Set[int] = set()
+        for start in indices:
+            if start in visited:
+                continue
+            component: List[int] = []
+            stack = [start]
+            visited.add(start)
+            while stack:
+                cur = stack.pop()
+                component.append(cur)
+                for nxt in indices:
+                    if nxt in visited:
+                        continue
+                    if _are_duplicate_pages(
+                        title_by_idx[cur], tokens_by_idx[cur],
+                        title_by_idx[nxt], tokens_by_idx[nxt],
+                    ):
+                        visited.add(nxt)
+                        stack.append(nxt)
+            if len(component) < 2:
+                continue
+            component.sort()
+            winner_idx = max(
+                component,
+                key=lambda i: (
+                    bool(records[i]["page"].get("_didactic_ok")),
+                    float(records[i]["page"].get("_best_prob", 0.0)),
+                ),
+            )
+            winner = records[winner_idx]
+            winner_outcome = _outcome_label(
+                winner["assigned_units"],
+                winner["assigned_macros"],
+                winner["page"],
+            )
+            for i in component:
+                if i == winner_idx:
+                    continue
+                rec = records[i]
+                changed = (
+                    rec["assigned_units"] != winner["assigned_units"]
+                    or rec["assigned_macros"] != winner["assigned_macros"]
+                    or bool(rec["page"].get("unplaced")) != bool(winner["page"].get("unplaced"))
+                    or bool(rec["page"].get("off_topic")) != bool(winner["page"].get("off_topic"))
+                )
+                rec["assigned_units"] = list(winner["assigned_units"])
+                rec["assigned_macros"] = list(winner["assigned_macros"])
+                rec["page"]["unplaced"] = bool(winner["page"].get("unplaced"))
+                rec["page"]["off_topic"] = bool(winner["page"].get("off_topic"))
+                if changed:
+                    src_label = _source_label(rec["source"])
+                    print(
+                        f"📎 Materiale {src_label} p.{rec['page'].get('numero', '?')}: "
+                        f"doppia di p.{winner['page'].get('numero', '?')} → {winner_outcome}",
+                        flush=True,
+                    )
 
 
 def assign_material_pages(
@@ -574,6 +777,8 @@ def assign_material_pages(
     pages_by_unit: Dict[str, List[Dict[str, Any]]] = {}
     pages_by_macro: Dict[str, List[Dict[str, Any]]] = {}
     unplaced_list: List[Dict[str, Any]] = []
+    off_topic_list: List[Dict[str, Any]] = []
+    classified_records: List[Dict[str, Any]] = []
 
     descriptions = load_image_descriptions(lesson_dir)
 
@@ -609,7 +814,7 @@ def assign_material_pages(
                     descriptions.setdefault(h, {
                         "filename": save_raw_image(lesson_dir, data, h),
                         "source": f"material:{source.id}:{page['numero']}",
-                        "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                        "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                     })["ruolo"] = role
                     append_page_placements(units_placement, macros_placement, h, assigned_units, assigned_macros)
             continue
@@ -645,16 +850,64 @@ def assign_material_pages(
                             descriptions.setdefault(h, {
                                 "filename": fn,
                                 "source": f"material:{source.id}:{page['numero']}",
-                                "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                                "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                             })
                             if h not in units_placement.setdefault(target_unit_id, []):
                                 units_placement[target_unit_id].append(h)
         else:
             # Materiale non principale: MF1a candidate locali + MF1b classificatore
+            if not read_page_images and pages:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                from contextvars import copy_context
+                import threading
+                from rt.core.config import load_config
+                from rt.llm.cancel import raise_if_cancelled
+
+                cache_lock = threading.Lock()
+                placed_by_idx: Dict[int, Tuple[List[str], List[str]]] = {}
+
+                def _place_mat_page(p):
+                    raise_if_cancelled()
+                    return place_page_in_outline(
+                        p, corpus, idf, source, lesson_dir, cached_decisions,
+                        mock=mock, ctx=ctx, mock_fallback=True, cache_lock=cache_lock,
+                    )
+
+                max_workers = max(1, min(load_config().pipeline.parallel_pages, len(pages)))
+                with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="rt-mat-map") as pool:
+                    futures = {}
+                    try:
+                        for idx, page in enumerate(pages):
+                            if ctx:
+                                ctx.check_cancelled()
+                            raise_if_cancelled()
+                            futures[pool.submit(copy_context().run, _place_mat_page, page)] = idx
+                        for fut in as_completed(futures):
+                            if ctx:
+                                ctx.check_cancelled()
+                            raise_if_cancelled()
+                            idx = futures[fut]
+                            placed_by_idx[idx] = fut.result()
+                    except BaseException:
+                        for f in futures:
+                            f.cancel()
+                        raise
+                for idx, page in enumerate(pages):
+                    assigned_units, assigned_macros = placed_by_idx[idx]
+                    classified_records.append({
+                        "source": source,
+                        "page": page,
+                        "assigned_units": list(assigned_units),
+                        "assigned_macros": list(assigned_macros),
+                        "used_image_decision": False,
+                    })
+                continue
+
             for page in pages:
                 if ctx:
                     ctx.check_cancelled()
                 placed = None
+                used_image_decision = False
                 if read_page_images and page.get("has_figures") and page.get("immagini") and not page.get("mapping_skip"):
                     # Il modello decisionale guarda la pagina invece della sola descrizione.
                     from rt.pipeline.image_decision import decide_image, load_cache
@@ -676,57 +929,87 @@ def assign_material_pages(
                             descriptions.setdefault(h, {
                                 "filename": save_raw_image(lesson_dir, data, h),
                                 "source": f"material:{source.id}:{page['numero']}",
-                                "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                                "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                             })["ruolo"] = role
                             placed = (units_found, macros_found) if role == "contenuto" else ([], [])
+                            used_image_decision = True
                 if placed is None:
                     placed = place_page_in_outline(
                         page, corpus, idf, source, lesson_dir, cached_decisions,
                         mock=mock, ctx=ctx, mock_fallback=True,
                     )
                 assigned_units, assigned_macros = placed
+                classified_records.append({
+                    "source": source,
+                    "page": page,
+                    "assigned_units": list(assigned_units),
+                    "assigned_macros": list(assigned_macros),
+                    "used_image_decision": used_image_decision,
+                })
 
-                page_info = {
-                    "source_id": source.id,
-                    "source_file": os.path.basename(source.file),
-                    "page": page["numero"],
-                    "text": page["testo"],
-                }
+    resolve_duplicate_pages(classified_records)
 
-                if page.get("unplaced"):
-                    unplaced_list.append({
-                        "source_id": source.id,
-                        "source_file": os.path.basename(source.file),
-                        "page": page["numero"],
-                        "text": page["testo"],
-                        "macro_id": assigned_macros[0] if assigned_macros else None,
-                        "immagini": page.get("immagini") or [],
+    for rec in classified_records:
+        source = rec["source"]
+        page = rec["page"]
+        assigned_units = rec["assigned_units"]
+        assigned_macros = rec["assigned_macros"]
+        page.pop("_didactic_ok", None)
+        page.pop("_best_prob", None)
+
+        page_text = page.get("testo") or page.get("mapping_text") or ""
+        page_info = {
+            "source_id": source.id,
+            "source_file": os.path.basename(source.file),
+            "page": page["numero"],
+            "text": page_text,
+        }
+
+        if page.get("off_topic"):
+            off_topic_list.append({
+                "source_id": source.id,
+                "source_file": os.path.basename(source.file),
+                "page": page["numero"],
+                "text": page_text,
+                "macro_id": None,
+                "immagini": page.get("immagini") or [],
+            })
+            continue
+
+        if page.get("unplaced"):
+            unplaced_list.append({
+                "source_id": source.id,
+                "source_file": os.path.basename(source.file),
+                "page": page["numero"],
+                "text": page_text,
+                "macro_id": assigned_macros[0] if assigned_macros else None,
+                "immagini": page.get("immagini") or [],
+            })
+
+        for uid in assigned_units:
+            pages_by_unit.setdefault(uid, []).append(page_info)
+        for mid in assigned_macros:
+            pages_by_macro.setdefault(mid, []).append(page_info)
+
+        if enabled and page.get("immagini"):
+            for img_rel in page["immagini"]:
+                img_path = page_image_path(source.impronta, img_rel)
+                if fs.isfile(img_path):
+                    with fs.open(img_path, "rb") as stream:
+                        data = stream.read()
+                    h = compute_image_hash(data)
+                    fn = save_raw_image(lesson_dir, data, h)
+                    desc = descriptions.setdefault(h, {
+                        "filename": fn,
+                        "source": f"material:{source.id}:{page['numero']}",
+                        "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                     })
-
-                for uid in assigned_units:
-                    pages_by_unit.setdefault(uid, []).append(page_info)
-                for mid in assigned_macros:
-                    pages_by_macro.setdefault(mid, []).append(page_info)
-
-                if enabled and page.get("immagini"):
-                    for img_rel in page["immagini"]:
-                        img_path = page_image_path(source.impronta, img_rel)
-                        if fs.isfile(img_path):
-                            with fs.open(img_path, "rb") as stream:
-                                data = stream.read()
-                            h = compute_image_hash(data)
-                            fn = save_raw_image(lesson_dir, data, h)
-                            desc = descriptions.setdefault(h, {
-                                "filename": fn,
-                                "source": f"material:{source.id}:{page['numero']}",
-                                "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
-                            })
-                            if page.get("unplaced"):
-                                desc["unplaced"] = True
-                                desc["alt_text"] = "Materiale non collocato"
-                            if assigned_units or assigned_macros:
-                                append_page_placements(units_placement, macros_placement, h,
-                                                       assigned_units, assigned_macros)
+                    if page.get("unplaced"):
+                        desc["unplaced"] = True
+                        desc["alt_text"] = "Materiale non collocato"
+                    if assigned_units or assigned_macros:
+                        append_page_placements(units_placement, macros_placement, h,
+                                               assigned_units, assigned_macros)
 
     save_image_descriptions(lesson_dir, descriptions)
 
@@ -736,6 +1019,7 @@ def assign_material_pages(
         "pages_by_unit": pages_by_unit,
         "pages_by_macro": pages_by_macro,
         "unplaced": unplaced_list,
+        "off_topic": off_topic_list,
     }
     _write_json(lesson_dir, STATE_FILE, state)
 
@@ -763,8 +1047,8 @@ def assign_material_pages(
 def clear_material_context(lesson_dir: str) -> None:
     """Assegnazione non riuscita: nessuna pagina va nel contesto (le immagini restano)."""
     state = _read_json(lesson_dir, STATE_FILE)
-    if state.get("pages_by_unit") or state.get("pages_by_macro") or state.get("unplaced"):
-        state.update(pages_by_unit={}, pages_by_macro={}, unplaced=[])
+    if state.get("pages_by_unit") or state.get("pages_by_macro") or state.get("unplaced") or state.get("off_topic"):
+        state.update(pages_by_unit={}, pages_by_macro={}, unplaced=[], off_topic=[])
         _write_json(lesson_dir, STATE_FILE, state)
 
 

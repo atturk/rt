@@ -104,6 +104,8 @@ def test_enqueue_worker_succeeded_in_mock(queue, tmp_path):
 
 
 def test_pipeline_waits_for_outline_decision(queue, tmp_path):
+    with open(os.path.join("config", "general.yaml"), "w", encoding="utf-8") as f:
+        f.write("ui:\n  outline_mode: manual\n")
     lesson_dir = make_lesson(tmp_path / "lezioni")
     job_id = queue.enqueue(RUN_PIPELINE, lesson_dir, _payload(lesson_dir, auto_accept=False))
     job = _worker(queue).run_once()
@@ -371,3 +373,33 @@ def test_audio_job_points_to_the_lesson_as_soon_as_setup_creates_it(queue, tmp_p
     reporter.emit(PhaseCompleted(phase="setup", result={"lesson_dir": lesson_dir}))
     reporter.emit(PhaseCompleted(phase="setup", result={"lesson_dir": "/altrove"}))
     assert queue.get(job_id).lesson_path == normalize_lesson_path(lesson_dir)  # non si sposta più
+
+
+def test_recall_evaluate_not_blocked_by_running_recall_refill(queue, tmp_path):
+    """Con recall_refill RUNNING sulla lezione, claim prende subito recall_evaluate sulla stessa
+    lezione, mentre una rielaborazione (run_pipeline / rewrite_unit) resta bloccata."""
+    lesson_dir = make_lesson(tmp_path / "lezioni")
+    refill_id = queue.enqueue("recall_refill", lesson_dir, {"qtype": "mirata", "mock": True})
+    eval_id = queue.enqueue("recall_evaluate", lesson_dir, {"question_id": "q1", "answer": "ok"})
+    rewrite_id = queue.enqueue("rewrite_unit", lesson_dir, {"unit_id": "1.1"})
+
+    refill_job = queue.claim("w-refill", ["recall_refill"])
+    assert refill_job is not None and refill_job.id == refill_id
+    with session_scope(queue.db) as s:
+        assert s.get(Job, refill_id).active_lesson is None
+
+    # Una rielaborazione della stessa lezione resta bloccata finché refill gira
+    assert queue.claim("w-rewrite", ["rewrite_unit"]) is None
+
+    # La valutazione della stessa lezione viene presa subito, e anche comment/regenerate
+    eval_job = queue.claim("w-eval", ["recall_evaluate"])
+    assert eval_job is not None and eval_job.id == eval_id
+    with session_scope(queue.db) as s:
+        assert s.get(Job, eval_id).active_lesson is None
+
+    # Scadenza / rilascio / completamento funzionano con active_lesson=None
+    assert queue.release(eval_id, "w-eval", "test_release")
+    eval_job2 = queue.claim("w-eval2", ["recall_evaluate"])
+    assert eval_job2 is not None and eval_job2.id == eval_id
+    assert queue.requeue_expired(now=utcnow() + timedelta(hours=1)) == [refill_id, eval_id]
+    assert queue.claim("w-rewrite", ["rewrite_unit"]).id == rewrite_id

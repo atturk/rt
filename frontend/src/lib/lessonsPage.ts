@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import type { CalendarMissingLessons, CalendarToRecoverItem } from '@/api/calendar'
 import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from './format'
-import { groupLessons, sortLessons, type LessonGroup } from './lessonView'
+import { dayLabel, groupLessons, monthLabel, sortLessons, type LessonGroup } from './lessonView'
 import { usePreference } from './preferences'
 
 /**
@@ -39,55 +39,140 @@ export function groupBackground(index: number, mode: string | undefined): string
   return `var(--group-${(index % 4) + 1})`
 }
 
-export type LessonsView = { group: LessonsGrouping; sort: LessonsSort; q: string; materia: string; stato: string }
-export const PINNED_VIEW_PREF = 'lessons.pinned'
+export type PinnableGrouping = Exclude<LessonsGrouping, 'nessuno'>
+export type CategoryPins = Partial<Record<PinnableGrouping, string>>
+export const CATEGORY_PINS_PREF = 'lessons.pins'
+export const LEGACY_PINNED_VIEW_PREF = 'lessons.pinned'
 
-export function parsePinnedView(raw: unknown): LessonsView | null {
+const PINNABLE_GROUPINGS: readonly PinnableGrouping[] = ['data', 'mese', 'materia', 'docente']
+
+export function isPinnableGrouping(group: LessonsGrouping): group is PinnableGrouping {
+  return group === 'data' || group === 'mese' || group === 'materia' || group === 'docente'
+}
+
+export function parseCategoryPins(raw: unknown): CategoryPins {
   try {
     let data = raw
     if (typeof raw === 'string') {
       data = JSON.parse(raw)
     }
-    if (!data || typeof data !== 'object') return null
-    const obj = data as Partial<LessonsView>
-    if (!obj.group || !(obj.group in GROUPING_LABELS)) return null
-    if (!obj.sort || !(obj.sort in SORT_OPTIONS)) return null
-    return {
-      group: obj.group as LessonsGrouping,
-      sort: obj.sort as LessonsSort,
-      q: typeof obj.q === 'string' ? obj.q : '',
-      materia: typeof obj.materia === 'string' ? obj.materia : '',
-      stato: typeof obj.stato === 'string' ? obj.stato : '',
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return {}
+    const result: CategoryPins = {}
+    for (const grouping of PINNABLE_GROUPINGS) {
+      const value = (data as Record<string, unknown>)[grouping]
+      if (typeof value === 'string') {
+        result[grouping] = value
+      }
     }
+    return result
+  } catch {
+    return {}
+  }
+}
+
+export function categoryPinLabel(grouping: PinnableGrouping, key: string, now = new Date()): string {
+  switch (grouping) {
+    case 'data':
+      return key ? dayLabel(key, now) : 'Senza data'
+    case 'mese':
+      return key ? monthLabel(`${key}-01`) : 'Senza data'
+    case 'materia':
+      return key ? subjectName(key) : 'Senza materia'
+    case 'docente':
+      return key || 'Senza docente'
+  }
+}
+
+export function useCategoryPins(): {
+  pins: CategoryPins
+  togglePin: (grouping: PinnableGrouping, key: string) => void
+  unpinGroup: (grouping: PinnableGrouping) => void
+} {
+  const [pref, setPref] = usePreference<CategoryPins | undefined>(CATEGORY_PINS_PREF, undefined)
+  const pins = useMemo(() => parseCategoryPins(pref), [pref])
+
+  const togglePin = useCallback((grouping: PinnableGrouping, key: string) => {
+    const next: CategoryPins = { ...pins }
+    if (Object.hasOwn(next, grouping) && next[grouping] === key) {
+      delete next[grouping]
+    } else {
+      next[grouping] = key
+    }
+    setPref(Object.keys(next).length > 0 ? next : undefined)
+  }, [pins, setPref])
+
+  const unpinGroup = useCallback((grouping: PinnableGrouping) => {
+    if (!Object.hasOwn(pins, grouping)) return
+    const next: CategoryPins = { ...pins }
+    delete next[grouping]
+    setPref(Object.keys(next).length > 0 ? next : undefined)
+  }, [pins, setPref])
+
+  return { pins, togglePin, unpinGroup }
+}
+
+export type SearchPin = { q: string; materia: string; stato: string }
+export const SEARCH_PIN_KEY = 'rt.lessons.searchPin'
+
+export function parseSearchPin(raw: unknown): SearchPin | null {
+  try {
+    let data = raw
+    if (typeof raw === 'string') {
+      data = JSON.parse(raw)
+    }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null
+    const obj = data as Partial<SearchPin>
+    const q = typeof obj.q === 'string' ? obj.q.trim() : ''
+    const materia = typeof obj.materia === 'string' ? obj.materia : ''
+    const stato = typeof obj.stato === 'string' ? obj.stato : ''
+    if (!q && !materia && !stato) return null
+    return { q, materia, stato }
   } catch {
     return null
   }
 }
 
-export function sameView(a: LessonsView, b: LessonsView): boolean {
-  return (
-    a.group === b.group &&
-    a.sort === b.sort &&
-    a.q.trim() === b.q.trim() &&
-    a.materia === b.materia &&
-    a.stato === b.stato
-  )
+export function sameSearchPin(a: SearchPin, b: SearchPin): boolean {
+  return a.q.trim() === b.q.trim() && a.materia === b.materia && a.stato === b.stato
 }
 
-export function usePinnedLessonsView(): {
-  pinned: LessonsView | null
-  pin: (view: LessonsView) => void
-  unpin: () => void
+export function readSearchPin(): SearchPin | null {
+  try {
+    return parseSearchPin(sessionStorage.getItem(SEARCH_PIN_KEY))
+  } catch {
+    return null
+  }
+}
+
+export function writeSearchPin(pin: SearchPin | null): void {
+  try {
+    if (pin) sessionStorage.setItem(SEARCH_PIN_KEY, JSON.stringify(pin))
+    else sessionStorage.removeItem(SEARCH_PIN_KEY)
+  } catch {
+    /* sessionStorage non disponibile: vale solo in memoria per questa pagina */
+  }
+}
+
+export function useSearchPin(): {
+  searchPin: SearchPin | null
+  pinSearch: (pin: SearchPin) => void
+  unpinSearch: () => void
 } {
-  const [pref, setPref] = usePreference<LessonsView | undefined>(PINNED_VIEW_PREF, undefined)
-  const pinned = parsePinnedView(pref)
-  const pin = useCallback((view: LessonsView) => {
-    setPref(view)
-  }, [setPref])
-  const unpin = useCallback(() => {
-    setPref(undefined)
-  }, [setPref])
-  return { pinned, pin, unpin }
+  const [searchPin, setSearchPin] = useState<SearchPin | null>(() => readSearchPin())
+
+  const pinSearch = useCallback((pin: SearchPin) => {
+    const normalized = parseSearchPin(pin)
+    if (!normalized) return
+    writeSearchPin(normalized)
+    setSearchPin(normalized)
+  }, [])
+
+  const unpinSearch = useCallback(() => {
+    writeSearchPin(null)
+    setSearchPin(null)
+  }, [])
+
+  return { searchPin, pinSearch, unpinSearch }
 }
 
 export type LessonsPrefs = { group: LessonsGrouping; sort: LessonsSort }
@@ -129,8 +214,8 @@ export function useLessonsPrefs(): [LessonsPrefs, (patch: Partial<LessonsPrefs>)
   return [prefs, update]
 }
 
-/** Gruppi della pagina: dentro ogni gruppo l'ordine scelto; i giorni seguono la direzione della data. */
-export function lessonsGroups(lessons: Lesson[], prefs: LessonsPrefs, now = new Date()): LessonGroup[] {
+/** Gruppi della pagina: dentro ogni gruppo l'ordine scelto; i giorni seguono la direzione della data. L'eventuale gruppo fissato sta sempre in cima. */
+export function lessonsGroups(lessons: Lesson[], prefs: LessonsPrefs, now = new Date(), pinnedKey?: string): LessonGroup[] {
   let sorted = sortLessons(lessons, 'data', prefs.sort === 'meno-recenti' ? 'asc' : 'desc')
   if (prefs.sort === 'titolo') sorted = sortLessons(lessons, 'titolo', 'asc')
   else if (prefs.sort === 'studio-recente') {
@@ -154,7 +239,11 @@ export function lessonsGroups(lessons: Lesson[], prefs: LessonsPrefs, now = new 
     sorted.sort((a, b) => direction * (ratio(a) - ratio(b) || (a.study_learning ?? 0) - (b.study_learning ?? 0)))
   }
   const dateDir = prefs.sort === 'meno-recenti' ? 'asc' : 'desc'
-  return groupLessons(sorted, prefs.group === 'data' ? 'giorno' : prefs.group, dateDir, now)
+  const groups = groupLessons(sorted, prefs.group === 'data' ? 'giorno' : prefs.group, dateDir, now)
+  if (prefs.group === 'nessuno' || pinnedKey === undefined) return groups
+  const pinnedIndex = groups.findIndex((g) => g.key === pinnedKey)
+  if (pinnedIndex <= 0) return groups
+  return [groups[pinnedIndex], ...groups.slice(0, pinnedIndex), ...groups.slice(pinnedIndex + 1)]
 }
 
 function parseIso(date: string): Date | null {

@@ -89,19 +89,24 @@ _LATEX_AFTER_ESCAPE = re.compile(
     r"|\n(?=(?:abla|eq|otin|ot|eg|ewline|leq|geq|mid|exists|parallel|subseteq|cong|sim)(?![a-zA-Z]))"
 )
 
+# Una formula non attraversa una riga vuota (come nella SPA, frontend/src/lib/math.ts): un $$
+# spaiato non si accoppia con quello di un paragrafo successivo.
+_NO_BLANK = r"(?:(?!\n[ \t]*\n)[\s\S])"
 MATH_REGEX = re.compile(
-    r"(\$\$[\s\S]*?\$\$"
-    r"|\\\[[\s\S]*?\\\]"
-    r"|\\\([\s\S]*?\\\)"
+    r"(\$\$" + _NO_BLANK + r"*?\$\$"
+    r"|\\\[" + _NO_BLANK + r"*?\\\]"
+    r"|\\\(" + _NO_BLANK + r"*?\\\)"
     r"|(?<![\$\\\d])\$(?!\$)(?! )(?:\\.|[^\$\n])+?(?<![ \\])\$(?!\d))"
 )
 
-_CONTROL_IN_MATH = re.compile(r"([\t\x08\x0c])(?=[a-zA-Z])")
+_CONTROL_IN_MATH = re.compile(r"([\t\x08\x0c\r])(?=[a-zA-Z])")
 _ESC_MAP = {
     "\t": "\\t",
     "\x08": "\\b",
     "\x0c": "\\f",
+    "\r": "\\r",
 }
+_OUTSIDE_MATH_C0 = re.compile(r"[\x00-\x08\x0b-\x1f]")
 
 _REPAIR_N_IN_MATH = re.compile(
     r"\n(?=(?:abla|eq|otin|ot|eg|ewline|leq|geq|mid|exists|parallel|subseteq|cong|sim)(?![a-zA-Z]))"
@@ -109,6 +114,11 @@ _REPAIR_N_IN_MATH = re.compile(
 _REPAIR_R_IN_MATH = re.compile(
     r"\r(?=(?:ho|ight|angle|ceil|floor)(?![a-zA-Z])|m\{)"
 )
+
+# Formula con tutte le barre raddoppiate (doppia barra + mathrm, times...): il modello ha fatto
+# l'escape JSON due volte e KaTeX legge un a-capo seguito da lettere ("mathrmCaO").
+_SINGLE_BS_COMMAND = re.compile(r"(?<!\\)(?:\\\\)*\\[a-zA-Z]")
+_DOUBLE_BS_COMMAND = re.compile(r"(?<!\\)\\\\[a-zA-Z]")
 
 _INVALID_MATH_COMMANDS = re.compile(r"\\(?:trm|rm|textrm)\s*\{")
 _MATH_PREFIX_REPAIR = re.compile(r"(?<![a-zA-Z\\])ath(rm|bf|it|cal|bb|sf)\{")
@@ -119,6 +129,9 @@ def _repair_inside_math(content: str, is_display: bool) -> str:
     content = _CONTROL_IN_MATH.sub(lambda m: _ESC_MAP[m.group(1)], content)
     content = _REPAIR_N_IN_MATH.sub(r"\\n", content)
     content = _REPAIR_R_IN_MATH.sub(r"\\r", content)
+    # 1b. Escape doppio: se nessun comando ha la barra singola, ogni doppia barra torna singola
+    if _DOUBLE_BS_COMMAND.search(content) and not _SINGLE_BS_COMMAND.search(content):
+        content = content.replace("\\\\", "\\")
     # 2. Comandi non validi più comuni: \trm{, \rm{ e \textrm{ dentro una formula diventano \mathrm{
     content = _INVALID_MATH_COMMANDS.sub(r"\\mathrm{", content)
     # 3. Rimette \m davanti a athrm{, athbf{, athit{, athcal{, athbb{, athsf{ non preceduti da lettera o barra
@@ -132,6 +145,11 @@ def _repair_inside_math(content: str, is_display: bool) -> str:
 
 
 def _repair_formula(match_str: str) -> str:
+    # "$\u0000$" dal modello: senza il carattere di controllo resterebbe "$$", che apre una
+    # formula a blocco mai chiusa. Una formula in riga vuota sparisce.
+    if (match_str.startswith("$") and not match_str.startswith("$$")
+            and not _repair_inside_math(match_str[1:-1], is_display=False).strip()):
+        return ""
     if match_str.startswith("$$") and match_str.endswith("$$"):
         return "$$" + _repair_inside_math(match_str[2:-2], is_display=True) + "$$"
     elif match_str.startswith("\\[") and match_str.endswith("\\]"):
@@ -152,21 +170,30 @@ def _repair_outside_math(text: str) -> str:
     return text
 
 
-def repair_latex_escapes(text: str) -> str:
-    """Rimette la barra ai comandi LaTeX mangiati dagli escape JSON (\\frac, \\beta, \\theta...)."""
-    if not text:
+def _map_math_and_outside(text: str, outside_fn) -> str:
+    if not text or not isinstance(text, str):
         return text
     parts = []
     last_end = 0
     for match in MATH_REGEX.finditer(text):
         start, end = match.span()
         if start > last_end:
-            parts.append(_repair_outside_math(text[last_end:start]))
+            parts.append(outside_fn(text[last_end:start]))
         parts.append(_repair_formula(match.group(0)))
         last_end = end
     if last_end < len(text):
-        parts.append(_repair_outside_math(text[last_end:]))
+        parts.append(outside_fn(text[last_end:]))
     return "".join(parts)
+
+
+def repair_latex_escapes(text: str) -> str:
+    """Rimette la barra ai comandi LaTeX mangiati dagli escape JSON (\\frac, \\beta, \\theta...)."""
+    return _map_math_and_outside(text, _repair_outside_math)
+
+
+def repair_llm_text(text: str) -> str:
+    """Ripara comandi LaTeX con caratteri di controllo dentro le formule e toglie i C0 (tranne \\n e \\t) fuori."""
+    return _map_math_and_outside(text, lambda outside: _OUTSIDE_MATH_C0.sub("", outside))
 
 
 def sanitize_object_encoding(obj: Any, *, repair_latex: bool = False) -> Any:

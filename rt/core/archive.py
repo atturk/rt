@@ -160,11 +160,22 @@ def import_material_cache(lesson_dir, source):
 
 
 def pages_for_use(sha, pagine=None):
+    from rt.core.captions import clean_caption
     meta = find(sha) or {}
     data = read_json(os.path.join(entry_dir(meta.get('impronta', sha)), 'pages.json'), {})
     excluded = set(meta.get('ignorate', [])) | set(meta.get('eliminate', []))
-    return [p for p in data.get('pages', []) if p['numero'] not in excluded
-            and (pagine is None or p['numero'] in pagine)]
+    is_image = meta.get('tipo') == 'immagine'
+    result = []
+    for p in data.get('pages', []):
+        if p['numero'] in excluded or (pagine is not None and p['numero'] not in pagine):
+            continue
+        if is_image and 'titolo' not in p and p.get('testo'):
+            first_line = next((line for line in str(p['testo']).splitlines() if line.strip()), '')
+            legacy = clean_caption(first_line)
+            if legacy:
+                p = {**p, 'titolo': legacy}
+        result.append(p)
+    return result
 
 
 def cached_transcript(sha, motore):

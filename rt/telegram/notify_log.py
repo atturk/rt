@@ -53,15 +53,31 @@ def record_notification(kind: str, text: str, ok: bool = True, state_dir: Option
 def recent_notifications(limit: int = 20, state_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """Le ultime notifiche, dalla più recente."""
     path = _path(state_dir)
-    if not os.path.isfile(path):
-        return []
-    out: List[Dict[str, Any]] = []
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            try:
-                item = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(item, dict):
-                out.append(item)
+    with _lock:
+        if not os.path.isfile(path):
+            return []
+        out: List[Dict[str, Any]] = []
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    item = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(item, dict):
+                    out.append(item)
     return list(reversed(out))[:limit]
+
+
+def clear_notifications(state_dir: Optional[str] = None) -> int:
+    """Svuota il registro delle notifiche (solo in RT: i messaggi su Telegram restano)."""
+    path = _path(state_dir)
+    with _lock:
+        if not os.path.isfile(path):
+            return 0
+        with open(path, encoding="utf-8") as f:
+            count = sum(1 for line in f if line.strip())
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("")
+        os.replace(tmp, path)
+        return count

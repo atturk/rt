@@ -55,7 +55,9 @@ def test_incremental_analysis_preserves_user_decisions_and_does_not_generate(les
     assert len(state.elements) == 2
     assert es.get_element(state, a.id).status == "dismissed"
     assert es.get_element(state, b.id).prompt == "Prompt mio"
-    assert es.view(path)["elements"][0].stale
+    # Le unità si analizzano in parallelo: l'ordine degli elementi non è fisso.
+    changed = [e for e in es.view(path)["elements"] if e.unit_id == rows[0]["id"]]
+    assert changed and all(e.stale for e in changed)
     media.assert_not_called()
 
 
@@ -304,6 +306,33 @@ def test_utility_questions_passed_to_decision(lesson, monkeypatch):
     assert "processo a passaggi" in vis_inst
     assert "formula con variabili o dati numerici" in vis_inst
     assert "relazioni, sequenze o confronti riassumibili in poche etichette" in info_inst
+
+
+def test_analyze_runs_units_in_parallel(lesson, monkeypatch):
+    import threading
+    import time
+    path, rows, cfg = lesson
+    rows.extend([
+        {"id": "3.1", "macro_id": "3", "title": "Ciclo", "content": "Ciclo di Krebs."},
+        {"id": "4.1", "macro_id": "4", "title": "Enzimi", "content": "Cinetica enzimatica."},
+    ])
+    lock = threading.Lock()
+    active = [0]
+    max_active = [0]
+
+    def slow_decide(*args, **kwargs):
+        with lock:
+            active[0] += 1
+            max_active[0] = max(max_active[0], active[0])
+        time.sleep(0.08)
+        with lock:
+            active[0] -= 1
+        return SimpleNamespace(answers={k: JevNoulAnswer(noul=0.1) for k in es.UTILITY})
+
+    monkeypatch.setattr(es, "decision", slow_decide)
+    es.analyze(path)
+    assert max_active[0] >= 2
+    assert len(es.load(path).assessments) == 4
 
 
 

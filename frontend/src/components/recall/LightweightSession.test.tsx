@@ -206,6 +206,22 @@ describe('LightweightSession', () => {
     expect(mockSeenMutateAsync).toHaveBeenCalledWith('q200')
   })
 
+  it('risposta aperta: con più risposte alla stessa domanda mostra la più recente (la cronologia è dalla più recente)', async () => {
+    mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, id: 'q200', type: 'mirata', options: null, correct_index: null })
+    mockAnswerMutateAsync.mockResolvedValue({ job: { job_id: 'j1' } })
+    mockHistoryRefetch.mockResolvedValue({ data: { answers: [
+      { question_id: 'q200', outcome: 'corretta', evaluation: 'Ora è completa.' },
+      { question_id: 'q200', outcome: 'sbagliata', evaluation: 'Valutazione vecchia.' },
+    ] } })
+    renderSession()
+
+    fireEvent.change(await screen.findByLabelText('Risposta scritta'), { target: { value: 'Sotto 22' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Rispondi' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Valutazione della risposta' }))
+    expect(await screen.findByText('Ora è completa.')).toBeInTheDocument()
+    expect(screen.queryByText('Valutazione vecchia.')).not.toBeInTheDocument()
+  })
+
   it('quiz: il clic sull’alternativa è la risposta e l’esito è quello del server', async () => {
     // Il server rivela la risposta giusta e la spiegazione: /recall/next non le manda.
     mockAnswerMutateAsync.mockResolvedValue({ quiz: {
@@ -611,4 +627,55 @@ describe('scorciatoia di invio tastiera (⌘/Ctrl + Invio)', () => {
       platformSpy.mockRestore()
     }
   })
+})
+
+it('mostra subito il box di caricamento al clic su Prossima e nasconde la domanda precedente', async () => {
+  vi.clearAllMocks()
+  let resolveSecond!: (value: typeof sampleQuestion) => void
+  const secondPromise = new Promise<typeof sampleQuestion>((resolve) => {
+    resolveSecond = resolve
+  })
+  mockNextMutateAsync
+    .mockResolvedValueOnce({ ...sampleQuestion, id: 'q100', question_text: 'Domanda iniziale di test' })
+    .mockReturnValueOnce(secondPromise)
+  mockAnswerMutateAsync.mockResolvedValue({
+    quiz: { correct: true, question: { ...sampleQuestion, correct_index: 0, explanation: 'OK.' } },
+  })
+
+  renderSession()
+
+  expect(await screen.findByText('Domanda iniziale di test')).toBeInTheDocument()
+  fireEvent.click(screen.getByText('Sotto 22 mEq/L').closest('button')!)
+
+  const nextBtn = await screen.findByRole('button', { name: 'Prossima' })
+  fireEvent.click(nextBtn)
+
+  await waitFor(() => {
+    expect(screen.getByLabelText('Caricamento della prossima domanda')).toHaveAttribute('aria-busy', 'true')
+  })
+  expect(screen.queryByText('Domanda iniziale di test')).not.toBeInTheDocument()
+  expect(screen.getByTestId('recall-loading').querySelectorAll('.rt-unit-pending > div')).toHaveLength(3)
+  expect(screen.getByRole('button', { name: 'Termina' })).toBeDisabled()
+
+  resolveSecond({ ...sampleQuestion, id: 'q101', question_text: 'Nuova domanda caricata' })
+
+  expect(await screen.findByText('Nuova domanda caricata')).toBeInTheDocument()
+  expect(screen.queryByLabelText('Caricamento della prossima domanda')).not.toBeInTheDocument()
+})
+
+it('in caso di errore di next toglie il caricamento e mostra errore con Riprova', async () => {
+  vi.clearAllMocks()
+  mockNextMutateAsync
+    .mockRejectedValueOnce(new Error('Errore di rete temporaneo'))
+    .mockResolvedValueOnce({ ...sampleQuestion, id: 'q102', question_text: 'Domanda recuperata' })
+
+  renderSession()
+
+  const errBox = await screen.findByTestId('recall-next-error')
+  expect(errBox).toHaveTextContent('Errore di rete temporaneo')
+  expect(screen.queryByLabelText('Caricamento della prossima domanda')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Riprova' }))
+  expect(await screen.findByText('Domanda recuperata')).toBeInTheDocument()
+  expect(screen.queryByTestId('recall-next-error')).not.toBeInTheDocument()
 })

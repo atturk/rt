@@ -123,6 +123,38 @@ class UnknownProviderFailure(LLMFailure):
         self.failure_class = "unknown_error"
 
 
+class DeferredCall(Exception):
+    """Segnale di controllo: la chiamata LLM è stata accodata in modalità batch differita."""
+
+    def __init__(
+        self,
+        key: str,
+        provider: str,
+        model: str,
+        job_id: Optional[str] = None,
+    ):
+        self.key = key
+        self.provider = provider
+        self.model = model
+        self.job_id = job_id
+        super().__init__(f"Chiamata differita ({provider}/{model}, key={key[:12]})")
+
+
+class DeferredPhase(Exception):
+    """Segnale di controllo: la fase ha raccolto chiamate batch e attende il provider."""
+
+    def __init__(
+        self,
+        job_id: Optional[str] = None,
+        keys: Optional[list[str]] = None,
+        phase: Optional[str] = None,
+    ):
+        self.job_id = job_id
+        self.keys = list(keys or [])
+        self.phase = phase
+        super().__init__(f"Fase differita in attesa del provider ({len(self.keys)} richieste)")
+
+
 def response_excerpt(text: Optional[str], max_lines: int = 3, max_chars: int = 240) -> str:
     """Prime righe non vuote di una risposta, su una riga sola (' / '), accorciate e senza
     segreti: per spiegare nei messaggi d'errore che cosa ha risposto il modello."""

@@ -1,5 +1,5 @@
 import { clearLastClosedLessonId } from '@/lib/lastClosedLesson'
-import { ReturnAddressContext, rememberReturnAddress, useReturnAddress } from '@/lib/returnAddress'
+import { GuideReturnContext, ReturnAddressContext, rememberGuideReturn, rememberReturnAddress, useReturnAddress } from '@/lib/returnAddress'
 import { Activity, BookOpen, Calendar, Plus, Settings, type LucideIcon } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
@@ -13,6 +13,7 @@ import { useOpenedFiles } from '@/lib/useOpenedFiles'
 import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
+import { useConverters } from '@/api/converters'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { BackupDialog } from '@/components/shell/BackupDialog'
 import { Alert } from '@/components/ui/alert'
@@ -24,6 +25,8 @@ import { useUpdatePopup } from '@/components/settings/useAppUpdate'
 import { cn } from '@/lib/utils'
 
 // Il riquadro di Salva/Condividi serve solo dopo un'esportazione: fuori dal JavaScript iniziale.
+// Il promemoria Supporta RT compare di rado: caricato a parte, fuori dal JavaScript iniziale.
+const SupportRailButton = lazy(() => import('@/components/shell/SupportRailButton').then((m) => ({ default: m.SupportRailButton })))
 const FileStatusBar = lazy(() => import('@/components/ui/file-status').then((m) => ({ default: m.FileStatusBar })))
 
 // Il popup si scarica quando lo si apre: non serve per mostrare la prima pagina.
@@ -73,6 +76,9 @@ function NavItem({ section, path, side, variant }: { section: Section; path: str
 
 export function Layout() {
   useUploadGuard()
+  // Chiede subito se c'è un convertitore di slide: il controllo dei .pptx trascinati (nella
+  // finestra Nuova lezione, caricata a parte) trova già la risposta.
+  useConverters()
   const studyZen = useState(false)
   const [rsvp, setRsvp] = useState<RsvpLayoutState>({ active: false, tint: null })
   const [zen, setZen] = useState<RsvpLayoutState>({ active: false, tint: null })
@@ -95,10 +101,13 @@ export function Layout() {
   const location = useLocation()
   const matches = useMatches()
   const [returnAddress, setReturnAddress] = useState('/')
+  const [guideReturn, setGuideReturn] = useState('/')
   useEffect(() => {
     // L'indirizzo vive solo nella sessione di navigazione: una ricarica usa Lezioni.
     // oxlint-disable-next-line react/set-state-in-effect
     setReturnAddress(previous => rememberReturnAddress(previous, location))
+    // oxlint-disable-next-line react/set-state-in-effect
+    setGuideReturn(previous => rememberGuideReturn(previous, location))
     if (
       location.pathname !== '/' &&
       location.pathname !== '/lezioni' &&
@@ -129,7 +138,13 @@ export function Layout() {
       }
     }
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    // Il menu Aiuto nativo naviga dentro l'app (senza ricaricare): così «Indietro» della guida
+    // sa da quale pagina si è entrati.
+    window.rtNavigate = (to: string) => navigate(to)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      delete window.rtNavigate
+    }
   }, [navigate])
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
@@ -166,7 +181,7 @@ export function Layout() {
     )
   }
   return (
-    <ReturnAddressContext value={returnAddress}><StudyZenContext value={studyZen}><RsvpLayoutContext value={setRsvp}><ZenContext value={setZen}><NewLessonContext value={openNewLesson}>
+    <ReturnAddressContext value={returnAddress}><GuideReturnContext value={guideReturn}><StudyZenContext value={studyZen}><RsvpLayoutContext value={setRsvp}><ZenContext value={setZen}><NewLessonContext value={openNewLesson}>
       <div className="rt-layout flex min-h-dvh bg-background" data-rsvp={rsvp.active || undefined} data-zen={zen.active || undefined} data-tint={layout.active ? layout.tint ?? undefined : undefined}>
         {!phone && <nav
           aria-label="Navigazione" aria-hidden={layout.active || undefined} inert={layout.active || undefined}
@@ -177,6 +192,7 @@ export function Layout() {
           <NavItem section={LESSONS} path={path} side="right" variant="rail" />
           <NavItem section={CALENDAR} path={path} side="right" variant="rail" />
           <div className="flex-1" aria-hidden />
+          <Suspense fallback={null}><SupportRailButton /></Suspense>
           <NavItem section={JOBS} path={path} side="right" variant="rail" />
           <NavItem section={SETTINGS} path={path} side="right" variant="rail" />
         </nav>}
@@ -233,6 +249,6 @@ export function Layout() {
           />
         </Suspense>
       )}
-    </NewLessonContext></ZenContext></RsvpLayoutContext></StudyZenContext></ReturnAddressContext>
+    </NewLessonContext></ZenContext></RsvpLayoutContext></StudyZenContext></GuideReturnContext></ReturnAddressContext>
   )
 }

@@ -71,8 +71,10 @@ def test_custom_type_is_offered_only_where_present_and_override_is_current(path)
         rows = question_types.refresh(path)
     assert rows["1.2"]["type"] == "query-sql"
     assert rows["2.1"]["type"] == "mirata"
-    assert "query-sql" in call.call_args_list[0].kwargs["questions"]["tipo_consigliato"].criteria
-    assert "query-sql" not in call.call_args_list[2].kwargs["questions"]["tipo_consigliato"].criteria
+    # Le chiamate sono in parallelo: si cercano per unità, non per posizione.
+    by_unit = {c.kwargs["unit_id"]: c.kwargs["questions"]["tipo_consigliato"].criteria for c in call.call_args_list}
+    assert "query-sql" in by_unit["1.1"]
+    assert "query-sql" not in by_unit["2.1"]
     question_types.set_override(path, "1.2", "query-sql")
     assert question_types.suggestions(path)["1.2"] == "query-sql"
     section_labels.set_override(path, "1", "query-sql", "nessuno")
@@ -103,10 +105,11 @@ def test_combined_classifier_also_uses_the_offered_custom_types(path, monkeypatc
         return answer('query-sql' if criteria and 'query-sql' in criteria.criteria else 'mirata')
     with patch('rt.llm.jev_client.call_jev', side_effect=choose) as call:
         classifier.classify_units(path)
-    questions = [c.kwargs['questions']['tipo_consigliato'] for c in call.call_args_list
-                 if 'tipo_consigliato' in c.kwargs['questions']]
-    assert 'query-sql' in questions[0].criteria
-    assert 'query-sql' not in questions[2].criteria
+    # Le chiamate sono in parallelo: si cercano per unità, non per posizione.
+    by_unit = {c.kwargs['unit_id']: c.kwargs['questions']['tipo_consigliato'].criteria for c in call.call_args_list
+               if 'tipo_consigliato' in c.kwargs['questions']}
+    assert 'query-sql' in by_unit['1.1']
+    assert 'query-sql' not in by_unit['2.1']
     assert question_types.suggestions(path)['1.2'] == 'query-sql'
 
 

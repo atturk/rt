@@ -36,42 +36,21 @@ test('campi di testo senza bordo nero di focus ed outline presente sui pulsanti 
   const writtenOutline = await writtenAnswer.evaluate((el) => getComputedStyle(el).outlineStyle)
   expect(writtenOutline).toBe('none')
 
-  // 3. Studio: attiva Chiedi e verifica che il campo nel popup non abbia outline
+  // 3. Studio: apre la chat e verifica che il campo di scrittura non abbia outline
   await page.goto(`/studio/lezione/${lesson.id}`)
   const text = page.getByTestId('study-text')
   await expect(text).toHaveText(/\S.{20,}/)
 
   await page.keyboard.press('c')
-  await expect(text).toHaveAttribute('data-hl-mode', 'chiedi')
-
-  await text.evaluate((root) => {
-    const node = document.createTreeWalker(
-      root,
-      NodeFilter.SHOW_TEXT,
-      { acceptNode: (n) => ((n.textContent ?? '').trim().length > 15 ? 1 : 3) },
-    ).nextNode()!
-    const range = document.createRange()
-    const start = node.textContent!.search(/\S/)
-    range.setStart(node, start)
-    range.setEnd(node, start + 12)
-    getSelection()!.removeAllRanges()
-    getSelection()!.addRange(range)
-    root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
-  })
-
-  const popup = page.getByTestId('study-note-popup')
-  await expect(popup).toBeVisible()
-  const askInput = page.getByTestId('study-note-input')
+  const panel = page.getByTestId('study-chat-panel')
+  await expect(panel).toBeVisible()
+  const askInput = page.getByTestId('study-chat-input')
   await expect(askInput).toBeVisible()
   await askInput.focus()
   const askOutline = await askInput.evaluate((el) => getComputedStyle(el).outlineStyle)
   expect(askOutline).toBe('none')
 
   // 4. Focus da tastiera su un pulsante: outline presente
-  // Chiudi il popup e usa Tab per spostare il focus su un pulsante
-  await page.keyboard.press('Escape')
-  await expect(popup).not.toBeVisible()
-
   // Tab sposta il focus sui controlli interattivi (pulsanti/link)
   await page.keyboard.press('Tab')
   const focusedTag = await page.evaluate(() => document.activeElement?.tagName.toLowerCase())

@@ -128,7 +128,7 @@ export function Tooltip({
           hidden={!visible}
           style={pos ? { top: pos.top, left: pos.left } : { top: 0, left: 0, visibility: 'hidden' }}
           className={cn(
-            'pointer-events-none fixed z-[60] max-w-72 rounded-md bg-foreground px-2 py-1 text-xs leading-snug text-background shadow-lg',
+            'pointer-events-none fixed z-[60] max-w-[min(18rem,calc(100vw-1rem))] rounded-md bg-foreground px-2 py-1 text-xs leading-snug text-background shadow-lg',
           )}
         >
           {content}

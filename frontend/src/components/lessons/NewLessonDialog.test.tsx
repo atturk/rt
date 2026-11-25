@@ -810,3 +810,21 @@ describe('Conferma materia nuova (Voce 10)', () => {
     })
   })
 })
+
+it('file aperti dal Finder con la finestra già aperta sostituiscono quelli mostrati', async () => {
+  const client = new QueryClient()
+  const first = new File(['pdf'], 'prima.pdf', { type: 'application/pdf' })
+  const second = new File(['pdf'], 'seconda.pdf', { type: 'application/pdf' })
+  const view = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter><NewLessonDialog open onClose={vi.fn()} initialFiles={[first]} /></MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByText(/prima\.pdf/)).toBeInTheDocument()
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <MemoryRouter><NewLessonDialog open onClose={vi.fn()} initialFiles={[second]} /></MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByText(/seconda\.pdf/)).toBeInTheDocument()
+})

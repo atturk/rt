@@ -160,7 +160,7 @@ export async function scrollDocumentTo(page: Page, target: Locator) {
 
 /** Senza approvazione automatica della scaletta (B9): i test approvano o chiedono modifiche a mano. */
 export async function disableOutlineTimer(request: APIRequestContext) {
-  const res = await request.put('/api/v1/settings/preferences', { headers: authHeaders(), data: { secondi_approvazione: 0 } })
+  const res = await request.put('/api/v1/settings/preferences', { headers: authHeaders(), data: { modalita_scaletta: 'manual' } })
   expect(res.ok(), await res.text()).toBeTruthy()
 }
 

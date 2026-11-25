@@ -1,5 +1,194 @@
 # Novità di RT
 
+## 4.3.9 — 2026-11-25
+
+Raccoglie le beta da 4.3.9b1 a 4.3.9b10 e le ultime correzioni: Impostazioni ridisegnate, chat dello Studio, scaletta automatica, notifiche Telegram a scelta, modalità batch, pin delle lezioni e tante correzioni.
+
+### Novità
+
+- **Impostazioni ridisegnate**: gruppi più chiari, salvataggio automatico e spiegazioni nei suggerimenti; Materie e calendario in un'unica pagina.
+- **Chat dello Studio**: un'unica chat laterale (tasto C) al posto di Verifica e Chiedi, con immagini, dettatura e «Messaggi salvati» per unità.
+- **Scaletta automatica**: di base la lavorazione prosegue senza fermarsi sulla scaletta; puoi scegliere di attendere qualche secondo o di aspettare sempre te.
+- **Notifiche Telegram a scelta**: attivi o disattivi ogni tipo (lezione pronta, verifica completata, scaletta da approvare, issue da decidere, errore) e puoi svuotare l'elenco delle ultime notifiche in RT.
+- **Modalità batch**: le fasi non interattive possono usare la variante batch dei modelli OpenRouter (circa −50%, risposte entro 24 ore), anche con la finestra chiusa.
+- **Verifica manuale più veloce**: le unità verificate a mano vengono controllate in parallelo.
+- **Pin per categoria nelle Lezioni** ed **elenco lezioni più rapido all'avvio**.
+- **Dettagli della lezione**: «Copia argomenti e keywords» copia argomenti e keywords di tutta la lezione; Classificatore e Messaggi salvati su una riga.
+- **Chiusura con la X**: RT può continuare in background o chiudersi del tutto; uscendo con lavori in corso chiede conferma.
+- **Permessi**: una pagina con tutti i permessi su Mac e Windows e il pulsante per aprire l'impostazione di sistema.
+- **PDF**: QR del sito nel margine alto e interruttore per togliere logo e QR.
+- **Immagini dei materiali**: didascalie con il titolo della slide e collocazione più pulita.
+- **iPhone e Android**: icona di RT nella schermata Home e accesso via Tailscale Serve su porta dedicata.
+- **Supporta RT**: una pagina per sostenere RT con una donazione su Ko-fi.
+- **Guida nello stile delle Impostazioni**; Indietro torna alla pagina da cui la si apre.
+
+### Correzioni
+
+- **Formule**: un `$$` spaiato non rovina più il resto della lezione; le barre raddoppiate dal modello non rompono più il LaTeX.
+- **Lezione eliminata e ricreata**: non dà più l'errore «Esiste già una lezione».
+- **Telegram**: «Lezione pronta» arriva anche per le lezioni da appunti o da più fonti; gli errori indicano lezione, data e materia.
+- **Ripasso**: si vede sempre l'ultima valutazione; l'approfondimento non suggerisce la risposta; «Non lo so» mostra cosa mancava.
+- **Costo stimato**: i token di ragionamento non vengono più contati due volte.
+- **File .rt dal Finder**: il doppio clic non blocca più RT; dal Finder si scelgono di nuovo anche PDF, zip e documenti.
+- Tante piccole correzioni elencate nelle beta qui sotto.
+
+## 4.3.9b10 — 2026-11-25
+
+Beta di correzioni dopo le prove della b9.
+
+### Correzioni
+
+- **Telegram**: «Lezione pronta» arriva anche per le lezioni create da appunti o da più fonti, senza righe tecniche in fondo; «Lavorazione non riuscita» indica lezione, data e materia.
+- **Ripasso**: con più risposte alla stessa domanda si vede sempre l'ultima valutazione.
+- **Modalità batch**: le voci `:batch` compaiono nel menu dei modelli anche se il primo tentativo di scaricare l'elenco non riesce.
+
+## 4.3.9b9 — 2026-11-24
+
+Beta su Impostazioni ridisegnate, scaletta automatica, notifiche Telegram e ripasso.
+
+### Novità
+
+- **Impostazioni ridisegnate**: gruppi più chiari, salvataggio automatico, spiegazioni nei suggerimenti; Materie e calendario in un'unica pagina.
+- **Scaletta automatica**: di base la lavorazione prosegue senza fermarsi sulla scaletta; in Impostazioni › Lavorazione delle lezioni puoi scegliere di attendere qualche secondo o di aspettare sempre te.
+- **Notifiche Telegram a scelta**: in Impostazioni › Telegram attivi o disattivi ogni tipo di notifica (lezione pronta, verifica completata, scaletta da approvare, issue da decidere, errore).
+- **Verifica completata**: quando avvii a mano la verifica di più unità, ti arriva un solo avviso alla fine.
+- **Storico delle notifiche svuotabile**: un pulsante svuota l'elenco delle ultime notifiche in RT (i messaggi su Telegram restano).
+- **Verifica manuale più veloce**: le unità verificate a mano vengono controllate in parallelo.
+
+### Correzioni
+
+- **Telegram**: torna la notifica «Lezione pronta»; la chat cambiata vale subito; gli errori indicano lezione e materia, senza testo tecnico; niente attese lunghe sui limiti di Telegram.
+- **Costo stimato**: con i modelli che ragionano i token di ragionamento non vengono più contati due volte.
+- **Modalità batch**: se cambi modello mentre un batch è in attesa, il risultato non va perso; i modelli `:batch` compaiono nel menu anche dopo il riavvio.
+- **Preferenze**: salvarne una non cambia le altre.
+- **Ripasso**: "Non lo so" sull'approfondimento mantiene la prima valutazione e mostra cosa mancava.
+- **Valutazione delle risposte**: più rapida anche mentre RT prepara nuove domande.
+- **Domande di approfondimento**: non suggeriscono la risposta anche nelle materie tecniche.
+- **Esercizi e tipi personalizzati**: punteggi nei badge e domanda di approfondimento.
+- **Commenti del ripasso**: niente più formule rotte o caratteri strani.
+
+## 4.3.9b8 — 2026-11-24
+
+Beta sul ripasso e sulla domanda di approfondimento.
+
+### Novità
+
+- **Tipi di domanda centrati**: nella sessione di ripasso i tipi di domanda in alto sono centrati orizzontalmente.
+
+### Correzioni
+
+- **Approfondimento nel ripasso**: dopo la seconda risposta si vedono il commento e i punteggi aggiornati.
+- **Domanda di approfondimento**: non suggerisce più la risposta e il commento non la anticipa; se salti, vedi cosa mancava.
+- **Prossima domanda**: subito un'animazione di caricamento invece della domanda precedente, e risposta più rapida.
+- **Messaggi salvati**: l'icona dei messaggi della chat ora si vede.
+- **Supporta RT**: il contorno di selezione non è più tagliato.
+- **API di sola lettura**: la chiave non si vede più in chiaro nella pagina (si copia intera con Copia o Copia prompt).
+
+## 4.3.9b7 — 2026-11-24
+
+Beta sull'uso da iPhone e sulla convivenza con altre app su Tailscale Serve.
+
+### Novità
+
+- **iPhone e Android**: aggiungendo RT alla schermata Home compare l'icona di RT (non più la «R» grigia) con il nome «RT». Se l'avevi già aggiunta, toglila e aggiungila di nuovo.
+- **Tailscale Serve**: comando consigliato su porta dedicata (lascia libera la 443 per altre app).
+- **Accesso da un altro dispositivo**: la pagina Accesso mostra la porta di RT e il comando Tailscale da copiare.
+
+### Correzioni
+
+- **QR Tailscale**: il QR segue la porta attuale di Tailscale Serve.
+- **Sessione dietro Tailscale Serve**: cookie di accesso sicuri (`Secure`) quando RT è aperto via Tailscale Serve.
+
+## 4.3.9b6 — 2026-11-24
+
+Beta di rifinitura dopo le prove della b5.
+
+### Novità
+
+- **Supporta RT**: il quadratino nella barra compare ogni 20 giorni d'uso (30 se lo nascondi tenendolo premuto). «Dona con Ko-fi» apre solo la pagina delle donazioni; nella pagina Supporta RT c'è anche «Ho già donato».
+
+### Correzioni
+
+- **Chat dello Studio**: il segnalibro di una risposta salvata ora si vede (prima era verde chiaro su verde chiaro).
+- **Messaggi salvati**: l'ora di salvataggio è quella italiana, non quella UTC.
+- **File .rt dal Finder**: aprendo altri pacchetti con la finestra Nuova lezione già aperta, si aggiungono a quelli già scelti.
+
+## 4.3.9b5 — 2026-11-24
+
+Beta di rifinitura della chat dello Studio.
+
+### Novità
+
+- **Messaggi salvati**: il pannello «Verifiche e domande» diventa «Messaggi salvati», una lista unica per unità senza schede. Le voci salvate prima restano.
+
+### Correzioni
+
+- **Chat dello Studio**: il pulsante per salvare o togliere una risposta mostra un segnalibro, pieno quando è salvata (prima sembrava un riquadro vuoto). Mentre arriva la risposta restano solo i puntini.
+- **File .rt dal Finder**: aprendo altri file con la finestra Nuova lezione già aperta, la finestra mostra i nuovi file.
+- **Studio**: i suggerimenti di evidenziatore e gomma dicono solo «Evidenziatore giallo» (o il colore scelto) e «Gomma».
+
+## 4.3.9b4 — 2026-11-24
+
+Beta con la nuova chat dello Studio, i pin delle lezioni, la modalità batch, i permessi, la chiusura dell'app e la pagina Supporta RT.
+
+### Novità
+
+- **Chat dello Studio**: al posto di Verifica e Chiedi c'è un'unica chat laterale (tasto C o icona della vignetta con la stellina). Puoi scrivere liberamente, incollare un passaggio da verificare, allegare immagini e dettare a voce. Le risposte si copiano o si salvano in «Verifiche e domande». Una chat per lezione, con il cestino per cancellarla. Il modello è quello della Revisione, oppure un altro scelto in Impostazioni › Modelli IA. Solo nello Studio, nascosta in zen e in lettura veloce.
+- **Pin per categoria nelle Lezioni**: accanto a ogni gruppo (giorno, mese, materia o docente) puoi fissare una categoria in cima all'elenco; ogni raggruppamento ricorda la propria scelta. Il pin nell'intestazione sgancia la categoria fissata oppure fissa la ricerca in tutte le viste finché l'app resta aperta.
+- **Modalità batch**: in Impostazioni › Modelli IA le fasi non interattive possono usare la variante batch di un modello OpenRouter (circa −50%, risposte entro 24 ore). Il job aspetta il provider senza occupare il worker e riprende da solo, anche con la finestra chiusa.
+- **Chiusura con la X**: nell'app puoi scegliere se RT continua a lavorare in background (predefinito) o si chiude del tutto. Uscendo con lavori in corso RT chiede conferma e dice quanti sono.
+- **Permessi**: «Controlla permessi» apre una pagina con tutti i permessi su Mac e Windows (microfono, cartelle, Keynote, elementi in background, rete locale, firewall) e il pulsante per aprire l'impostazione di sistema.
+- **Presentazioni**: su Windows i `.pptx` si convertono anche con PowerPoint. Se non c'è un programma per convertirli (LibreOffice, Keynote o PowerPoint), RT lo dice prima dell'import e suggerisce di caricare il PDF.
+- **Supporta RT**: in fondo alle Impostazioni c'è la pagina per sostenere RT con una donazione su Ko-fi (si apre nel browser). Ogni tanto compare anche un quadratino blu col cuore nella barra laterale: un clic porta alla pagina, tenendolo premuto si nasconde.
+- **Più veloce**: descrizione e posizionamento delle immagini, ricerca immagini web, arricchimento e classificatori lavorano in parallelo.
+
+### Correzioni
+
+- **File .rt dal Finder**: aprire uno o più file .rt con doppio clic non blocca più RT (rotellina) e mostra la schermata di import.
+- **Icona nei dialoghi Mac**: gli avvisi dell'app mostrano l'icona di RT al posto della cartella.
+- **Ricerca senza risultati**: messaggio centrato con un'icona.
+
+## 4.3.9b3 — 2026-11-23
+
+Beta su PDF, elenco lezioni più rapido all'avvio e import dal Finder.
+
+### Novità
+
+- **QR nel margine alto**: nei PDF esportati il QR di RT è timbrato nel margine in alto a destra della prima pagina, fuori dal testo. L'intestazione mostra anche il docente.
+- **Togliere logo e QR dai PDF**: in Impostazioni › Aspetto › PDF esportati un interruttore toglie del tutto logo, QR e «Rielaborato con RT». È acceso di default.
+- **Elenco lezioni più rapido all'avvio**: i riepiloghi delle lezioni restano salvati tra un avvio e l'altro e si ricalcolano solo per le lezioni cambiate o dopo un aggiornamento di RT. Modificare i dati di una lezione non fa più ricalcolare tutte le altre.
+- **Tempi nel log**: api.log registra durata e dimensione di ogni upload e il tempo di caricamento dell'elenco lezioni.
+
+### Correzioni
+
+- Nuova lezione: dal Finder si possono scegliere di nuovo anche PDF, zip e documenti, non solo l'audio.
+- Guida e README: fornitori AI effettivamente supportati, privacy con la propria chiave, promemoria sul consenso del docente, firma del codice per Windows.
+
+## 4.3.9b2 — 2026-11-18
+
+Beta che allinea la 4.3.9 alla 4.3.8.2: chi è sulla 4.3.9b1 riceve anche il QR del sito nei PDF.
+
+### Novità
+
+- **QR del sito nei PDF** (dalla 4.3.8.2): nella prima pagina dei PDF esportati, accanto al titolo, un piccolo QR con il logo di RT porta al sito (atturk.github.io/rt).
+
+## 4.3.9b1 — 2026-11-17
+
+Beta su immagini dei materiali, didascalie e formule.
+
+### Novità
+
+- **Didascalie chiare**: le immagini prese dai materiali mostrano il titolo della slide seguito da file e pagina («Titolo — file, pagina N»). Nel visore il titolo è in evidenza e il riferimento è in grigio; nel PDF stampato la didascalia va su due righe. Le lezioni già fatte si aggiornano alla prossima costruzione.
+- **Collocazione delle slide più pulita**: le slide di un'altra lezione (fuori tema) non finiscono più nella lezione come «non collocate»; indici e copertine restano fuori; due foto della stessa slide finiscono nello stesso posto. Ogni pagina lascia una riga 📎 in api.log con candidate, punteggi ed esito.
+- **Nuova lezione**: la barra delle impostazioni di una fonte va a capo invece di uscire dal riquadro.
+
+### Correzioni
+
+- Le pagine dei materiali non collocate compaiono nel gruppo immagini della loro sezione, non più sciolte in fondo.
+- Le formule LaTeX con le barre raddoppiate dal modello (per esempio «mathrmCaO») si leggono di nuovo bene. Le lezioni già salvate vanno rigenerate.
+- Il testo delle figure passato al classificatore è scritto come frasi, non come lista grezza.
+- Nel log, una foto già letta dice «già letta in precedenza» invece di «Vision 0 chiamate».
+
 ## 4.3.8.2 — 2026-11-17
 
 Il sito di RT e il QR nei PDF.

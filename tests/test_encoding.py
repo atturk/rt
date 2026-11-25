@@ -157,3 +157,43 @@ def test_multiline_display_formulas_and_known_commands():
     assert repair_latex_escapes("\nabla") == "\\nabla"
     assert repair_latex_escapes("\rho") == "\\rho"
 
+
+
+def test_double_escaped_formulas_are_repaired():
+    from rt.core.encoding import repair_latex_escapes
+    # Gemini a volte fa l'escape JSON due volte: "\\mathrm" arriva con due barre.
+    assert repair_latex_escapes(r"$\\mathrm{CaO_2} = 1{,}34 \\times \\mathrm{Hb}$") == r"$\mathrm{CaO_2} = 1{,}34 \times \mathrm{Hb}$"
+    assert repair_latex_escapes(r"$$\\mathrm{A} \\\\ \\mathrm{B}$$") == r"$$\mathrm{A} \\ \mathrm{B}$$"
+    # Un a-capo vero accanto a comandi con barra singola resta com'è.
+    assert repair_latex_escapes(r"$\begin{cases} a \\ b \end{cases}$") == r"$\begin{cases} a \\ b \end{cases}$"
+    assert repair_latex_escapes(r"$x \\\text{y}$") == r"$x \\\text{y}$"
+
+
+def test_repair_llm_text_restores_broken_formulas_and_strips_c0():
+    from rt.core.encoding import repair_llm_text
+    # \frac -> \x0c + rac, \text -> \t + ext, \beta -> \x08 + eta, \rho -> \r + ho
+    broken = "Formula $\x0crac{1}{2} + \text{ciao} + \x08eta + \rho$ e blocco $$\x0crac{a}{b}$$"
+    assert repair_llm_text(broken) == r"Formula $\frac{1}{2} + \text{ciao} + \beta + \rho$ e blocco $$\frac{a}{b}$$"
+
+    # Fuori dalle formule toglie C0 tranne \n e \t
+    outside = "Prima\x00\x07\x08\x0c riga\n\tseconda riga"
+    assert repair_llm_text(outside) == "Prima riga\n\tseconda riga"
+
+    # Testo normale resta identico
+    normal = "Risposta corretta: il pH resta costante tra 7,35 e 7,45.\n\tOttimo lavoro!"
+    assert repair_llm_text(normal) == normal
+
+
+def test_empty_inline_formula_does_not_become_unbalanced_display_delimiter():
+    # Lezione di elettromagnetismo 2026-11-25: il modello ha scritto "$\u0000$"; tolto il NUL
+    # restava "$$", che apriva una formula a blocco e rovinava tutto il resto della lezione.
+    from rt.core.encoding import repair_llm_text
+    text = "pulsazione angolare $\x00$ dalla relazione $T_0 = 2\\pi/\\omega_0$.\n\n$$\\Delta E = h f_0$$"
+    assert repair_llm_text(text) == "pulsazione angolare  dalla relazione $T_0 = 2\\pi/\\omega_0$.\n\n$$\\Delta E = h f_0$$"
+    assert sanitize_object_encoding({"c": text}, repair_latex=True)["c"].count("$$") == 2
+
+
+def test_display_formula_does_not_cross_blank_line():
+    from rt.core.encoding import MATH_REGEX
+    text = "angolare $$ dalla relazione.\n\n$$\\Delta E$$\n\nTesto con\nnext riga"
+    assert [m.group(0) for m in MATH_REGEX.finditer(text)] == ["$$\\Delta E$$"]

@@ -30,7 +30,7 @@ it('modifica i campi mantenendo l’id quando cambia il nome', async () => {
 })
 it('copia la galleria, richiede la materia e demanda l’id al server', async () => {
   const post = vi.spyOn(api, 'POST').mockResolvedValue(result(definition) as never)
-  setup(); await screen.findByRole('button', { name: 'Modifica Query SQL' }); fireEvent.click(screen.getByText('Scegli un modello da copiare'))
+  setup(); await screen.findByRole('button', { name: 'Modifica Query SQL' })
   await userEvent.click(screen.getByRole('button', { name: 'Usa Query SQL' }))
   expect(screen.getByLabelText('Identificativo')).toHaveValue('Generato dal nome')
   expect(screen.getByRole('button', { name: 'Salva tipo' })).toBeDisabled()

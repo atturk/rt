@@ -11,7 +11,7 @@ from sqlalchemy import select
 from rt.core.portable import lock_file, unlock_file
 from rt.services.errors import Conflict, NotFound, Unavailable
 from rt.db.engine import get_database
-from rt.db.models import Job, Lesson, LessonFile, RecallSession, Setting, StateDocument, StudyHighlight, StudyNote, StudyUnit, TelegramCommand
+from rt.db.models import Job, Lesson, LessonFile, RecallSession, Setting, StateDocument, StudyChatMessage, StudyHighlight, StudyNote, StudyUnit, TelegramCommand
 from rt.db.session import session_scope
 from rt.services.lesson_service import lessons_root
 from rt.storage import fs
@@ -34,6 +34,7 @@ def purge_lesson_records(session, row: Lesson) -> None:
     path = row.path
     for model in (RecallSession, TelegramCommand):
         session.execute(delete(model).where(model.lesson_path == path))
+    session.execute(delete(StudyChatMessage).where(StudyChatMessage.lesson_id == row.id))
     session.execute(delete(StudyHighlight).where(StudyHighlight.lesson_id == row.id))
     session.execute(delete(StudyNote).where(StudyNote.lesson_id == row.id))
     session.execute(delete(StudyUnit).where(StudyUnit.lesson_id == row.id))
@@ -81,7 +82,7 @@ def _delete_locked(db, root, lesson_id: int, lesson_dir: str) -> None:
         if row.storage == "folder" and (not root or not _safe_child(lesson_dir, os.path.realpath(root))):
             raise Conflict("unsafe_lesson_path", "La lezione non è una cartella diretta della radice configurata.")
         if session.scalar(select(Job.id).where(Job.lesson_path == row.path, Job.state.in_(
-                ["queued", "running", "waiting_for_decision"])).limit(1)):
+                ["queued", "running", "waiting_for_decision", "waiting_for_provider"])).limit(1)):
             raise Conflict("lesson_busy", "La lezione ha job ancora attivi o in attesa.")
         media = [item for item in session.scalars(select(LessonFile.media_path).where(
             LessonFile.lesson_id == lesson_id, LessonFile.media_path.is_not(None)))]

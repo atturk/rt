@@ -95,6 +95,59 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=
     allowed = included_ids(lesson_dir, load_resolved_draft(lesson_dir).units if view == "resolved" else units, view=view)
     wanted = set(unit_ids) if unit_ids is not None else {u.unit_id for u in units}
     previous = _load(lesson_dir)
+    units_to_call = []
+    if not mock:
+        for unit in units:
+            if unit.unit_id not in allowed or unit.unit_id not in wanted:
+                continue
+            if responses is not None and unit.unit_id in responses:
+                continue
+            old = previous.get(unit.unit_id, {})
+            digest = _text_hash(unit, lesson_dir)
+            criteria = offered(lesson_dir, owner.get(unit.unit_id), labels, cfg=cfg)
+            configuration = _config_hash(classifier_jev(cfg, "question_types"), criteria)
+            if not force and old.get("text_hash") == digest and old.get("config_hash") == configuration and old.get("mock") == mock and old.get("candidate") in criteria:
+                continue
+            units_to_call.append((unit, criteria))
+
+    call_results = {}
+    if units_to_call:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from contextvars import copy_context
+        from rt.llm.cancel import RunCancelled, raise_if_cancelled
+
+        qt_cfg = classifier_jev(cfg, "question_types")
+        ctx_block = lesson_context(lesson_dir)
+
+        def _call_qt(unit, criteria):
+            raise_if_cancelled()
+            try:
+                response = jev_client.call_jev(
+                    state=jev_mapping.state_for("relevance", unit.title, unit.content, ctx_block),
+                    questions={"tipo_consigliato": jev_client.JevChoiceQuestion(instructions=INSTRUCTIONS, criteria=criteria)},
+                    job_name="question_types", unit_id=unit.unit_id, lesson_dir=lesson_dir,
+                    model=qt_cfg.relevance_model, credential=qt_cfg.credential, base_url=qt_cfg.base_url,
+                    timeout_seconds=qt_cfg.timeout_seconds)
+                return response, None
+            except RunCancelled:
+                raise
+            except Exception as exc:
+                return None, exc
+
+        with ThreadPoolExecutor(max_workers=max(1, min(4, len(units_to_call))), thread_name_prefix="rt-qtypes") as pool:
+            futures = {}
+            try:
+                for unit, criteria in units_to_call:
+                    raise_if_cancelled()
+                    futures[pool.submit(copy_context().run, _call_qt, unit, criteria)] = unit.unit_id
+                for fut in as_completed(futures):
+                    raise_if_cancelled()
+                    call_results[futures[fut]] = fut.result()
+            except BaseException:
+                for f in futures:
+                    f.cancel()
+                raise
+
     result = {}
     for unit in units:
         old = previous.get(unit.unit_id, {})
@@ -118,12 +171,14 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=
                 if mock:
                     row.update(_mock(unit, criteria))
                 else:
-                    response = (responses[unit.unit_id] if responses is not None and unit.unit_id in responses else jev_client.call_jev(
-                        state=jev_mapping.state_for("relevance", unit.title, unit.content, lesson_context(lesson_dir)),
-                        questions={"tipo_consigliato": jev_client.JevChoiceQuestion(instructions=INSTRUCTIONS, criteria=criteria)},
-                        job_name="question_types", unit_id=unit.unit_id, lesson_dir=lesson_dir,
-                        model=classifier_jev(cfg, "question_types").relevance_model, credential=classifier_jev(cfg, "question_types").credential, base_url=classifier_jev(cfg, "question_types").base_url,
-                        timeout_seconds=classifier_jev(cfg, "question_types").timeout_seconds))
+                    if responses is not None and unit.unit_id in responses:
+                        response = responses[unit.unit_id]
+                    else:
+                        response, call_err = call_results.get(unit.unit_id, (None, None))
+                        if call_err is not None:
+                            raise call_err
+                        if response is None:
+                            raise ValueError("Risposta tipo consigliato mancante")
                     answer = response.answers.get("tipo_consigliato")
                     if answer is None or answer.type != "choice" or answer.choice not in criteria:
                         raise ValueError("Tipo consigliato non valido")

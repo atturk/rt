@@ -51,11 +51,11 @@ test('la pagina Lezioni mostra le lezioni dell\'API, con la ricerca', async ({ p
 
   // Solo la ricerca (titolo, materia, docente, data): nessun altro filtro.
   await expect(page.getByLabel('Materia', { exact: true })).toHaveCount(0)
-  await page.getByLabel('Cerca').fill('rene')
+  await page.getByLabel('Cerca', { exact: true }).fill('rene')
   await expect(rows).toHaveCount(1)
   await expect(rows.first()).toContainText('Il rene')
   await page.reload()
-  await expect(page.getByLabel('Cerca')).toHaveValue('rene')
+  await expect(page.getByLabel('Cerca', { exact: true })).toHaveValue('rene')
   await expect(rows).toHaveCount(1)
 
   // I link di prima con ?materia= restano un filtro, azzerabile.

@@ -168,7 +168,8 @@ def regenerate_comment(lesson_dir: str, question_id: str, *, force_mock: bool = 
                                         response_model=RegeneratedComment, job_name="recall",
                                         unit_id=", ".join(question.unit_ids), lesson_dir=lesson_dir)
         text = result.testo
-    text = (text or "").strip()
+    from rt.core.encoding import repair_llm_text
+    text = repair_llm_text((text or "").strip())
     if not text:
         raise Conflict("comment_empty", "Il modello non ha restituito un commento.")
     with recall_bank_lock(lesson_dir):

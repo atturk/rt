@@ -8,7 +8,7 @@ import { ConfirmDialog } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { usePreference } from '@/lib/preferences'
-import { Field, Section, SettingsSelect } from './common'
+import { SettingsGroup, SettingsPage, SettingsRow, SettingsSwitch } from './ui'
 
 const DEFAULT_SHORTCUTS: ShortcutPreferences = {}
 
@@ -57,37 +57,88 @@ export function EditorShortcutsSection() {
     const key = recordedKey(event)
     if (key) assign(command, key)
   }
-  return <div className="flex flex-col gap-3">
-    <Field label="Barra di formattazione" htmlFor="editor-toolbar">
-      <SettingsSelect id="editor-toolbar" value={toolbar ? 'si' : 'no'} onChange={e => saveToolbar(e.target.value === 'si')}>
-        <option value="si">Sì</option><option value="no">No</option>
-      </SettingsSelect>
-    </Field>
-    <Input type="search" aria-label="Cerca comando o combinazione" placeholder="Cerca comando o combinazione" value={search} onChange={e => { setSearch(e.target.value); setRecording(null) }} />
-    {message && <Alert tone="warning">{message}</Alert>}
-    {groups.map(group => <Section key={group} id={`scorciatoie-${group.toLowerCase()}`} title={group}>
-      {commands.filter(command => command.gruppo === group).map(command => {
-        const key = commandShortcut(command, preferences)
-        return <div key={command.id} className="flex items-center gap-2 border-b py-2 last:border-0" data-testid={`shortcut-${command.id}`}>
-          <span className="mr-auto text-body">{command.etichetta}</span>
-          <Button variant="outline" className="min-w-24 text-body" aria-label={`Scorciatoia: ${command.etichetta}`}
-            onClick={() => { setMessage(null); setRecording(command.id) }} onBlur={() => setRecording(null)} onKeyDown={e => record(e, command)}>
-            {recording === command.id ? 'Premi i tasti…' : shortcutLabel(key)}
-          </Button>
-          <IconButton label={`Ripristina: ${command.etichetta}`} icon={RotateCcw} disabled={!Object.hasOwn(preferences, command.id)}
-            onClick={() => { setMessage(null); assign(command, command.predefinita) }} />
+  return (
+    <SettingsPage
+      title="Editor e scorciatoie"
+      description="Barra di formattazione e combinazioni da tastiera dell’editor."
+    >
+      <SettingsGroup title="Editor">
+        <SettingsSwitch
+          id="editor-toolbar"
+          label="Barra di formattazione"
+          info="Mostra la barra rapida sopra il testo delle lezioni per grassetto, corsivo, liste e link."
+          checked={toolbar}
+          onChange={saveToolbar}
+        />
+        <div className="px-4 py-3">
+          <Input
+            type="search"
+            aria-label="Cerca comando o combinazione"
+            placeholder="Cerca comando o combinazione"
+            value={search}
+            onChange={e => { setSearch(e.target.value); setRecording(null) }}
+          />
         </div>
-      })}
-    </Section>)}
-    {!commands.length && <p className="text-body text-muted-foreground">Nessun comando.</p>}
-    <Button variant="outline" className="self-start" disabled={!Object.keys(preferences).length} onClick={() => { save(undefined); setMessage(null); setRecording(null) }}>Ripristina tutte</Button>
-    <ConfirmDialog open={!!conflict} title="Scorciatoia già usata" confirmLabel="Scambia" onCancel={() => setConflict(null)}
-      onConfirm={() => {
-        if (!conflict) return
-        store(withShortcut(withShortcut(preferences, conflict.command, conflict.key), conflict.other, conflict.previous))
-        setConflict(null)
-      }}>
-      {conflict && <p>{shortcutLabel(conflict.key)} è già usata da «{conflict.other.etichetta}». Scambiare con «{conflict.command.etichetta}»?</p>}
-    </ConfirmDialog>
-  </div>
+      </SettingsGroup>
+      {message && <Alert tone="warning">{message}</Alert>}
+      {groups.map(group => (
+        <SettingsGroup key={group} id={`scorciatoie-${group.toLowerCase()}`} title={group}>
+          {commands.filter(command => command.gruppo === group).map(command => {
+            const key = commandShortcut(command, preferences)
+            return (
+              <SettingsRow
+                key={command.id}
+                testId={`shortcut-${command.id}`}
+                label={command.etichetta}
+                compactControl
+                control={
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      className="min-w-24 text-body"
+                      aria-label={`Scorciatoia: ${command.etichetta}`}
+                      onClick={() => { setMessage(null); setRecording(command.id) }}
+                      onBlur={() => setRecording(null)}
+                      onKeyDown={e => record(e, command)}
+                    >
+                      {recording === command.id ? 'Premi i tasti…' : shortcutLabel(key)}
+                    </Button>
+                    <IconButton
+                      label={`Ripristina: ${command.etichetta}`}
+                      icon={RotateCcw}
+                      disabled={!Object.hasOwn(preferences, command.id)}
+                      onClick={() => { setMessage(null); assign(command, command.predefinita) }}
+                    />
+                  </div>
+                }
+              />
+            )
+          })}
+        </SettingsGroup>
+      ))}
+      {!commands.length && <p className="text-body text-muted-foreground">Nessun comando.</p>}
+      <div>
+        <Button
+          variant="outline"
+          disabled={!Object.keys(preferences).length}
+          onClick={() => { save(undefined); setMessage(null); setRecording(null) }}
+        >
+          Ripristina tutte
+        </Button>
+      </div>
+      <ConfirmDialog
+        open={!!conflict}
+        title="Scorciatoia già usata"
+        confirmLabel="Scambia"
+        onCancel={() => setConflict(null)}
+        onConfirm={() => {
+          if (!conflict) return
+          store(withShortcut(withShortcut(preferences, conflict.command, conflict.key), conflict.other, conflict.previous))
+          setConflict(null)
+        }}
+      >
+        {conflict && <p>{shortcutLabel(conflict.key)} è già usata da «{conflict.other.etichetta}». Scambiare con «{conflict.command.etichetta}»?</p>}
+      </ConfirmDialog>
+    </SettingsPage>
+  )
 }

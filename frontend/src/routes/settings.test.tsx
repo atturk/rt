@@ -59,10 +59,11 @@ describe('SetupGate', () => {
 
 
 // Navigazione delle route vere, isolata dal layout autenticato dell'app.
-function realSettings(path: string, phone = false) {
+function realSettings(path: string, phone = false, info: object = {}) {
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: phone && query.includes('max-width'), addEventListener: vi.fn(), removeEventListener: vi.fn() }))
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve({
     data: path === '/api/v1/settings' ? testSettings : path === '/api/v1/settings/enrichment' ? enrichmentSettings
+      : path === '/api/v1/system/info' ? info
       : path === '/api/v1/system/cache' ? { audio: { entries: 0, bytes: 0 }, waveform: { entries: 0, bytes: 0 }, total: { entries: 0, bytes: 0 } } : {},
     response: new Response('{}', { status: 200 }),
   })) as never)
@@ -78,11 +79,56 @@ describe('Le otto sezioni', () => {
     const nav = await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
     expect(within(nav).getAllByRole('link')).toHaveLength(SETTINGS_SECTIONS.length + 1)
     expect(within(nav).getByRole('link', { name: /^Guida/ })).toHaveAttribute('href', '/guida')
-    expect(within(nav).getByRole('link', { name: 'Aspetto e lettura' })).toHaveAttribute('aria-current', 'page')
+    const aspectLink = within(nav).getByRole('link', { name: 'Aspetto e lettura' })
+    expect(aspectLink).toHaveAttribute('aria-current', 'page')
+    expect(aspectLink.className).toContain('bg-muted')
+    expect(aspectLink.className).toContain('font-medium')
+    expect(aspectLink.className).not.toContain('font-semibold')
     expect(await screen.findByRole('radiogroup', { name: 'Tema' })).toBeVisible()
     await userEvent.click(within(nav).getByRole('link', { name: 'Lavorazione delle lezioni' }))
     expect(await screen.findByRole('region', { name: 'Trascrizione' })).toBeVisible()
     expect(screen.queryByRole('radiogroup', { name: 'Tema' })).toBeNull()
+  })
+  it('Supporta RT: bottone sotto Guida solo con un URL per le donazioni, porta alla pagina /impostazioni/supporta', async () => {
+    realSettings('/impostazioni/aspetto')
+    await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
+    expect(screen.queryByTestId('link-sostieni-rt')).toBeNull()
+    cleanup(); vi.restoreAllMocks()
+    realSettings('/impostazioni/aspetto', false, { donazioni_url: 'https://ko-fi.com/example' })
+    const nav = await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
+    const link = await within(nav).findByRole('link', { name: 'Supporta RT' })
+    expect(link).toHaveAttribute('href', '/impostazioni/supporta')
+    expect(link).not.toHaveAttribute('target')
+    expect(link.compareDocumentPosition(within(nav).getByRole('link', { name: /^Guida/ })) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+
+    await userEvent.click(link)
+    expect(await screen.findByRole('heading', { name: 'RT è fatto da uno studente, per gli studenti' })).toBeVisible()
+    expect(screen.getByTestId('location')).toHaveTextContent('/impostazioni/supporta')
+    expect(link).toHaveAttribute('aria-current', 'page')
+  })
+  it('Supporta RT pagina: bottone Dona con Ko-fi ha href, target=_blank e registra donated al clic', async () => {
+    const postSpy = vi.spyOn(api, 'POST').mockResolvedValue({
+      data: { visible: false, url: 'https://ko-fi.com/example/donate' },
+      error: undefined,
+      response: new Response('{}', { status: 200 }),
+    } as never)
+    realSettings('/impostazioni/supporta', false, { donazioni_url: 'https://ko-fi.com/example/donate' })
+    const donate = await screen.findByRole('link', { name: 'Dona con Ko-fi' })
+    expect(donate).toHaveAttribute('href', 'https://ko-fi.com/example/donate')
+    expect(donate).toHaveAttribute('target', '_blank')
+    await userEvent.click(donate)
+    expect(postSpy).toHaveBeenCalledWith('/api/v1/system/support-prompt', { body: { event: 'donated' } })
+  })
+  it('Supporta RT pagina: «Ho già donato» registra already_donated e ringrazia', async () => {
+    const postSpy = vi.spyOn(api, 'POST').mockResolvedValue({
+      data: { visible: false, url: 'https://ko-fi.com/example/donate' },
+      error: undefined,
+      response: new Response('{}', { status: 200 }),
+    } as never)
+    realSettings('/impostazioni/supporta', false, { donazioni_url: 'https://ko-fi.com/example/donate' })
+    await userEvent.click(await screen.findByRole('button', { name: 'Ho già donato' }))
+    expect(postSpy).toHaveBeenCalledWith('/api/v1/system/support-prompt', { body: { event: 'already_donated' } })
+    expect(screen.getByTestId('support-thanks')).toHaveTextContent('Grazie!')
   })
   it('telefono: elenco, pagina della sezione e freccia indietro', async () => {
     realSettings('/impostazioni', true)
@@ -102,6 +148,15 @@ describe('Le otto sezioni', () => {
     realSettings('/bot')
     await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
     expect(screen.getByTestId('location')).toHaveTextContent('/impostazioni/telegram')
+  })
+  it('i vecchi path /impostazioni/calendario e /impostazioni/materie reindirizzano a materie-calendario', async () => {
+    realSettings('/impostazioni/calendario')
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/impostazioni/materie-calendario'))
+    expect(await screen.findByRole('region', { name: 'Calendario' })).toBeVisible()
+    cleanup(); vi.restoreAllMocks()
+    realSettings('/impostazioni/materie')
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/impostazioni/materie-calendario'))
+    expect(await screen.findByRole('region', { name: 'Materie' })).toBeVisible()
   })
   it('tutte le destinazioni hanno una route', () => {
     const routes = areas.flatMap(a => a.routes).find(r => r.path === 'impostazioni')!.children!

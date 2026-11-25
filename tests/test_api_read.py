@@ -12,6 +12,8 @@ from tests.api_support import add_audio, isolated_workspace, make_lesson, run_mo
 @pytest.fixture
 def lesson(tmp_path, monkeypatch, rt_db):
     root = isolated_workspace(tmp_path, monkeypatch)
+    with open(os.path.join("config", "general.yaml"), "a", encoding="utf-8") as f:
+        f.write("ui:\n  outline_mode: manual\n")
     lesson_dir = make_lesson(root)
     result = run_mock_pipeline(lesson_dir, auto_accept=False)
     assert result.status.value == "waiting_for_decision"  # outline da approvare

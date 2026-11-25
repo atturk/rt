@@ -1,4 +1,4 @@
-import { Focus, Slash, BookOpen, Brain, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, Headphones, HelpCircle, Highlighter as HighlighterIcon, Info, List, SkipBack, SkipForward, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
+import { Focus, Slash, BookOpen, Brain, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Headphones, Highlighter as HighlighterIcon, Info, List, SkipBack, SkipForward, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons, useIssues } from '@/api/hooks'
@@ -16,15 +16,15 @@ import { getStudyAudioOpen, setStudyAudioOpen, resetStudyAudioOpen } from '@/lib
 import { studyNavigation } from './studyNavigation'
 import { detectSwipe, isElementScrollableX } from './swipe'
 
-import { api, errorMessage, unwrap } from '@/api/client'
+import { errorMessage } from '@/api/client'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import {
   recallKeys, useGenerateForUnits, useStudyLesson,
   type StudyUnit,
 } from '@/api/recall'
 import { useQueryClient, QueryClientContext } from '@tanstack/react-query'
-import { useStudyNotes, useApplyStudyNote, useUndoStudyNote, studyNotesApi, studyNotesKeys, type StudyNote } from '@/api/studyNotes'
-import { StudyNotePopup } from './StudyNotePopup'
+import { ChatSparkIcon } from './ChatSparkIcon'
+import { StudyChat } from './StudyChat'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { LightweightSession } from '@/components/recall/LightweightSession'
 import { Alert } from '@/components/ui/alert'
@@ -35,8 +35,8 @@ import { lessonTitle, type Lesson } from '@/lib/format'
 import { formatDuration, longDate, subjectName } from '@/lib/lessonsPage'
 import { withImageUrls } from '@/lib/images'
 import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
-import { DELIMITED, renderDelimitedMath } from '@/lib/math'
-import { sourceOffsets, sourceParts, sourceTextOf } from '@/lib/sourceText'
+import { renderDelimitedMath } from '@/lib/math'
+import { sourceOffsets, sourceParts } from '@/lib/sourceText'
 import { useHoverExpand } from '@/lib/useHoverExpand'
 import { useIsPhone } from '@/lib/phone'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
@@ -270,6 +270,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
   const titleButtonRef = useRef<HTMLButtonElement>(null)
   const [highlighterPrefs, setHighlighterPrefs] = useHighlighterPrefs()
   const [hlMode, setHlMode] = useState<HighlightMode>(null)
+  const [chatOpen, setChatOpen] = useState(false)
   const [textRoot, setTextRoot] = useState<HTMLElement | null>(null)
   const [speedReading, setSpeedReading] = useState(false)
   const [readerMounted, setReaderMounted] = useState(false)
@@ -329,7 +330,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     return () => cancelAnimationFrame(frame)
   }, [zenActive, phase, rereading])
   const [notice, setNotice] = useState<{
-    kind: 'status' | 'pen' | 'eraser' | 'verifica' | 'chiedi' | 'unit'
+    kind: 'status' | 'pen' | 'eraser' | 'unit'
     label: string
     off?: boolean
     color?: number
@@ -388,27 +389,12 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
   })
   const arrows = highlighterPrefs.arrows
 
-  const queryClient = useQueryClient()
-  const studyNotesQuery = useStudyNotes(lesson?.id)
-  const applyNoteMutation = useApplyStudyNote(lesson?.id ?? 0)
-  const undoNoteMutation = useUndoStudyNote(lesson?.id ?? 0)
   const [toast, setToast] = useState<{ message: ReactNode; actionLabel?: string; onAction?: () => void } | null>(null)
   useEffect(() => {
     if (!toast) return
     const timer = setTimeout(() => setToast(null), 6000)
     return () => clearTimeout(timer)
   }, [toast])
-
-  const [popupState, setPopupState] = useState<{
-    open: boolean
-    kind: 'verifica' | 'chiedi'
-    unitId: string
-    quote: string
-    anchor?: { quote: string; prefix: string; suffix: string; start: number; end: number }
-    anchorRect?: DOMRect | null
-    note?: StudyNote | null
-    isWaiting?: boolean
-  } | null>(null)
 
   const savedSelectionRange = useRef<Range | null>(null)
   const saveSelection = useCallback(() => {
@@ -439,35 +425,6 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     }
     return null
   }, [textRoot])
-
-  const applyVerificaOrChiedi = useCallback((kind: 'verifica' | 'chiedi', range: Range) => {
-    if (!textRoot || !unit) return
-    const offsets = sourceOffsets(textRoot, range)
-    const selected = offsets.text.slice(offsets.start, offsets.end)
-    const quote = selected.trim()
-    if (!quote) return
-    const start = offsets.start + selected.length - selected.trimStart().length
-    const end = start + quote.length
-    const rect = range.getBoundingClientRect?.() ?? ({ x: 0, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0, toJSON: () => ({}) } as DOMRect)
-    window.getSelection()?.removeAllRanges()
-    setPopupState({
-      open: true,
-      kind,
-      unitId: unit.id,
-      quote,
-      anchor: {
-        quote,
-        prefix: offsets.text.slice(Math.max(0, start - 40), start),
-        suffix: offsets.text.slice(end, end + 40),
-        start,
-        end,
-      },
-      anchorRect: rect,
-      note: null,
-    })
-    setHlMode(null)
-    if (zenActive) setNotice({ kind, off: false, label: kind === 'verifica' ? 'Verifica' : 'Chiedi' })
-  }, [textRoot, unit, zenActive, setPopupState, setHlMode, setNotice])
 
   const applyPen = useCallback((color: number, range?: Range | null) => {
     const targetRange = range ?? getSelectionRange()
@@ -518,61 +475,6 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     setDetailsOpen(false)
   }, [textRoot, getSelectionRange, setSpeedReading, setReaderMounted, setIndexOpen, setDetailsOpen, setReaderStartAt, setReaderOpenId])
 
-  const handleSendNote = async (request: string) => {
-    if (!lesson || !popupState || !popupState.anchor) return
-    setPopupState((prev) => (prev ? { ...prev, isWaiting: true } : null))
-    try {
-      const accepted = await studyNotesApi.create(lesson.id, {
-        unit_id: popupState.unitId,
-        kind: popupState.kind,
-        anchor: popupState.anchor,
-        request,
-      })
-      const jobId = accepted.job_id
-      const pollStart = Date.now()
-      while (Date.now() - pollStart < 60000) {
-        await new Promise((r) => setTimeout(r, 600))
-        const job = await unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: jobId } } }))
-        if (job.state === 'succeeded' || job.state === 'done') {
-          await queryClient.invalidateQueries({ queryKey: studyNotesKeys.all(lesson.id) })
-          const notes = await studyNotesApi.list(lesson.id)
-          const resObj = job.result as { note_id?: number; id?: number; note?: StudyNote } | undefined
-          const noteResultId = resObj?.note_id ?? resObj?.id ?? resObj?.note?.id
-          const found = (noteResultId ? notes.find((n) => n.id === noteResultId) : undefined) ?? resObj?.note ?? notes[0]
-          if (found) {
-            setPopupState((prev) => (prev ? { ...prev, isWaiting: false, note: found } : null))
-          }
-          break
-        } else if (job.state === 'failed' || job.state === 'cancelled') {
-          throw new Error(job.error || 'Operazione non riuscita')
-        }
-      }
-    } catch (error) {
-      setPopupState((prev) => (prev ? { ...prev, isWaiting: false } : null))
-      setToast({ message: errorMessage(error) })
-    }
-  }
-
-  const handleApplyNote = async (noteId: number) => {
-    if (!lesson) return
-    try {
-      const applied = await applyNoteMutation.mutateAsync(noteId)
-      setPopupState((prev) => {
-        if (!prev || !prev.note || prev.note.id !== noteId) return prev
-        return { ...prev, note: applied.note }
-      })
-      setToast({
-        message: 'Correzione applicata · decisione nella Verifica con LLM',
-        actionLabel: 'Annulla',
-        onAction: () => {
-          undoNoteMutation.mutate(noteId)
-        },
-      })
-    } catch (error) {
-      setToast({ message: errorMessage(error) })
-    }
-  }
-
   // Tasto P: apre e chiude il player audio, sia nello Studio sia nella lettura veloce.
   const studyHasAudio = Boolean(loaded?.has_audio)
   useEffect(() => {
@@ -580,7 +482,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'p') return
       const target = e.target as HTMLElement | null
-      if (target?.closest?.('input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="dialog"]')) return
+      if (target?.closest?.('[data-study-chat], input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="dialog"]')) return
       e.preventDefault()
       setAudioPlayerOpen((v) => !v)
     }
@@ -591,7 +493,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
 
   // Tasti ← / → per cambiare unità nella sola fase di lettura (disattivabili da study.highlighter.arrows)
   useEffect(() => {
-    if (phase !== 'lettura' || speedReading) return
+    if ((phase !== 'lettura' && !rereading) || speedReading) return
     const prevCmd = editorCommands.find(c => c.id === 'study-prev-unit')
     const nextCmd = editorCommands.find(c => c.id === 'study-next-unit')
     const copyMdCmd = editorCommands.find(c => c.id === 'study-copy-unit-markdown')
@@ -604,13 +506,12 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
       const target = e.target as HTMLElement | null
-      // Il riquadro di Chiedi/Verifica non è modale: fuori dai suoi campi le scorciatoie restano attive.
-      if (target?.closest?.('input, textarea, select, [contenteditable], [role="slider"], [role="menu"], [role="listbox"], [role="dialog"]:not([data-testid="study-note-popup"])')) return
+      if (target?.closest?.('[data-study-chat], input, textarea, select, [contenteditable], [role="slider"], [role="menu"], [role="listbox"], [role="dialog"]')) return
       if (zenSettings) {
         if (e.key === 'Escape') { e.preventDefault(); setZenSettings(false) }
         return
       }
-      if (indexOpen || detailsOpen || document.querySelector('dialog[open], [role="dialog"]:not([data-testid="study-note-popup"]), [role="menu"]')) return
+      if (indexOpen || detailsOpen || document.querySelector('dialog[open], [role="dialog"], [role="menu"]')) return
 
       if (matchesShortcut(e, prevShortcut)) {
         e.preventDefault()
@@ -730,19 +631,11 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
         if (e.shiftKey) setHighlighterPrefs({ ...highlighterPrefs, color })
         if (zenActive) setNotice({ kind: key === 'g' ? 'eraser' : 'pen', off: next === null, color,
           label: key === 'g' ? next ? 'Gomma attiva' : 'Gomma spenta' : next ? `Evidenziatore ${HIGHLIGHT_COLORS[color]}` : 'Evidenziatore spento' })
-      } else if (key === 'v' || key === 'c') {
-        e.preventDefault()
-        const range = getSelectionRange()
-        if (range) {
-          applyVerificaOrChiedi(key === 'v' ? 'verifica' : 'chiedi', range)
-          savedSelectionRange.current = null
-          return
+      } else if (key === 'c') {
+        if (!zenActive && !speedReading && (phase === 'lettura' || rereading)) {
+          e.preventDefault()
+          setChatOpen((v) => !v)
         }
-        const mode = key === 'v' ? 'verifica' : 'chiedi'
-        const next = hlMode === mode ? null : mode
-        setHlMode(next)
-        if (zenActive) setNotice({ kind: mode, off: next === null,
-          label: mode === 'verifica' ? (next ? 'Verifica attiva' : 'Verifica spenta') : (next ? 'Chiedi attivo' : 'Chiedi spento') })
       } else if (key === 's') {
         e.preventDefault()
         const next = changeStatus()
@@ -751,15 +644,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
           setNotice({ kind: 'status', status: next, label: def.label })
         }
       } else if (e.key === 'Escape') {
-        if (popupState?.open) {
-          e.preventDefault()
-          setPopupState(null)
-        } else if (hlMode === 'verifica' || hlMode === 'chiedi') {
-          e.preventDefault()
-          const currentMode = hlMode
-          setHlMode(null)
-          if (zenActive) setNotice({ kind: currentMode, off: true, label: currentMode === 'verifica' ? 'Verifica spenta' : 'Chiedi spento' })
-        } else if (zenActive) {
+        if (zenActive) {
           e.preventDefault()
           toggleZen()
         }
@@ -778,7 +663,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, textRoot, openReader, textScale, showScaleNotice, audioPlayerOpen, audioRef, currentTime, seek, shortcutPrefs]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, rereading, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, textRoot, openReader, textScale, showScaleNotice, audioPlayerOpen, audioRef, currentTime, seek, shortcutPrefs]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -910,25 +795,13 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
       <HighlightTools
         mode={hlMode}
         color={highlighterPrefs.color}
+        chatOpen={chatOpen}
+        onToggleChat={() => setChatOpen((v) => !v)}
         onMode={setHlMode}
         onColor={(color) => setHighlighterPrefs({ ...highlighterPrefs, color })}
         onClear={highlights.clear}
         onApplyPen={(c) => applyPen(c)}
         onApplyEraser={() => applyEraser()}
-        onApplyVerifica={() => {
-          const range = getSelectionRange()
-          if (!range) return false
-          applyVerificaOrChiedi('verifica', range)
-          savedSelectionRange.current = null
-          return true
-        }}
-        onApplyChiedi={() => {
-          const range = getSelectionRange()
-          if (!range) return false
-          applyVerificaOrChiedi('chiedi', range)
-          savedSelectionRange.current = null
-          return true
-        }}
         onSaveSelection={saveSelection}
       />
       <span className="mx-0.5 h-4 w-px bg-border max-md:hidden" aria-hidden />
@@ -1066,7 +939,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
                 notice.direction === -1 ? <SkipBack className="size-6" /> : <SkipForward className="size-6" />
               ) : (
                 <div className="relative">
-                  {notice.kind === 'pen' ? <HighlighterIcon className="size-6" /> : notice.kind === 'eraser' ? <Eraser className="size-6" /> : notice.kind === 'verifica' ? <CheckCircle2 className="size-6 text-[#155f52]" /> : <HelpCircle className="size-6 text-[#c7761a]" />}
+                  {notice.kind === 'pen' ? <HighlighterIcon className="size-6" /> : <Eraser className="size-6" />}
                   {notice.off && <Slash className="absolute inset-0 size-6 text-muted-foreground" />}
                   {notice.kind === 'pen' && <span className={`absolute -bottom-1 inset-x-0 h-1 rounded rt-hl-${notice.color}`} />}
                 </div>
@@ -1100,6 +973,16 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
             onPointerUp: handlePointerUp,
             onPointerCancel: handlePointerCancel,
           }}
+          sidePanel={
+            chatOpen && reading && !speedReading && !zenActive && lesson ? (
+              <StudyChat
+                lessonId={lesson.id}
+                unitId={unit.id}
+                onClose={() => setChatOpen(false)}
+                onToast={(message) => setToast({ message })}
+              />
+            ) : undefined
+          }
           popup={
             <>
               {lesson && (
@@ -1112,21 +995,6 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
                 onClose={() => setDetailsOpen(false)}
                 anchorRef={titleButtonRef}
               />
-              )}
-              {popupState?.open && (
-                <StudyNotePopup
-                  open={popupState.open}
-                  onClose={() => setPopupState(null)}
-                  kind={popupState.kind}
-                  unitId={popupState.unitId}
-                  quote={popupState.quote}
-                  note={popupState.note}
-                  anchorRect={popupState.anchorRect}
-                  isWaiting={popupState.isWaiting}
-                  isApplying={applyNoteMutation.isPending}
-                  onSend={handleSendNote}
-                  onApply={handleApplyNote}
-                />
               )}
               {scaleNotice && (
                 <div
@@ -1157,31 +1025,6 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
             onReady={setTextRoot}
             textScale={textScale}
             fontFamily={studyFontStack(textFont)}
-            notes={studyNotesQuery.data?.filter((n) => n.unit_id === unit.id)}
-            activeNoteId={popupState?.open ? popupState.note?.id ?? null : null}
-            onNoteClick={(note, rect) => {
-              setPopupState({
-                open: true,
-                kind: note.kind,
-                unitId: note.unit_id,
-                quote: String(note.current_quote || (note.anchor as { quote?: string } | undefined)?.quote || ''),
-                note,
-                anchorRect: rect,
-              })
-            }}
-            onSelection={(quote, anchor, rect) => {
-              if (hlMode === 'verifica' || hlMode === 'chiedi') {
-                setPopupState({
-                  open: true,
-                  kind: hlMode,
-                  unitId: unit.id,
-                  quote,
-                  anchor,
-                  anchorRect: rect,
-                  note: null,
-                })
-              }
-            }}
           />
         </StudyShell>
       </div>
@@ -1367,6 +1210,7 @@ function StudyShell({
   zenBar,
   notice,
   reader,
+  sidePanel,
 }: {
   rsvp?: boolean
   zen?: boolean
@@ -1374,6 +1218,7 @@ function StudyShell({
   zenBar?: ReactNode
   notice?: ReactNode
   reader?: ReactNode
+  sidePanel?: ReactNode
   title: ReactNode
   back?: { to: string; label: string }
   actions?: ReactNode
@@ -1391,8 +1236,8 @@ function StudyShell({
       {notice}
       {popup}
       {banner}
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <div className="rt-study-text flex-1 touch-pan-y px-7 max-md:px-[18px]" aria-hidden={rsvp || undefined} inert={rsvp || undefined} {...readingProps}>
+      <div className="relative flex min-h-0 flex-1 flex-row">
+        <div className="rt-study-text min-w-0 flex-1 touch-pan-y px-7 max-md:px-[18px]" aria-hidden={rsvp || undefined} inert={rsvp || undefined} {...readingProps}>
           <div className={cn("mx-auto w-full max-w-(--reading-width) pb-8 pt-3", edge && `rt-study-bump-${edge.side}`)} data-testid="study-reading-column">
             {children}
           </div>
@@ -1400,6 +1245,7 @@ function StudyShell({
         {edge && <div key={edge.sequence} data-testid={`study-edge-${edge.side}`} className={`rt-study-edge rt-study-edge-${edge.side}`} aria-hidden /> }
         <div className="sr-only" aria-live="polite"><span key={edge?.sequence}>{edge ? edge.side === 'left' ? 'Prima unità' : 'Ultima unità' : ''}</span></div>
         {reader}
+        {sidePanel}
       </div>
       {footer && (
         <div aria-hidden={rsvp || zen || undefined} inert={rsvp || zen || undefined} className="rt-study-footer sticky bottom-0 z-10 flex justify-center border-t bg-background p-4 max-md:bottom-[calc(64px+env(safe-area-inset-bottom))] max-md:border-t-0 max-md:px-[18px] max-md:pt-0 [&_button]:min-h-12">
@@ -1459,22 +1305,17 @@ function clipToRoot(range: Range, root: HTMLElement): Range | null {
 }
 
 /** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
-export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection, textScale = 1, fontFamily }: {
+export function UnitText({ lessonId, unit, highlightMode, onReady, textScale = 1, fontFamily }: {
   lessonId: number
   unit: StudyUnit
   highlightMode: HighlightMode
   /** Il testo è pronto (formule disegnate): evidenziatore e lettura veloce lo usano. */
   onReady: (root: HTMLElement | null) => void
-  notes?: StudyNote[]
-  activeNoteId?: number | null
-  onNoteClick?: (note: StudyNote, rect: DOMRect) => void
-  onSelection?: (quote: string, anchor: { quote: string; prefix: string; suffix: string; start: number; end: number }, rect: DOMRect) => void
   textScale?: number
   /** Stack CSS del font scelto in Impostazioni › Testo dello Studio (titolo e testo). */
   fontFamily?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [mathReady, setMathReady] = useState<string | null>(null)
   // Strisce di immagini consecutive, rimontate a ogni unità (prima di formule e lettura veloce).
   useEffect(() => {
     const root = ref.current
@@ -1498,7 +1339,6 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
     }, () => undefined).finally(() => {
       // Anche se il motore delle formule non si carica, il testo resta usabile.
       if (!alive) return
-      setMathReady(unit.html)
       onReady(root)
     })
     return () => {
@@ -1506,49 +1346,6 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
       onReady(null)
     }
   }, [unit.html, onReady])
-
-  useEffect(() => {
-    const root = ref.current
-    if (!root) return
-
-    if (mathReady !== unit.html && unit.html.search(DELIMITED) >= 0) return
-    root.querySelectorAll('math.rt-sn-math').forEach(math => {
-      math.classList.remove('rt-sn-math', 'rt-sn-v', 'rt-sn-c', 'rt-sn-bad', 'rt-sn-changed')
-      math.removeAttribute('data-note-id')
-    })
-    root.querySelectorAll('span.rt-sn').forEach(span => span.replaceWith(...Array.from(span.childNodes)))
-    root.normalize()
-
-    for (const n of notes ?? []) {
-      if (n.id !== activeNoteId || n.anchor_state === 'non_ritrovata') continue
-      // Togli i segni Markdown soltanto fuori dalle formule (es. \underline e pedici).
-      const targetQuote = String(n.current_quote || (n.anchor as { quote?: string } | undefined)?.quote || '')
-        .split(DELIMITED).map((part, i) => i % 2 ? part : part.replace(/\*\*|__|[*`]/g, '')).join('').trim()
-      if (!targetQuote) continue
-      const start = sourceTextOf(root).indexOf(targetQuote)
-      if (start < 0) continue
-      const end = start + targetQuote.length
-      let cls = n.kind === 'verifica' ? 'rt-sn-v' : 'rt-sn-c'
-      if (n.kind === 'verifica' && n.response?.esito === 'errato') cls += ' rt-sn-bad'
-      if (n.anchor_state === 'cambiata') cls += ' rt-sn-changed'
-      for (const part of sourceParts(root)) {
-        if (part.end <= start || part.start >= end) continue
-        if (part.node.nodeType !== Node.TEXT_NODE) {
-          const math = part.node as Element
-          math.classList.add('rt-sn-math', ...cls.split(' '))
-          math.setAttribute('data-note-id', String(n.id))
-        } else {
-          const range = document.createRange()
-          range.setStart(part.node, Math.max(0, start - part.start))
-          range.setEnd(part.node, Math.min(part.text.length, end - part.start))
-          const span = document.createElement('span')
-          span.className = 'rt-sn ' + cls
-          span.dataset.noteId = String(n.id)
-          range.surroundContents(span)
-        }
-      }
-    }
-  }, [notes, activeNoteId, unit.html, mathReady])
 
   useEffect(() => {
     const root = ref.current
@@ -1607,43 +1404,6 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
     event.clipboardData.setData('text/plain', text.slice(start, end))
   }
 
-  const handleMouseUp = () => {
-    if (highlightMode !== 'verifica' && highlightMode !== 'chiedi') return
-    const sel = window.getSelection(), root = ref.current
-    if (!root || !sel?.rangeCount || sel.isCollapsed) return
-    const range = sel.getRangeAt(0)
-    if (!root.contains(range.commonAncestorContainer)) return
-    const offsets = sourceOffsets(root, range)
-    const selected = offsets.text.slice(offsets.start, offsets.end)
-    const quote = selected.trim()
-    if (!quote) return
-    const start = offsets.start + selected.length - selected.trimStart().length
-    const end = start + quote.length
-    const rect = range.getBoundingClientRect()
-    sel.removeAllRanges()
-    onSelection?.(quote, {
-      quote,
-      prefix: offsets.text.slice(Math.max(0, start - 40), start),
-      suffix: offsets.text.slice(end, end + 40),
-      start,
-      end,
-    }, rect)
-  }
-
-  const handleClick = (e: React.MouseEvent) => {
-    const target = (e.target as Element).closest('.rt-sn, .rt-sn-math')
-    const id = target?.getAttribute('data-note-id')
-    if (target && id && notes) {
-      const noteId = Number(id)
-      const found = notes.find((n) => n.id === noteId)
-      if (found) {
-        e.preventDefault()
-        e.stopPropagation()
-        onNoteClick?.(found, target.getBoundingClientRect())
-      }
-    }
-  }
-
   return (
     <section aria-labelledby="study-unit-title" data-testid="study-unit" onCopy={handleCopy} style={fontFamily ? { fontFamily } : undefined}>
       <h2 id="study-unit-title" className="mb-3.5 text-heading font-semibold leading-snug">{unit.id} {unit.title}</h2>
@@ -1652,11 +1412,8 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
         className="rt-document rt-reading"
         data-testid="study-text"
         data-unit-id={unit.id}
-        data-hl-mode={highlightMode === 'gomma' ? 'erase' : highlightMode === 'verifica' ? 'verifica' : highlightMode === 'chiedi' ? 'chiedi' : undefined}
+        data-hl-mode={highlightMode === 'gomma' ? 'erase' : undefined}
         onCopy={handleCopy}
-        onMouseUp={handleMouseUp}
-        onTouchEnd={handleMouseUp}
-        onClick={handleClick}
         style={{
           '--study-text-scale': String(textScale),
           fontSize: 'calc(var(--size-body) * var(--study-text-scale, 1))',
@@ -1901,16 +1658,16 @@ function UnitIndexMenu({
  * Evidenziatore e gomma (4.2.2, H1): selettore a due posizioni come quello di Lezioni; un clic
  * sull'evidenziatore già attivo cambia colore, a giro. Il cestino toglie tutto, dopo una conferma.
  */
-function HighlightTools({ mode, color, onMode, onColor, onClear, onApplyPen, onApplyEraser, onApplyVerifica, onApplyChiedi, onSaveSelection }: {
+function HighlightTools({ mode, color, chatOpen, onToggleChat, onMode, onColor, onClear, onApplyPen, onApplyEraser, onSaveSelection }: {
   mode: HighlightMode
   color: number
+  chatOpen: boolean
+  onToggleChat: () => void
   onMode: (mode: HighlightMode) => void
   onColor: (color: number) => void
   onClear: () => Promise<void>
   onApplyPen?: (color: number) => boolean
   onApplyEraser?: () => boolean
-  onApplyVerifica?: () => boolean
-  onApplyChiedi?: () => boolean
   onSaveSelection?: () => void
 }) {
   const [confirm, setConfirm] = useState(false)
@@ -1940,13 +1697,11 @@ function HighlightTools({ mode, color, onMode, onColor, onClear, onApplyPen, onA
               ? HighlighterIcon
               : mode === 'gomma'
                 ? Eraser
-                : mode === 'verifica'
-                  ? CheckCircle2
-                  : mode === 'chiedi'
-                    ? HelpCircle
-                    : PencilRuler
+                : chatOpen
+                  ? ChatSparkIcon
+                  : PencilRuler
           }
-          active={mode !== null}
+          active={mode !== null || chatOpen}
           badge={
             mode === 'evidenzia' ? (
               <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
@@ -1965,7 +1720,7 @@ function HighlightTools({ mode, color, onMode, onColor, onClear, onApplyPen, onA
         className={open ? 'inline-flex rounded-lg bg-muted p-0.5 max-md:p-0' : 'hidden'}
         data-testid="highlight-tools"
       >
-        <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · E · seleziona il testo, prima o dopo`}>{(trigger) => <button
+        <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]}`}>{(trigger) => <button
           {...trigger}
           type="button"
           aria-pressed={mode === 'evidenzia'}
@@ -1986,7 +1741,7 @@ function HighlightTools({ mode, color, onMode, onColor, onClear, onApplyPen, onA
           <HighlighterIcon className="size-4" aria-hidden />
           <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
         </button>}</Tooltip>
-        <Tooltip content="Gomma · clic su un’evidenziazione per toglierla · G">{(trigger) => <button
+        <Tooltip content="Gomma">{(trigger) => <button
           {...trigger}
           type="button"
           aria-pressed={mode === 'gomma'}
@@ -2003,37 +1758,17 @@ function HighlightTools({ mode, color, onMode, onColor, onClear, onApplyPen, onA
           <Eraser className="size-4" aria-hidden />
         </button>}</Tooltip>
         <span className="my-1 w-px bg-border/60 mx-0.5 max-md:mx-0 max-md:my-0.5" aria-hidden="true" />
-        <Tooltip content="Verifica · V · seleziona il testo, prima o dopo">{(trigger) => <button
+        <Tooltip content="Chat · C">{(trigger) => <button
           {...trigger}
           type="button"
-          aria-pressed={mode === 'verifica'}
-          aria-label="Verifica"
-          data-testid="highlight-verifica"
+          aria-pressed={chatOpen}
+          aria-expanded={chatOpen}
+          aria-label="Chat"
+          data-testid="study-chat-btn"
           className={segment}
-          onPointerDown={onSaveSelection}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
-            if (onApplyVerifica?.()) return
-            onMode(mode === 'verifica' ? null : 'verifica')
-          }}
+          onClick={onToggleChat}
         >
-          <CheckCircle2 className="size-4" aria-hidden />
-        </button>}</Tooltip>
-        <Tooltip content="Chiedi · C · seleziona il testo, prima o dopo">{(trigger) => <button
-          {...trigger}
-          type="button"
-          aria-pressed={mode === 'chiedi'}
-          aria-label="Chiedi"
-          data-testid="highlight-chiedi"
-          className={segment}
-          onPointerDown={onSaveSelection}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
-            if (onApplyChiedi?.()) return
-            onMode(mode === 'chiedi' ? null : 'chiedi')
-          }}
-        >
-          <HelpCircle className="size-4" aria-hidden />
+          <ChatSparkIcon className="size-4" />
         </button>}</Tooltip>
         <span className="my-1 w-px bg-border/60 mx-0.5 max-md:mx-0 max-md:my-0.5" aria-hidden="true" />
         <Tooltip content="Togli tutte le evidenziazioni">{(trigger) => <button

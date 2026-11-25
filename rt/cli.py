@@ -947,7 +947,8 @@ def cmd_api(args: argparse.Namespace) -> None:
     from rt.api.server import run
     from rt.core.log_stamp import stamp_std_streams
     stamp_std_streams()
-    code = run(host=args.host, port=args.port, reset_token=args.reset_token,
+    from rt.core.lan import bind_host
+    code = run(host=args.host or bind_host(), port=args.port, reset_token=args.reset_token,
                no_auth=args.no_auth, dev_cors=args.dev_cors, service=getattr(args, "service", False))
     if code:
         sys.exit(code)
@@ -1022,7 +1023,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_logs.set_defaults(func=cmd_logs)
 
     p_api = subparsers.add_parser("api", help="Avvia l'API REST locale (FastAPI, documentazione su /docs)")
-    p_api.add_argument("--host", default="127.0.0.1", help="Indirizzo di ascolto (default: 127.0.0.1, solo questo Mac)")
+    p_api.add_argument("--host", default=None, help="Indirizzo di ascolto (default: 127.0.0.1, solo questo Mac; "
+                       "0.0.0.0 se nelle Impostazioni è acceso l'accesso dalla rete locale)")
     p_api.add_argument("--port", type=int, default=8765, help="Porta (default: 8765)")
     p_api.add_argument("--reset-token", action="store_true", help="Genera e mostra un nuovo token API")
     p_api.add_argument("--no-auth", action="store_true", help="Disattiva l'autenticazione (solo su 127.0.0.1)")

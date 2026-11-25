@@ -137,3 +137,30 @@ def test_health_reports_running_version_not_file_on_disk(anon, monkeypatch):
     # Durante un aggiornamento il file VERSION cambia prima che il vecchio processo si fermi.
     monkeypatch.setattr("rt.core.version.get_current_version", lambda *_a, **_k: "99.0.0")
     assert anon.get("/api/v1/health").json()["version"] == anon.app.version != "99.0.0"
+
+
+def test_session_cookie_secure_behind_tailscale_serve(rt_db, api_token):
+    app = create_app()
+    loopback = TestClient(app, client=("127.0.0.1", 50000))
+    res = loopback.post("/api/v1/auth/session", json={"token": api_token},
+                        headers={"X-Forwarded-Proto": "https"})
+    assert res.status_code == 200
+    cookies = res.headers.get_list("set-cookie")
+    assert len(cookies) == 2
+    assert all("Secure" in c for c in cookies)
+    del_res = loopback.delete("/api/v1/auth/session",
+                              headers={"Authorization": f"Bearer {api_token}", "X-Forwarded-Proto": "https"})
+    assert del_res.status_code == 204
+    assert all("Secure" in c for c in del_res.headers.get_list("set-cookie"))
+
+    # Client non loopback: X-Forwarded-Proto non è fidato → niente Secure
+    remote = TestClient(app, client=("100.64.0.2", 50000))
+    res_remote = remote.post("/api/v1/auth/session", json={"token": api_token},
+                             headers={"X-Forwarded-Proto": "https"})
+    assert res_remote.status_code == 200
+    assert all("Secure" not in c for c in res_remote.headers.get_list("set-cookie"))
+
+    # Richiesta HTTP locale senza proxy HTTPS → niente Secure
+    res_http = loopback.post("/api/v1/auth/session", json={"token": api_token})
+    assert res_http.status_code == 200
+    assert all("Secure" not in c for c in res_http.headers.get_list("set-cookie"))

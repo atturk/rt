@@ -17,7 +17,7 @@ test('la ricerca filtra sul client: nessuna richiesta all’API per tasto', asyn
     if (r.url().includes('/api/v1/lessons?')) queries.push(r.url())
   })
 
-  const search = page.getByLabel('Cerca')
+  const search = page.getByLabel('Cerca', { exact: true })
   await expect(search).toHaveAttribute('placeholder', 'Cerca')
   const started = Date.now()
   await search.pressSequentially('farmacologia')

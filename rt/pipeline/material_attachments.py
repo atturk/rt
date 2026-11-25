@@ -3,7 +3,8 @@ import json
 import os
 
 from rt.core.lesson_paths import lesson_path
-from rt.core.archive import page_image_path
+from rt.core.archive import file_type, page_image_path
+from rt.core.captions import page_alt
 from rt.core.sources import load_sources
 from rt.core.materials import material_pages
 from rt.core.state import read_info_yaml
@@ -96,7 +97,7 @@ def attach_material_pages(lesson_dir, outline, *, mock=False, ctx=None):
                     filename = save_raw_image(lesson_dir, data, image_hash)
                     # Il documento usa soltanto filename e alt_text, mai il testo OCR.
                     descriptions.setdefault(image_hash, {'filename': filename, 'source': f'material:{pid}',
-                        'alt_text': f"{os.path.basename(source.file)}, pagina {page['numero']}"})
+                        'alt_text': page_alt(source.file, page['numero'], page.get('titolo'), single_page=file_type(source.file) == 'immagine')})
                     mid = labels[label]
                     if image_hash not in assigned.get(mid, []):
                         assigned.setdefault(mid, []).append(image_hash)

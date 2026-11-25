@@ -82,6 +82,8 @@ def start_outline_timer(lesson_dir: str, seconds: Optional[int] = None) -> Optio
 
     if seconds is None:
         cfg = load_config()
+        if getattr(cfg.ui, "outline_mode", "auto") != "timer":
+            return None
         seconds = getattr(cfg.ui, "outline_auto_approval_seconds", 10)
 
     if seconds <= 0:
@@ -158,6 +160,7 @@ def get_outline_review(lesson_dir: str) -> Dict[str, Any]:
             }
             for m in outline.macro_sections
         ],
+        "generated_topics": list(outline.generated_topics or []),
         "approval": get_outline_approval(lesson_dir),
         "approved": approved,
         "expires_at": timer.get("expires_at") if timer and not approved else None,

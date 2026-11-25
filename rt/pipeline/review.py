@@ -571,7 +571,11 @@ def _apply_second_pass_review(
                     lesson_dir=lesson_dir,
                     image_data_url=images_data_urls,
                 )
-            except Exception:
+            except Exception as exc:
+                from rt.llm.cancel import RunCancelled
+                from rt.llm.errors import DeferredCall, DeferredPhase
+                if isinstance(exc, (RunCancelled, DeferredCall, DeferredPhase)):
+                    raise
                 resp = None
 
         if resp is None:
@@ -584,7 +588,11 @@ def _apply_second_pass_review(
                     unit_id=unit_label,
                     lesson_dir=lesson_dir,
                 )
-            except Exception:
+            except Exception as exc:
+                from rt.llm.cancel import RunCancelled
+                from rt.llm.errors import DeferredCall, DeferredPhase
+                if isinstance(exc, (RunCancelled, DeferredCall, DeferredPhase)):
+                    raise
                 final_issues.append(issue)
                 continue
 
@@ -706,6 +714,7 @@ def merge_unit_findings(lesson_dir: str, prior: List[ScienceIssue], generated: L
     return combined, [], sequence
 
 
+@lesson_locked
 def _initialize_anchor_ledger(lesson_dir: str) -> None:
     """Le verifiche nuove producono già dati ancorati, non suggerimenti da migrare."""
     from rt.pipeline.ledger import load_ledger, save_ledger
@@ -794,7 +803,6 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
     cfg = load_config()
     stats = detect_statistical_asr_risks(lesson_dir=lesson_dir,
         k=cfg.review.asr_statistical_k, floor=cfg.review.asr_statistical_floor)
-    prior = load_science_issues(lesson_dir)
     _initialize_anchor_ledger(lesson_dir)
     generated = []
     client = LLMClient(force_mock=force_mock)
@@ -811,7 +819,8 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
     anchor_findings(generated, unit)
     from rt.core.lesson_lock import lesson_lock
     with lesson_lock(lesson_dir):
-        combined, orphaned, sequence = merge_unit_findings(lesson_dir, load_science_issues(lesson_dir), generated, draft.units, {unit_id})
+        prior = load_science_issues(lesson_dir)
+        combined, orphaned, sequence = merge_unit_findings(lesson_dir, prior, generated, draft.units, {unit_id})
         save_science_issues(combined, lesson_dir)
         record_review_unit(lesson_dir, unit, cfg, client, len(generated), "issues" if generated else result,
                            text_hash=raw_hashes.get(unit_id))
@@ -1113,6 +1122,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     failures = UnitFailureTracker()
     stopped_early = False
     fatal_error = None
+    deferred_calls = []
     jev_prefilter: Dict[str, Any] = {}
 
     work = [(idx, unit) for idx, unit in enumerate(draft.units, start=1)
@@ -1180,7 +1190,13 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
                          message=f"{unit.unit_id} {unit_title}".strip(), unit_id=unit.unit_id,
                          unit_title=unit_title or None, failed=len(failures.failures))
         if exc is not None:
+            from rt.llm.errors import DeferredCall, DeferredPhase
             from rt.services.context import RunCancelled
+            if isinstance(exc, (DeferredCall, DeferredPhase)):
+                deferred_calls.append(exc)
+                pending_units.discard(unit.unit_id)
+                running_units.discard(unit.unit_id)
+                continue
             if isinstance(exc, RunCancelled) and ctx and ctx.cancel_token.cancelled:
                 continue
             if not is_unit_failure(exc):
@@ -1242,6 +1258,10 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
 
     if fatal_error is not None:
         raise fatal_error
+
+    if deferred_calls:
+        from rt.llm.deferred import raise_deferred_phase
+        raise_deferred_phase(deferred_calls, phase="review")
 
     # Finalizzazione se tutte le unità del draft sono state esaminate
     all_draft_unit_ids = [u.unit_id for u in draft.units]

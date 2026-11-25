@@ -121,6 +121,9 @@ def run_pipeline(
     except (KeyboardInterrupt, RunCancelled):
         raise
     except Exception as exc:  # noqa: BLE001 - lo stato FAILED porta l'eccezione al chiamante
+        from rt.llm.errors import DeferredCall, DeferredPhase
+        if isinstance(exc, (DeferredCall, DeferredPhase)):
+            raise
         result.status = PipelineStatus.FAILED
         result.error = exc
     return result
@@ -161,14 +164,20 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, notifiers, resul
     result.phase_results["outline"] = run_outline(lesson_dir, force=force, force_mock=mock, ctx=ctx)
 
     if outline_needs_approval(lesson_dir, force):
+        from rt.core.config import load_config
         from rt.services import outline_service
         if options.auto_accept:
             outline_service.approve_outline(lesson_dir, actor="auto_accept", channel=options.source)
         elif not outline_service.is_outline_approved(lesson_dir):
-            outline_service.start_outline_timer(lesson_dir)
-            _wait(result, ctx, "outline_approval", lesson_dir,
-                  {"lesson_dir": lesson_dir, "outline": outline_service.get_outline_review(lesson_dir)})
-            return
+            mode = getattr(load_config().ui, "outline_mode", "auto")
+            if mode == "auto":
+                outline_service.approve_outline(lesson_dir, actor="server", channel="server")
+            else:
+                if mode == "timer":
+                    outline_service.start_outline_timer(lesson_dir)
+                _wait(result, ctx, "outline_approval", lesson_dir,
+                      {"lesson_dir": lesson_dir, "outline": outline_service.get_outline_review(lesson_dir)})
+                return
 
     ctx.check_cancelled()
     result.phase_results["rewrite"] = run_rewrite(lesson_dir, force=force, force_mock=mock, ctx=ctx)
@@ -180,6 +189,7 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, notifiers, resul
         result.phase_results["review"] = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx)
         raise_if_incomplete("review", result.phase_results["review"])
         remaining = _auto_accept_pending(lesson_dir, ctx, options.source) if options.auto_accept else _pending(lesson_dir)
+        # Nella lavorazione completa basta «Lezione pronta» (o «Issue da decidere»): niente doppioni.
         if remaining:
             _wait(result, ctx, "science_issue", lesson_dir,
                   {"lesson_dir": lesson_dir, "pending": [i.id for i in remaining]})
@@ -194,6 +204,8 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, notifiers, resul
     final_dir = bld_res.get("lesson_dir") or lesson_dir
     result.lesson_dir = final_dir
     result.status = PipelineStatus.COMPLETED
+    if not mock:
+        notify_build_completed(final_dir, bld_res, ctx, notifiers)
 
 
 
@@ -213,6 +225,26 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], ctx: R
             continue
         if sent:
             ctx.emit(Notice(message=f"Notifica di fine lavorazione inviata ({getattr(notifier, 'channel', 'notifica')})."))
+
+
+def notify_review_completed(lesson_dir: str, pending_count: int, ctx: RunContext,
+                            notifiers: Sequence[Notifier]) -> None:
+    """Avvisa i notifier (es. Telegram) che la verifica è completata."""
+    if not notifiers:
+        return
+    title = lesson_title(lesson_dir)
+    for notifier in notifiers:
+        fn = getattr(notifier, "review_completed", None)
+        if fn is None:
+            continue
+        try:
+            sent = fn(lesson_dir, pending_count, title)
+        except Exception as exc:  # noqa: BLE001 - la notifica non deve mai far fallire la run
+            from rt.services.context import _sanitize
+            ctx.emit(Notice(level="warning", message=f"Notifica di fine verifica non inviata: {_sanitize(str(exc))}"))
+            continue
+        if sent:
+            ctx.emit(Notice(message=f"Notifica di fine verifica inviata ({getattr(notifier, 'channel', 'notifica')})."))
 
 
 def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> Dict[str, Any]:
@@ -281,6 +313,9 @@ def automatic_enrichment(lesson_dir: str, mock: bool, ctx: RunContext,
     except RunCancelled:
         raise
     except Exception as exc:
+        from rt.llm.errors import DeferredCall, DeferredPhase
+        if isinstance(exc, (DeferredCall, DeferredPhase)):
+            raise
         from rt.services.context import _sanitize
         ctx.emit(Notice(level="warning", message=f"Analisi di arricchimento da riprovare: {_sanitize(str(exc))}"))
         return {"error": _sanitize(str(exc))}
@@ -371,6 +406,8 @@ def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunCon
             result.lesson_dir = res.get("lesson_dir") or lesson_dir
     result.phase_results[phase] = res
     raise_if_incomplete(phase, res)
+    if phase == "review":
+        notify_review_completed(lesson_dir, len(_pending(lesson_dir)), ctx, notifiers)
     if phase in ("rewrite", "review"):
         with ctx.activate():
             result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)

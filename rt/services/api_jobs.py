@@ -9,7 +9,7 @@ viene sostituito. Ai tipi che ricevono file caricati via API (run_pipeline, inge
 add_images, import_lesson_zips) si aggiunge la pulizia della cartella di upload.
 """
 import os
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import BaseModel
 
@@ -65,7 +65,7 @@ def restore_version_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 def ingest_notes_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.notes_lesson_service import create_notes_lesson
     from rt.services.job_handlers import pipeline_options, outcome_from_pipeline
-    from rt.services.pipeline_service import run_pipeline
+    from rt.services.pipeline_service import build_notifiers, run_pipeline
     options = job.payload.get("options") or {}
     lesson = job.lesson_path if job.lesson_path and fs.isdir(job.lesson_path) else create_notes_lesson(
         job.payload["text"], **{name: options.get(name, "")
@@ -79,14 +79,14 @@ def ingest_notes_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     link_imported_lesson(lesson, job.payload.get("calendar_entry_id"), job.payload.get("calendar_date"),
                          job.payload.get("calendar_materia"), job.payload.get("calendar_start"))
     if job.payload.get("run"):
-        return finish_import(outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx)), job.payload)
+        return finish_import(outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx, build_notifiers())), job.payload)
     return finish_import(_done({"status": "setup_completato", "lesson_dir": lesson}, lesson_path=lesson), job.payload)
 
 
 def ingest_sources_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.materials_lesson_service import create_source_lesson, finish_import, link_imported_lesson
     from rt.services.job_handlers import pipeline_options, outcome_from_pipeline
-    from rt.services.pipeline_service import run_pipeline
+    from rt.services.pipeline_service import build_notifiers, run_pipeline
     from rt.pipeline.prepare import run_prepare
     options = job.payload.get("options") or {}
     lesson = job.lesson_path if job.lesson_path and fs.isdir(job.lesson_path) else create_source_lesson(
@@ -100,7 +100,7 @@ def ingest_sources_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     with ctx.activate():
         run_prepare(lesson, ctx=ctx)
         if job.payload.get("run"):
-            outcome = outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx))
+            outcome = outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx, build_notifiers()))
         else:
             outcome = _done({"status": "setup_completato", "lesson_dir": lesson}, lesson_path=lesson)
     return finish_import(outcome, job.payload)
@@ -127,54 +127,142 @@ def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     return _done({"phase": "rewrite", "units": results}, lesson_path=job.lesson_path)
 
 
+def _run_parallel_review_items(
+    work: list,
+    unit_id_fn,
+    run_fn,
+    pending: list[str],
+    ctx: RunContext,
+    parallel: int,
+) -> dict[int, dict]:
+    """Esegue in parallelo (fino a parallel worker) le unità/parti di una verifica manuale,
+    emettendo ReviewUnitStarted/ReviewUnitDone e restituendo i risultati indicizzati."""
+    from rt.llm.errors import DeferredCall, DeferredPhase
+    from rt.pipeline.review import _parallel_units
+    from rt.services.context import RunCancelled
+    from rt.services.events import ReviewUnitDone, ReviewUnitStarted
+
+    results_by_idx: dict[int, dict] = {}
+    running: list[str] = []
+    deferred_calls: list[BaseException] = []
+    fatal_error: Optional[BaseException] = None
+
+    def invoke(idx: int, item):
+        try:
+            return idx, unit_id_fn(item), run_fn(item), None
+        except Exception as exc:  # noqa: BLE001
+            return idx, unit_id_fn(item), None, exc
+
+    def started(entry):
+        _, item = entry
+        uid = unit_id_fn(item)
+        running.append(uid)
+        ctx.emit(ReviewUnitStarted(unit_id=uid, pending_units=pending.copy(), running_units=running.copy()))
+
+    ctx.check_cancelled()
+    for idx, uid, res, exc in _parallel_units(
+        work,
+        invoke,
+        max(1, parallel),
+        lambda: fatal_error is not None or bool(ctx.cancel_token.cancelled),
+        started,
+    ):
+        if uid in running:
+            running.remove(uid)
+        if exc is not None:
+            if isinstance(exc, (DeferredCall, DeferredPhase)):
+                deferred_calls.append(exc)
+                if uid in pending:
+                    pending.remove(uid)
+                continue
+            if isinstance(exc, RunCancelled) and ctx.cancel_token.cancelled:
+                continue
+            fatal_error = fatal_error or exc
+            continue
+        results_by_idx[idx] = res
+        if uid in pending:
+            pending.remove(uid)
+        ctx.emit(ReviewUnitDone(unit_id=uid, issues=res.get("issues", 0), pending_units=pending.copy(), running_units=running.copy()))
+
+    ctx.check_cancelled()
+    if fatal_error is not None:
+        raise fatal_error
+    if deferred_calls:
+        from rt.llm.deferred import raise_deferred_phase
+        raise_deferred_phase(deferred_calls, phase="review")
+    return results_by_idx
+
+
 def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.core.config import load_config
     from rt.pipeline.review import run_review_unit
     from rt.services.prompt_settings import extra_scope
     from rt.pipeline.rewrite import load_draft
     present = {unit.unit_id for unit in load_draft(job.lesson_path).units}
-    from rt.services.events import ReviewUnitsQueued, ReviewUnitDone, ReviewUnitStarted
-    results = []
-    pending = list(job.payload.get("units") or [job.payload["unit"]])
+    from rt.services.events import ReviewUnitsQueued, ReviewUnitDone
+    units = list(job.payload.get("units") or [job.payload["unit"]])
+    pending = units.copy()
     options = job.payload.get("options") or {}
     if options.get("include_excluded") and len(pending) != 1:
         raise ValueError("L'esclusione si può ignorare solo per una singola unità.")
     ctx.emit(ReviewUnitsQueued(pending_units=pending.copy()))
+    results_by_idx: dict[int, dict] = {}
+    work = []
     with extra_scope(job.lesson_path, "review", job.payload), ctx.activate():
-        for unit in pending.copy():
+        for idx, unit in enumerate(units):
             ctx.check_cancelled()
             if unit not in present:
-                results.append({"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"})
+                results_by_idx[idx] = {"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"}
                 pending.remove(unit)
                 ctx.emit(ReviewUnitDone(unit_id=unit, issues=0, pending_units=pending.copy()))
-                continue
-            ctx.emit(ReviewUnitStarted(unit_id=unit, pending_units=pending.copy(), running_units=[unit]))
-            results.append(run_review_unit(job.lesson_path, unit,
-                                           force_mock=bool((job.payload.get("options") or {}).get("mock")),
-                                           parent_context=bool(job.payload.get("parent_context")),
-                                           force=bool(job.payload.get("force") or options.get("force")),
-                                           **{name: True for name in ("skip_prefilter", "include_excluded") if options.get(name)}))
-            pending.remove(unit)
-            ctx.emit(ReviewUnitDone(unit_id=unit, issues=results[-1].get("issues", 0), pending_units=pending.copy()))
+            else:
+                work.append((idx, unit))
+        if work:
+            parallel = getattr(load_config().review, "parallel_units", 4)
+            results_by_idx.update(_run_parallel_review_items(
+                work,
+                lambda u: u,
+                lambda unit: run_review_unit(
+                    job.lesson_path, unit,
+                    force_mock=bool(options.get("mock")),
+                    parent_context=bool(job.payload.get("parent_context")),
+                    force=bool(job.payload.get("force") or options.get("force")),
+                    **{name: True for name in ("skip_prefilter", "include_excluded") if options.get(name)},
+                ),
+                pending,
+                ctx,
+                parallel,
+            ))
+    results = [results_by_idx[i] for i in range(len(units))]
+    if len(units) > 1:  # una sola unità si verifica in pochi secondi: niente notifica
+        from rt.services.pipeline_service import _pending, build_notifiers, notify_review_completed
+        notify_review_completed(job.lesson_path, len(_pending(job.lesson_path)), ctx, build_notifiers())
     return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)
 
 
 def review_part_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.core.config import load_config
     from rt.pipeline.review import run_review_part
-    from rt.services.events import ReviewUnitsQueued, ReviewUnitStarted, ReviewUnitDone
+    from rt.services.events import ReviewUnitsQueued
     ctx.lesson_dir = job.lesson_path
-    pending = [part["unit_id"] for part in job.payload["parts"]]
+    parts = list(job.payload["parts"])
+    pending = [part["unit_id"] for part in parts]
     ctx.emit(ReviewUnitsQueued(pending_units=pending.copy()))
-    results = []
+    force_mock = ctx.force_mock or bool((job.payload.get("options") or {}).get("mock"))
     with ctx.activate():
-        for part in job.payload["parts"]:
-            ctx.check_cancelled()
-            uid = part["unit_id"]
-            ctx.emit(ReviewUnitStarted(unit_id=uid, pending_units=pending.copy(), running_units=[uid]))
-            result = run_review_part(job.lesson_path, part,
-                                     force_mock=ctx.force_mock or bool((job.payload.get("options") or {}).get("mock")))
-            results.append(result)
-            pending.remove(uid)
-            ctx.emit(ReviewUnitDone(unit_id=uid, issues=result["issues"], pending_units=pending.copy()))
+        parallel = getattr(load_config().review, "parallel_units", 4)
+        results_by_idx = _run_parallel_review_items(
+            list(enumerate(parts)),
+            lambda part: part["unit_id"],
+            lambda part: run_review_part(job.lesson_path, part, force_mock=force_mock),
+            pending,
+            ctx,
+            parallel,
+        )
+    results = [results_by_idx[i] for i in range(len(parts))]
+    if len(parts) > 1:  # una sola unità si verifica in pochi secondi: niente notifica
+        from rt.services.pipeline_service import _pending, build_notifiers, notify_review_completed
+        notify_review_completed(job.lesson_path, len(_pending(job.lesson_path)), ctx, build_notifiers())
     return _done({"issues": sum(row["issues"] for row in results), "units": results}, lesson_path=job.lesson_path)
 
 
@@ -216,7 +304,7 @@ def with_upload_cleanup(handler: Callable[[JobInfo, RunContext], JobOutcome]):
         except RunCancelled:
             _cleanup_upload(job.payload)
             raise
-        if outcome.state != JobState.WAITING_FOR_DECISION:
+        if outcome.state not in (JobState.WAITING_FOR_DECISION, JobState.WAITING_FOR_PROVIDER):
             _cleanup_upload(job.payload)
         return outcome
     wrapped.upload_cleanup = True
@@ -417,7 +505,7 @@ def credential_test_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                 if isinstance(c, dict)}
     provider = p.get("provider") or (declared.get(p["credential"]) or {}).get("provider")
     try:
-        LLMClient().call_structured(
+        LLMClient(interactive=True).call_structured(
             prompt='Rispondi con {"ok": true}.', system_prompt="Rispondi solo con JSON.",
             response_model=_Ping, job_name="outline", max_retries=0,
             override_provider=provider, override_model=p["model"], override_base_url=p.get("base_url") or None,

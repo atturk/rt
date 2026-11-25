@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, disableOutlineTimer, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf, startNewLesson, uniqueAudio } from './support'
+import { test, apiGet, authHeaders, disableOutlineTimer, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf, startNewLesson, uniqueAudio } from './support'
 
 // RT4-F7 (aggiornato in FA9): il percorso completo di una lezione nuova solo dalla SPA, come
 // 'rt run' da terminale: accesso con il link, Nuova lezione, scaletta nella pagina della lezione,
@@ -148,22 +148,26 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   const before = (await apiGet<Settings>(page.request, '/settings')).transcription
   const chooseEngine = async (option: string) => {
     await card.getByRole('button', { name: 'Motore', exact: true }).click()
-    await page.getByRole('menuitemradio', { name: option, exact: true }).click()
+    // L'etichetta del pulsante è il nome breve; la voce del menu può aggiungere «· consigliato».
+    await page.getByRole('menuitemradio').filter({ hasText: option }).first().click()
   }
-  const beforeLabel = (await engine.locator('span').first().textContent())!
   await chooseEngine('Server OpenAI-compatible')
   await card.getByLabel('Base URL del server').fill('http://127.0.0.1:9100/v1')
+  await card.getByLabel('Base URL del server').blur()
   await card.getByLabel('Modello', { exact: true }).fill('whisper-percorso')
-  await card.getByRole('button', { name: 'Salva trascrizione' }).click()
-  await expect(card.getByRole('status').filter({ hasText: 'Salvato.' })).toBeVisible()
+  await card.getByLabel('Modello', { exact: true }).blur()
+  await expect.poll(async () => (await apiGet<Settings>(page.request, '/settings')).transcription).toMatchObject({
+    engine: 'custom', base_url: 'http://127.0.0.1:9100/v1', model: 'whisper-percorso',
+  })
   await page.reload()
   await expect(engine).toHaveAttribute('data-value', 'custom')
   await expect(card.getByLabel('Modello', { exact: true })).toHaveValue('whisper-percorso')
-  expect((await apiGet<Settings>(page.request, '/settings')).transcription).toMatchObject({
-    engine: 'custom', base_url: 'http://127.0.0.1:9100/v1', model: 'whisper-percorso',
-  })
-  if (before.engine !== 'custom') await chooseEngine(beforeLabel)
-  await card.getByRole('button', { name: 'Salva trascrizione' }).click()
+  // Ripristino via API: il motore di partenza può non essere tra le voci (macparakeet solo su macOS).
+  if (before.engine !== 'custom') {
+    const res = await page.request.put('/api/v1/settings/transcription', { headers: authHeaders(), data: { engine: before.engine, base_url: before.base_url ?? '', model: before.model ?? '' } })
+    expect(res.ok(), await res.text()).toBeTruthy()
+  }
+  await expect.poll(async () => (await apiGet<Settings>(page.request, '/settings')).transcription.engine).toBe(before.engine)
   await page.reload()
   await expect(engine).toHaveAttribute('data-value', before.engine)
 })

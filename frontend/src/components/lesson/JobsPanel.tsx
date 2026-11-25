@@ -1,3 +1,4 @@
+import { Clock } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router'
 
@@ -15,6 +16,7 @@ const JOB_STATES: Record<string, [string, Tone]> = {
   queued: ['in coda', 'neutral'],
   running: ['in corso', 'warning'],
   waiting_for_decision: ['serve una tua decisione', 'warning'],
+  waiting_for_provider: ['in attesa del provider', 'neutral'],
   succeeded: ['completato', 'success'],
   failed: ['fallito', 'danger'],
   cancelled: ['annullato', 'neutral'],
@@ -59,7 +61,10 @@ export function JobsPanel({ lessonId }: { lessonId: number }) {
             <li key={job.id} className="flex min-w-0 flex-col gap-1 text-xs" data-job-state={job.state} data-job-id={job.id}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">{jobLabel(job.type, job.payload)}</span>
-                <Badge tone={tone}>{label}</Badge>
+                <Badge tone={tone}>
+                  {job.state === 'waiting_for_provider' && <Clock className="size-3 shrink-0" aria-hidden />}
+                  {label}
+                </Badge>
                 {job.retry_of && <span className="text-muted-foreground">nuovo tentativo</span>}
                 {job.state === 'failed' && !job.retried_by && (
                   <span className="ml-auto flex flex-wrap items-center gap-2">
@@ -71,12 +76,17 @@ export function JobsPanel({ lessonId }: { lessonId: number }) {
                     Nuovo tentativo
                   </Link>
                 )}
-                {isActiveJob(job.state) && (
+                {(isActiveJob(job.state) || job.state === 'waiting_for_provider') && (
                   <Button variant="ghost" size="sm" className="ml-auto h-6" disabled={job.cancel_requested} onClick={() => cancel.mutate(job.id)}>
                     {job.cancel_requested ? 'Annullamento…' : 'Annulla'}
                   </Button>
                 )}
               </div>
+              {job.state === 'waiting_for_provider' && (
+                <span className="text-muted-foreground">
+                  Le risposte arrivano entro 24 ore, a costo ridotto. RT le riceve anche con la finestra chiusa.
+                </span>
+              )}
               {job.state === 'running' && p && (
                 <div>
                   <span className="text-muted-foreground [overflow-wrap:anywhere]" data-testid="job-progress-label">

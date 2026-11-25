@@ -173,7 +173,7 @@ def _real_run_with_mock_llm(ws):
         f.write("mock_llm: true\n")
 
 
-def test_worker_pipeline_and_build_do_not_notify_telegram(api_client, ws, worker, rt_db, telegram):
+def test_worker_pipeline_sends_telegram_notification(api_client, ws, worker, rt_db, telegram):
     server, prepare_worker_process = telegram
     prepare_worker_process(DbJobQueue(rt_db))
     _real_run_with_mock_llm(ws)
@@ -183,10 +183,12 @@ def test_worker_pipeline_and_build_do_not_notify_telegram(api_client, ws, worker
     done = job(api_client, res.json()["job_id"])
     assert done["state"] == "succeeded", done
     messages = [body for method, body in server.sent if method == "sendMessage"]
-    assert messages == []
+    assert len(messages) == 1 and "Lezione pronta" in messages[0]["text"] and messages[0]["chat_id"] == "-100123"
     events = api_client.get(f"/api/v1/jobs/{res.json()['job_id']}/events/list").json()
-    assert not any(e["type"] == "notice" and "Notifica di fine lavorazione" in e["payload"]["message"] for e in events)
+    assert any(e["type"] == "notice" and "Notifica di fine lavorazione inviata" in e["payload"]["message"] for e in events)
 
+    # build singolo: nessuna seconda notifica automatica
+    server.sent.clear()
     res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": "build", "rename": False})
     drain(worker)
     assert job(api_client, res.json()["job_id"])["state"] == "succeeded"
@@ -205,7 +207,8 @@ def test_notification_error_does_not_fail_job(api_client, ws, worker, rt_db, tel
     assert done["state"] == "succeeded", done
     events = api_client.get(f"/api/v1/jobs/{res.json()['job_id']}/events/list").json()
     warning = [e for e in events if e["type"] == "notice" and e["payload"].get("level") == "warning"]
-    assert not any("Notifica di fine lavorazione" in e["payload"]["message"] for e in warning)
+    assert any("Notifica di fine lavorazione non inviata" in e["payload"]["message"] for e in warning)
+    assert "rifiutato" not in str(warning)
     assert server.sent == []
 
 

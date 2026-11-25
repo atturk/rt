@@ -21,9 +21,9 @@ export function Segmented({ label, children, className }: { label: string; child
   )
 }
 
-export function ExtractOptions({ value, onChange, unavailable = {} }: { value: Extraction; onChange: (value: Extraction) => void; unavailable?: Reasons<Extraction> }) {
+export function ExtractOptions({ value, onChange, unavailable = {}, className }: { value: Extraction; onChange: (value: Extraction) => void; unavailable?: Reasons<Extraction>; className?: string }) {
   return (
-    <Segmented label="Estrai">
+    <Segmented label="Estrai" className={className}>
       {EXTRACTIONS.map(([key, icon, label]) => (
         <IconButton key={key} icon={icon} label={label} active={value === key} aria-pressed={value === key}
           unavailable={unavailable[key]} onClick={() => onChange(key)} />
@@ -32,16 +32,16 @@ export function ExtractOptions({ value, onChange, unavailable = {} }: { value: E
   )
 }
 
-export function UseOptions({ value, onChange, unavailable = {}, off }: { value: Uso; onChange: (value: Uso) => void; unavailable?: Reasons<Uso>; off?: string | null }) {
+export function UseOptions({ value, onChange, unavailable = {}, off, showLabel = true, className }: { value: Uso; onChange: (value: Uso) => void; unavailable?: Reasons<Uso>; off?: string | null; showLabel?: boolean; className?: string }) {
   return (
     <div className="flex items-center gap-2">
-      <Segmented label="Uso">
+      <Segmented label="Uso" className={className}>
         {USES.map(([key, icon]) => (
           <IconButton key={key} icon={icon} label={USE_HINTS[key]} active={!off && value === key} aria-pressed={!off && value === key}
             unavailable={off || unavailable[key]} onClick={() => onChange(key)} />
         ))}
       </Segmented>
-      <span className="min-w-16 text-meta text-muted-foreground">{off ? '—' : USES.find(([key]) => key === value)?.[2]}</span>
+      {showLabel && <span className="min-w-16 text-meta text-muted-foreground">{off ? '—' : USES.find(([key]) => key === value)?.[2]}</span>}
     </div>
   )
 }
@@ -122,9 +122,6 @@ export function ReliabilityOptions({
           )
         })}
       </Segmented>
-      <span className="min-w-16 text-meta text-muted-foreground">
-        {current === 'alta' ? 'Alta' : current === 'normale' ? 'Normale' : 'Bassa'}
-      </span>
     </div>
   )
 }

@@ -17,6 +17,7 @@ import time
 import unicodedata
 import urllib.parse
 import webbrowser
+from typing import Optional
 
 from rt.core import bundle, paths
 
@@ -137,6 +138,96 @@ def _command(command: str) -> subprocess.CompletedProcess:
 
 _window_start_time = 0.0
 _announced_tokens = set()
+_announce_lock = threading.Lock()  # file_in_attesa e il watcher non consegnano due volte lo stesso file
+_programmatic_close = False
+
+
+def _destroy_window(window) -> None:
+    global _programmatic_close
+    _programmatic_close = True
+    window.destroy()
+
+
+ACTIVE_QUIT_JOB_STATES = frozenset({"running", "queued", "waiting_for_provider"})
+
+
+def active_jobs_quit_message(jobs) -> Optional[str]:
+    """Costruisce il testo dell'avviso di chiusura dal riepilogo dei job attivi (0, 1, N, batch)."""
+    if not jobs:
+        return None
+    count = sum(1 for job in jobs if isinstance(job, dict) and job.get("state") in ACTIVE_QUIT_JOB_STATES)
+    if count == 0:
+        return None
+    if count == 1:
+        return "C'è 1 lavoro in corso. Uscendo si interrompe e riprende alla prossima apertura di RT."
+    return f"Ci sono {count} lavori in corso. Uscendo si interrompono e riprendono alla prossima apertura di RT."
+
+
+def _fetch_active_jobs(base_url: str, timeout: float = 2.0) -> Optional[list]:
+    """Chiede all'API locale i job recenti entro timeout; se non risponde restituisce None."""
+    if not base_url:
+        return None
+    import urllib.request
+    from rt.api import auth
+
+    session = auth.create_session()
+    try:
+        request = urllib.request.Request(
+            base_url.rstrip("/") + "/api/v1/jobs?limit=200",
+            method="GET",
+            headers={"Cookie": f"{auth.SESSION_COOKIE}={session}"},
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return payload if isinstance(payload, list) else None
+    except Exception as exc:
+        _log(f"Controllo job attivi alla chiusura non riuscito: {exc}")
+        return None
+    finally:
+        auth.drop_session(session)
+
+
+def _confirm_quit_with_jobs(window, message: str) -> bool:
+    """Mostra il dialogo compatto con Esci comunque / Annulla (default Annulla e icona RT su macOS)."""
+    if sys.platform == "darwin" and getattr(window, "native", None) is not None:
+        try:
+            import AppKit
+
+            AppKit.NSApplication.sharedApplication()
+            AppKit.NSRunningApplication.currentApplication().activateWithOptions_(
+                AppKit.NSApplicationActivateIgnoringOtherApps
+            )
+            alert = AppKit.NSAlert.alloc().init()
+            alert.addButtonWithTitle_("Annulla")
+            alert.addButtonWithTitle_("Esci comunque")
+            alert.setMessageText_("Esci da RT")
+            alert.setInformativeText_(message)
+            alert.setAlertStyle_(AppKit.NSWarningAlertStyle)
+            img = _load_macos_icon()
+            if img:
+                alert.setIcon_(img)
+            return alert.runModal() == AppKit.NSAlertSecondButtonReturn
+        except Exception as exc:
+            _log(f"Dialogo macOS di conferma uscita non riuscito: {exc}")
+    return bool(window.create_confirmation_dialog("Esci da RT", message))
+
+
+def _allow_quit_close(window, base_url: str) -> bool:
+    """Alla chiusura della finestra (X) in modalità quit avvisa se ci sono job attivi."""
+    try:
+        from rt.core.config import load_config
+        close_action = load_config().ui.close_action
+    except Exception:
+        return True
+    if close_action != "quit":
+        return True
+    jobs = _fetch_active_jobs(base_url)
+    if jobs is None:
+        return True
+    warning = active_jobs_quit_message(jobs)
+    if not warning:
+        return True
+    return bool(_confirm_quit_with_jobs(window, warning))
 
 
 class DesktopApi:
@@ -148,9 +239,10 @@ class DesktopApi:
 
     def file_in_attesa(self) -> list:
         from rt.core import opened_files
-        items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
-        for it in items:
-            _announced_tokens.add(it["token"])
+        with _announce_lock:
+            items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
+            for it in items:
+                _announced_tokens.add(it["token"])
         return items
 
     def importa_collezione(self, token: str) -> dict:
@@ -449,6 +541,22 @@ class DesktopApi:
         _cleanup_share_dirs()
         return {"ok": True}
 
+    def stato_microfono(self) -> str:
+        from rt import window_permissions
+        return window_permissions.mic_status() if sys.platform == "darwin" else "unknown"
+
+    def richiedi_microfono(self) -> dict:
+        from rt import window_permissions
+        return window_permissions.request_mic_sync()
+
+    def stato_permessi(self) -> dict:
+        from rt import window_permissions
+        return window_permissions.permissions_status()
+
+    def apri_impostazioni_sistema(self, chiave: str) -> dict:
+        from rt import window_permissions
+        return window_permissions.open_system_settings(chiave)
+
     def set_zoom(self, factor: float) -> dict:
         """Imposta il fattore di zoom nativo della webview (macOS WKWebView, Windows WebView2)."""
         try:
@@ -694,10 +802,10 @@ def _maintenance(window, command: str) -> None:
     threading.Thread(target=work, name=f"rt-{command}", daemon=True).start()
 
 
-def _check_permissions(window) -> None:
+def _check_permissions(window, base_url: str = "") -> None:
     from rt import window_permissions
     try:
-        window_permissions.check(window, _notice, _open_path)
+        window_permissions.check(window, base_url)
     except Exception as exc:
         _log(f"Controllo dei permessi non riuscito: {exc}")
         _notice(window, f"Non riesco a controllare i permessi: {exc}")
@@ -764,12 +872,23 @@ def _guide_slugify(text: str) -> str:
     return hyphenated.strip("-")
 
 
+def _open_guide(window, base_url: str, route: str):
+    """Apre la guida navigando dentro l'app, senza ricaricare la pagina: così «Indietro»
+    della guida riporta alla pagina da cui si è entrati. Ricarica solo se l'app non risponde."""
+    try:
+        if window.evaluate_js(f"Boolean(window.rtNavigate && (window.rtNavigate({json.dumps(route)}), true))"):
+            return
+    except Exception as exc:
+        _log(f"Guida: navigazione interna non riuscita: {exc}")
+    window.load_url(f"{base_url}{route}")
+
+
 def _build_guide_menu(window, base_url: str):
     from webview.menu import Menu, MenuAction
     import yaml
 
     items = [
-        MenuAction("Cerca nella guida…", lambda: window.load_url(f"{base_url}/guida?cerca=1"))
+        MenuAction("Cerca nella guida…", lambda: _open_guide(window, base_url, "/guida?cerca=1"))
     ]
 
     guide_dir = os.path.join(paths.project_root(), "docs", "guida")
@@ -814,15 +933,15 @@ def _build_guide_menu(window, base_url: str):
         page_actions = []
         for sec_title, anchor in sections:
             route = f"/guida/{slug}#{anchor}" if slug != "index" else f"/guida#{anchor}"
-            def make_handler(target_url):
-                return lambda: window.load_url(target_url)
-            page_actions.append(MenuAction(sec_title, make_handler(f"{base_url}{route}")))
+            def make_handler(target_route):
+                return lambda: _open_guide(window, base_url, target_route)
+            page_actions.append(MenuAction(sec_title, make_handler(route)))
 
         if page_actions:
             items.append(Menu(page_title, page_actions))
         else:
             route = f"/guida/{slug}" if slug != "index" else "/guida"
-            items.append(MenuAction(page_title, lambda u=f"{base_url}{route}": window.load_url(u)))
+            items.append(MenuAction(page_title, lambda r=route: _open_guide(window, base_url, r)))
 
     return Menu("Aiuto", items)
 
@@ -838,12 +957,18 @@ def _menu(window, base_url: str, api=None):
             DesktopApi(window, base_url=base_url).apri_aggiornamento()
 
     def quit_rt():
-        if window.create_confirmation_dialog("Esci da RT", "RT smetterà di lavorare in background. Uscire?"):
+        jobs = _fetch_active_jobs(base_url)
+        warning = active_jobs_quit_message(jobs) if jobs is not None else None
+        if warning:
+            confirmed = _confirm_quit_with_jobs(window, warning)
+        else:
+            confirmed = window.create_confirmation_dialog("Esci da RT", "RT smetterà di lavorare in background. Uscire?")
+        if confirmed:
             def stop():
                 try:
                     from rt.desktop import stop_background
                     stop_background(base_url)
-                    window.destroy()
+                    _destroy_window(window)
                 except Exception as exc:
                     _log(f"RT non si è fermato: {exc}")
                     _notice(window, f"Non riesco a fermare RT: {exc}")
@@ -867,7 +992,7 @@ def _menu(window, base_url: str, api=None):
         MenuAction("Importa…", lambda: _import_collection(window, base_url)),
         MenuAction("Ripristina dati prima di un aggiornamento…", lambda: _restore_pre_update(window, base_url)),
         MenuAction("Diagnostica", lambda: _maintenance(window, "doctor")),
-        *([MenuAction("Controlla permessi", lambda: _check_permissions(window))]
+        *([MenuAction("Controlla permessi", lambda: _check_permissions(window, base_url))]
           if sys.platform in ("darwin", "win32") else []),
         MenuSeparator(),
         Menu("Autenticazione", [
@@ -951,9 +1076,92 @@ def about_options(info: dict, versions: dict | None = None) -> dict:
     return options
 
 
+def _macos_icon_path() -> str | None:
+    app = bundle.app_path()
+    if app:
+        candidate = os.path.join(app, "Contents", "Resources", "rt.icns")
+        if os.path.isfile(candidate):
+            return candidate
+    fallback = os.path.join(paths.project_root(), "packaging", "icons", "rt.icns")
+    return fallback if os.path.isfile(fallback) else None
+
+
+def _load_macos_icon():
+    icon_path = _macos_icon_path()
+    if not icon_path:
+        return None
+    try:
+        from AppKit import NSImage
+        return NSImage.alloc().initWithContentsOfFile_(icon_path)
+    except Exception:
+        return None
+
+
+def _install_macos_dialog_icon() -> None:
+    """Imposta subito l'icona di RT sull'app e sui dialoghi NSAlert di pywebview.
+
+    Il processo dell'app è python3, quindi senza questa configurazione prima di webview.start
+    macOS mostra l'icona generica (cartella blu) nei dialoghi di conferma e di input."""
+    try:
+        import AppKit
+        img = _load_macos_icon()
+        if not img:
+            return
+        AppKit.NSApplication.sharedApplication().setApplicationIconImage_(img)
+    except Exception as exc:
+        _log(f"Icona macOS non impostata: {exc}")
+        return
+
+    try:
+        from webview.platforms import cocoa
+        browser_view = cocoa.BrowserView
+        if getattr(browser_view, "_rt_icon_patched", False):
+            return
+
+        # Metodi ricopiati da pywebview 6.2.1 aggiungendo alert.setIcon_(img);
+        # se il wrapping fallisce restano i metodi originali di pywebview.
+        def display_confirmation_dialog(first_button, second_button, message):
+            AppKit.NSApplication.sharedApplication()
+            AppKit.NSRunningApplication.currentApplication().activateWithOptions_(
+                AppKit.NSApplicationActivateIgnoringOtherApps
+            )
+            alert = AppKit.NSAlert.alloc().init()
+            alert.addButtonWithTitle_(first_button)
+            alert.addButtonWithTitle_(second_button)
+            alert.setMessageText_(message)
+            alert.setAlertStyle_(AppKit.NSWarningAlertStyle)
+            alert.setIcon_(img)
+            return alert.runModal() == AppKit.NSAlertFirstButtonReturn
+
+        def display_input_dialog(first_button, second_button, prompt, default_text):
+            AppKit.NSApplication.sharedApplication()
+            AppKit.NSRunningApplication.currentApplication().activateWithOptions_(
+                AppKit.NSApplicationActivateIgnoringOtherApps
+            )
+            alert = AppKit.NSAlert.alloc().init()
+            text_field = AppKit.NSTextField.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 240, 24))
+            text_field.cell().setScrollable_(True)
+            text_field.setStringValue_(default_text)
+            alert.setAccessoryView_(text_field)
+            alert.addButtonWithTitle_(first_button)
+            alert.addButtonWithTitle_(second_button)
+            alert.setMessageText_(prompt)
+            alert.setAlertStyle_(AppKit.NSWarningAlertStyle)
+            alert.setIcon_(img)
+            if alert.runModal() == AppKit.NSAlertFirstButtonReturn:
+                return text_field.stringValue()
+            return None
+
+        browser_view.display_confirmation_dialog = staticmethod(display_confirmation_dialog)
+        browser_view.display_input_dialog = staticmethod(display_input_dialog)
+        browser_view._rt_icon_patched = True
+    except Exception as exc:
+        _log(f"Icona nei dialoghi macOS non configurata: {exc}")
+
+
 def _show_macos_about() -> None:
     from AppKit import (NSApplication, NSAttributedString, NSColor, NSFont,
-                        NSFontAttributeName, NSForegroundColorAttributeName, NSImage)
+                        NSFontAttributeName, NSForegroundColorAttributeName)
     from rt.core import bundle
     info = bundle.build_info()
     opts = about_options(info)
@@ -971,13 +1179,9 @@ def _show_macos_about() -> None:
     if "Version" in opts:
         panel_opts["Version"] = opts["Version"]
 
-    app = bundle.app_path()
-    if app:
-        icon_path = os.path.join(app, "Contents", "Resources", "rt.icns")
-        if os.path.isfile(icon_path):
-            img = NSImage.alloc().initWithContentsOfFile_(icon_path)
-            if img:
-                panel_opts["ApplicationIcon"] = img
+    img = _load_macos_icon()
+    if img:
+        panel_opts["ApplicationIcon"] = img
     NSApplication.sharedApplication().orderFrontStandardAboutPanelWithOptions_(panel_opts)
 
 
@@ -1003,21 +1207,12 @@ def _get_about_target():
 def _macos_menu() -> None:
     """Mantiene Modifica, collega Informazioni su RT e assegna Cmd+Q all'uscita."""
     from AppKit import NSApplication
-    try:
-        from AppKit import NSImage
-    except ImportError:
-        NSImage = None
     from PyObjCTools import AppHelper
-    from rt.core import bundle
 
     def configure():
-        app = bundle.app_path()
-        if app and NSImage is not None:
-            icon_path = os.path.join(app, "Contents", "Resources", "rt.icns")
-            if os.path.isfile(icon_path):
-                img = NSImage.alloc().initWithContentsOfFile_(icon_path)
-                if img:
-                    NSApplication.sharedApplication().setApplicationIconImage_(img)
+        img = _load_macos_icon()
+        if img:
+            NSApplication.sharedApplication().setApplicationIconImage_(img)
 
         about_target = _get_about_target()
         main_menu = NSApplication.sharedApplication().mainMenu()
@@ -1073,7 +1268,7 @@ def _smoke(window) -> None:
         with open(target, "w", encoding="utf-8", newline="\n") as f:
             json.dump(result, f, ensure_ascii=False)
             f.write("\n")
-        window.destroy()
+        _destroy_window(window)
 
 
 def install_macos_open_files(window=None) -> None:
@@ -1085,15 +1280,11 @@ def install_macos_open_files(window=None) -> None:
         selector = b"application:openFiles:"
 
         def open_files(self, app, filenames):
+            # Gira sul thread principale: evaluate_js qui aspetterebbe il thread principale stesso
+            # (rotellina). Si registrano i file e li annuncia _watch_opened_files, tutti insieme.
             from rt.core import opened_files
-            items = []
             for p in filenames or []:
-                reg = opened_files.register_file(str(p))
-                if reg:
-                    items.append({"token": reg["token"], "name": reg["name"], "size": reg["size"]})
-                    _announced_tokens.add(reg["token"])
-            if items and window:
-                window.evaluate_js(f"window.rtOpenedFiles && window.rtOpenedFiles({json.dumps(items)})")
+                opened_files.register_file(str(p))
             if hasattr(app, "replyToOpenOrPrint_"):
                 app.replyToOpenOrPrint_(0)
 
@@ -1109,8 +1300,9 @@ def open_window(base_url: str, path: str = "/") -> int:
     """Apre una sessione nella finestra; se non riesce usa il browser."""
     from rt.api import auth
     from rt.core import opened_files
-    global _window_start_time
+    global _window_start_time, _programmatic_close
     _window_start_time = time.time()
+    _programmatic_close = False
     try:
         opened_files.cleanup_expired(600)
     except Exception:
@@ -1175,9 +1367,16 @@ def open_window(base_url: str, path: str = "/") -> int:
                 smoke_done = True
                 _smoke(window)
 
+        def closing():
+            if _programmatic_close:
+                return True
+            return _allow_quit_close(window, base_url)
+
         window.events.loaded += loaded
         window.events.initialized += initialized
+        window.events.closing += closing
         if sys.platform == "darwin":
+            _install_macos_dialog_icon()
             window.events.shown += _macos_menu
             try:
                 from rt import window_permissions
@@ -1194,11 +1393,16 @@ def open_window(base_url: str, path: str = "/") -> int:
                 time.sleep(1)
                 try:
                     from rt.core import opened_files
-                    items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
-                    if items:
-                        for it in items:
-                            _announced_tokens.add(it["token"])
-                        window.evaluate_js(f"window.rtOpenedFiles && window.rtOpenedFiles({json.dumps(items)})")
+                    with _announce_lock:
+                        items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
+                        if not items:
+                            continue
+                        # Segnati come annunciati solo se la pagina li ha ricevuti: all'avvio da Finder
+                        # la pagina non è ancora pronta e li prende poi con file_in_attesa.
+                        if window.evaluate_js(
+                                f"!!window.rtOpenedFiles && (window.rtOpenedFiles({json.dumps(items)}), true)"):
+                            for it in items:
+                                _announced_tokens.add(it["token"])
                 except Exception as exc:
                     _log(f"Errore controllo file aperti: {exc}")
 
@@ -1215,12 +1419,20 @@ def open_window(base_url: str, path: str = "/") -> int:
                       gui="cocoa" if sys.platform == "darwin" else "edgechromium", **options)
         if engine_error:
             raise RuntimeError(engine_error[0])
+        if not _programmatic_close:
+            try:
+                from rt.core.config import load_config
+                if load_config().ui.close_action == "quit":
+                    from rt.desktop import stop_background
+                    stop_background(base_url)
+            except Exception as exc:
+                _log(f"Arresto in background alla chiusura non riuscito: {exc}")
         return 0
     except Exception as exc:
         _log(f"Non riesco ad aprire la finestra: {exc}. Apro il browser.")
         if window is not None and window.events.shown.is_set():
             try:
-                window.destroy()
+                _destroy_window(window)
             except Exception:
                 pass
         if os.environ.get("RT_WINDOW_SMOKE") == "1":
@@ -1284,7 +1496,7 @@ def _restart_after_import(window):
         command = [sys.executable, os.path.join(paths.project_root(), 'bin', 'rt'), 'desktop']
     else:
         _notice(window, 'Riapri RT')
-        window.destroy()
+        _destroy_window(window)
         return
     script = (
         'import sys, time, subprocess; '
@@ -1297,7 +1509,7 @@ def _restart_after_import(window):
     kwargs = {'creationflags': 0x08000000 | 0x00000008} if sys.platform == 'win32' else {'start_new_session': True}
     subprocess.Popen([sys.executable, '-c', script, paths.project_root(), str(os.getpid()), *command],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
-    window.destroy()
+    _destroy_window(window)
 
 
 def _import_collection(window, base_url, chosen=None):

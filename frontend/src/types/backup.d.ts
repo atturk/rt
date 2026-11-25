@@ -10,6 +10,7 @@ declare global {
   interface Window {
     __rtBackup?: (evento: BackupEvent) => void
     rtOpenedFiles?: (items: OpenedFileItem[]) => void
+    rtNavigate?: (to: string) => void
     pywebview?: {
       api: {
         salva_copia_backup: (percorsoSnapshot: string) => Promise<{

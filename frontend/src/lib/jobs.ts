@@ -48,6 +48,7 @@ export const PROGRESS_PHASE_LABELS: Record<string, string> = {
   enrichment_generate: "Generazione di un'idea",
   import_lesson_zips: 'Importazione da ZIP',
   export_lessons: 'Esportazione di lezioni',
+  batch: 'Batch differito',
 }
 
 export const QUIET_JOB_TYPES = new Set(['recall_evaluate', 'recall_comment', 'credential_test'])
@@ -56,6 +57,7 @@ export const JOB_STATE_LABELS: Record<string, string> = {
   queued: 'In coda',
   running: 'In esecuzione',
   waiting_for_decision: 'Serve la tua decisione',
+  waiting_for_provider: 'In attesa del provider',
   succeeded: 'Completato',
   failed: 'Fallito',
   cancelled: 'Annullato',
@@ -147,11 +149,23 @@ export function describeEvent(event: Pick<JobEvent, 'type' | 'payload'>): { text
     case 'job_requeued':
       return { text: 'Rimesso in coda', tone: 'neutral' }
     case 'job_resumed':
+      if (p.source === 'provider') {
+        return {
+          text: p.batch_fallback
+            ? String(p.reason ?? 'Lotto batch non riuscito: ripresa in modalità sincrona')
+            : 'Risposte dal provider ricevute: la pipeline riparte',
+          tone: p.batch_fallback ? 'warning' : 'success',
+        }
+      }
       return { text: 'Decisione presa: la pipeline riparte', tone: 'success' }
     case 'job_cancel_requested':
       return { text: 'Annullamento richiesto', tone: 'warning' }
     case 'job_waiting':
       return { text: 'In attesa di una tua decisione', tone: 'warning' }
+    case 'job_waiting_provider': {
+      const reqs = p.requests ? ` (${p.requests} richieste${p.provider ? ` · ${p.provider}` : ''})` : ''
+      return { text: `In attesa del provider${reqs}`, tone: 'neutral' }
+    }
     case 'job_finished': {
       if (p.closed) return { text: String(p.message ?? 'Chiuso'), tone: 'success' }
       const state = String(p.state ?? '')

@@ -52,8 +52,11 @@ Serve, che lo pubblica soltanto nella tua tailnet, in HTTPS (necessario per il r
 
 1. Installa Tailscale sul Mac e sull'iPhone con lo stesso account; nella console di Tailscale
    abilita MagicDNS e i certificati HTTPS.
-2. Sul Mac: `tailscale serve --bg 8765` (resta attivo ai riavvii; `tailscale serve status`
-   mostra l'indirizzo, del tipo `https://nome-mac.tailnet.ts.net`).
+2. Sul Mac: `tailscale serve --bg --https=8765 http://127.0.0.1:8765` (resta attivo ai riavvii;
+   `tailscale serve status` mostra l'indirizzo, del tipo `https://nome-mac.tailnet.ts.net:8765`).
+   Se sul Mac non ci sono altre app su Tailscale Serve puoi usare `tailscale serve --bg 8765`, che
+   usa la porta 443 (indirizzo senza porta); se nelle Impostazioni vedi che RT ascolta su
+   un'altra porta, sostituiscila a `8765`.
 3. Nella web app sul Mac: **Impostazioni > Generali > Accesso da un altro dispositivo**: RT
    propone da solo quell'indirizzo (lo legge da Tailscale, su qualunque Mac); premi **Crea QR di
    accesso** e inquadra il QR con l'iPhone. Non usare l'IP 100.x: il certificato HTTPS di

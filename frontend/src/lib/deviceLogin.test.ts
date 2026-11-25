@@ -37,4 +37,14 @@ describe('deviceLogin', () => {
     expect(preferredOrigin('', 'https://altro.tail1234.ts.net', tailnet)).toBe('https://altro.tail1234.ts.net')
     expect(preferredOrigin('', 'http://127.0.0.1:8765', null)).toBe('')
   })
+
+  it('aggiorna la porta se Tailscale Serve è attivo sullo stesso hostname', () => {
+    const saved = 'https://mac.ts.net'
+    const tailnet = 'https://mac.ts.net:8765'
+    expect(preferredOrigin(saved, 'http://127.0.0.1:8765', tailnet, true)).toBe(tailnet)
+    expect(preferredOrigin(saved, 'http://127.0.0.1:8765', tailnet, false)).toBe(saved)
+    expect(preferredOrigin('https://altra-vpn.example.com', 'http://127.0.0.1:8765', tailnet, true)).toBe(
+      'https://altra-vpn.example.com',
+    )
+  })
 })

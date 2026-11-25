@@ -204,8 +204,11 @@ def test_special_answers_are_evaluated_on_the_reasoning(tmp_path):
     with patch.object(recall_special, '_mock', return_value=False), \
             patch('rt.llm.client.LLMClient.call_structured',
                   return_value=RecallEvalMirataResult(correttezza=80, completezza=50, commento='Manca la verifica.')) as call:
-        text = recall.evaluate_recall_answer(path, question.id, 'gap 16')
-    assert text.startswith('Correttezza: 80%\nCompletezza: 50%')
+        eval_res = recall.evaluate_recall_answer(path, question.id, 'gap 16')
+    assert str(eval_res) == 'Manca la verifica.'
+    assert eval_res.correttezza == 80
+    assert eval_res.completezza == 50
+    assert eval_res.attinenza is None
     assert 'PROCEDIMENTO DEL TIPO' in call.call_args.kwargs['prompt']
 
 
@@ -283,3 +286,72 @@ def test_mock_special_variants_and_regeneration_do_not_save_clinical_material(tm
                 assert q.pregenerated_material is None
             else:
                 assert q.pregenerated_material
+
+
+def test_special_prompts_have_followup_rules():
+    from rt.llm.prompts import RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT, RECALL_EVAL_TEXT_SYSTEM_PROMPT
+    for prompt in (RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT, RECALL_EVAL_TEXT_SYSTEM_PROMPT):
+        assert "SENZA nominarlo né descriverlo" in prompt
+        assert "DOMANDA DI APPROFONDIMENTO (domanda_followup)" in prompt
+        assert "Nelle materie tecniche e scientifiche" in prompt
+        assert "parte_mancante" in prompt
+
+
+def test_special_followup_and_legacy_score_extraction(tmp_path):
+    path = lesson(tmp_path)
+    question = recall.generate_recall_batch(path, ESERCIZIO, None, [], force_mock=True)[0]
+
+    # 1. Prima risposta con followup e parte_mancante (mock)
+    eval1 = recall_service.handle_recall_answer(path, question.id, 'gap = 16', force_mock=True)
+    assert eval1.correttezza == 70
+    assert eval1.completezza == 60
+    assert eval1.attinenza is None
+    assert eval1.domanda_followup is not None
+    assert eval1.parte_mancante is not None
+    assert 'Correttezza:' not in str(eval1)
+
+    bank = recall.load_recall_bank(path)
+    ans = bank.answers[0]
+    assert ans.correttezza == 70 and ans.completezza == 60 and ans.attinenza is None
+    assert ans.domanda_followup == eval1.domanda_followup
+    assert ans.parte_mancante == eval1.parte_mancante
+
+    # 2. Approfondimento reale usa la soluzione attesa come riferimento
+    with patch.object(recall_special, '_mock', return_value=False), \
+            patch('rt.llm.client.LLMClient.call_structured',
+                  return_value=RecallEvalMirataResult(
+                      correttezza=95, completezza=90, commento='Ottimo approfondimento.', outcome='corretta'
+                  )) as call:
+        eval2 = recall_service.handle_recall_answer(
+            path, question.id, 'Confronto con valori normali 8-12.', force_mock=False, is_followup=True
+        )
+    assert eval2.outcome == 'corretta'
+    assert eval2.correttezza == 95 and eval2.completezza == 90 and eval2.attinenza is None
+    assert question.pregenerated_material in call.call_args.kwargs['prompt']
+    assert 'PARTE MANCANTE' in call.call_args.kwargs['prompt']
+
+    # 3. Formato legacy in lettura (question_resume_view e recall_history)
+    q2 = recall.generate_recall_batch(path, CASO, None, [], force_mock=True)[0]
+    q2_asked = recall.get_next_pending_question(path, CASO)
+    assert q2_asked is not None and q2_asked.id == q2.id
+    recall.record_recall_answer(
+        path,
+        q2.id,
+        'Risposta legacy',
+        evaluation='Correttezza: 70%\nCompletezza: 60%\n\nConclusione corretta, manca un passaggio.',
+        outcome='parziale',
+        mark_answered=False,
+    )
+    resume = recall_service.question_resume_view(path, q2_asked)
+    saved_eval = resume['saved_evaluation']
+    assert saved_eval['correttezza'] == 70
+    assert saved_eval['completezza'] == 60
+    assert saved_eval['attinenza'] is None
+    assert saved_eval['evaluation'] == 'Conclusione corretta, manca un passaggio.'
+
+    hist = recall_service.recall_history(path)
+    legacy_row = next(a for a in hist['answers'] if a['question_id'] == q2.id)
+    assert legacy_row['correttezza'] == 70
+    assert legacy_row['completezza'] == 60
+    assert legacy_row['attinenza'] is None
+    assert legacy_row['evaluation'] == 'Conclusione corretta, manca un passaggio.'

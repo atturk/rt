@@ -40,7 +40,7 @@ describe("Accesso da un altro dispositivo", () => {
   })
 
   it("propone da solo il nome del Mac nella tailnet e lo usa per il QR", async () => {
-    vi.spyOn(api, 'GET').mockResolvedValue(ok({ origin: 'https://air.tail1234.ts.net', serve: true, funnel: false }))
+    vi.spyOn(api, 'GET').mockResolvedValue(ok({ origin: 'https://air.tail1234.ts.net', serve: true, funnel: false, local_port: 8765 }))
     const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ url: 'http://127.0.0.1:8765/login?code=xyz', expires_in: 300 }))
     localStorage.setItem(DEVICE_ORIGIN_KEY, 'https://100.72.84.124')
     renderSection()
@@ -53,15 +53,87 @@ describe("Accesso da un altro dispositivo", () => {
   })
 
   it("avvisa se l'indirizzo è un IP in https o se Tailscale Serve non è attivo", async () => {
-    vi.spyOn(api, 'GET').mockResolvedValue(ok({ origin: 'https://air.tail1234.ts.net', serve: false, funnel: false }))
+    vi.spyOn(api, 'GET').mockResolvedValue(ok({ origin: 'https://air.tail1234.ts.net', serve: false, funnel: false, local_port: 9000 }))
     renderSection()
     const user = userEvent.setup()
     const input = screen.getByLabelText("Indirizzo di RT per l'altro dispositivo")
     await waitFor(() => expect(input).toHaveValue('https://air.tail1234.ts.net'))
-    expect(screen.getByText(/Tailscale Serve non è attivo/)).toBeInTheDocument()
+    const serveAlert = screen.getByText(/Tailscale Serve non è attivo/)
+    expect(serveAlert).toBeInTheDocument()
+    expect(serveAlert).toHaveTextContent('tailscale serve --bg --https=9000 http://127.0.0.1:9000')
     await user.clear(input)
     await user.type(input, '100.72.84.124')
     expect(screen.getByText(/il certificato di Tailscale vale solo per il nome del computer/)).toBeInTheDocument()
+  })
+
+  it("nell'avviso Funnel usa la porta HTTPS su cui il Funnel è attivo", async () => {
+    vi.spyOn(api, 'GET').mockResolvedValue(ok({
+      origin: 'https://air.tail1234.ts.net:8443',
+      serve: true,
+      funnel: true,
+      local_port: 9000,
+    }))
+    renderSection()
+    expect(await screen.findByText(/Tailscale Funnel/)).toBeInTheDocument()
+    expect(screen.getByText(/tailscale serve --bg --https=8443 http:\/\/127\.0\.0\.1:9000/)).toBeInTheDocument()
+  })
+
+  it("mostra la porta locale di RT e il comando Tailscale da copiare", async () => {
+    vi.spyOn(api, 'GET').mockResolvedValue(ok({
+      origin: 'https://air.tail1234.ts.net:9000',
+      serve: true,
+      funnel: false,
+      local_port: 9000,
+    }))
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    renderSection()
+    const row = await screen.findByTestId('tailscale-local-port')
+    await waitFor(() => expect(row).toHaveTextContent('9000'))
+    expect(row).toHaveTextContent('RT ascolta su questo computer sulla porta 9000.')
+    expect(row).toHaveTextContent('tailscale serve --bg --https=9000 http://127.0.0.1:9000')
+    await user.click(screen.getByTestId('copy-tailscale-command'))
+    expect(writeText).toHaveBeenCalledWith('tailscale serve --bg --https=9000 http://127.0.0.1:9000')
+  })
+
+  it("rete locale: si accende da questo computer e il QR punta all'indirizzo del Mac nella rete", async () => {
+    let lan = { enabled: false, active: false, addresses: [] as string[], restarting: false }
+    vi.spyOn(api, 'GET').mockImplementation((path: string) =>
+      Promise.resolve(ok(path === '/api/v1/system/lan' ? lan : {})),
+    )
+    const put = vi.spyOn(api, 'PUT').mockImplementation(() => {
+      lan = { enabled: true, active: true, addresses: ['http://air.local:8765', 'http://192.168.1.20:8765'], restarting: false }
+      return Promise.resolve(ok(lan))
+    })
+    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ url: 'http://127.0.0.1:8765/login?code=lan1', expires_in: 300 }))
+    renderSection()
+    const user = userEvent.setup()
+    expect(screen.getByText(/la connessione non è cifrata/)).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'QR del link di accesso' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Abilita e crea QR' }))
+    expect(put).toHaveBeenCalledWith('/api/v1/system/lan', { body: { enabled: true } })
+    // il QR arriva subito, sul primo indirizzo (il nome .local)
+    expect(await screen.findByTestId('device-login-url')).toHaveTextContent('http://air.local:8765/login?code=lan1')
+    await user.click(screen.getByLabelText('http://192.168.1.20:8765'))
+    await user.click(screen.getByRole('button', { name: 'Crea QR per la rete locale' }))
+    expect(post).toHaveBeenCalledWith('/api/v1/auth/login-link')
+    expect(await screen.findByTestId('device-login-url')).toHaveTextContent('http://192.168.1.20:8765/login?code=lan1')
+    lan = { enabled: false, active: false, addresses: [], restarting: false }
+    put.mockResolvedValue(ok(lan))
+    await user.click(screen.getByRole('button', { name: 'Spegni' }))
+    expect(put).toHaveBeenLastCalledWith('/api/v1/system/lan', { body: { enabled: false } })
+    expect(await screen.findByRole('button', { name: 'Abilita e crea QR' })).toBeInTheDocument()
+  })
+
+  it("rete locale: mentre RT si riavvia lo dice", async () => {
+    vi.spyOn(api, 'GET').mockImplementation((path: string) =>
+      Promise.resolve(ok(path === '/api/v1/system/lan' ? { enabled: false, active: false, addresses: [], restarting: false } : {})),
+    )
+    vi.spyOn(api, 'PUT').mockResolvedValue(ok({ enabled: true, active: false, addresses: [], restarting: true }))
+    renderSection()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Abilita e crea QR' }))
+    expect(await screen.findByText(/RT si prepara per la rete locale/)).toBeInTheDocument()
   })
 
   it("avvisa se l'indirizzo è quello locale del Mac", async () => {
@@ -120,21 +192,21 @@ describe("Accesso da un altro dispositivo", () => {
     await user.click(screen.getByRole('button', { name: 'Crea chiave' }))
     expect(post).toHaveBeenCalledWith('/api/v1/settings/readonly-key')
 
-    // Con chiave attiva: la chiave si vede e il prompt contiene base e chiave
+    // Con chiave attiva: a schermo la chiave è nascosta, il prompt copiato la contiene intera
     const keyInput = await screen.findByTestId('readonly-key-value')
-    expect(keyInput).toHaveValue('rt_ro_secret123')
+    expect(keyInput).toHaveValue('rt_r' + '•'.repeat(12))
 
     const promptBox = await screen.findByTestId('readonly-agent-prompt-box')
     expect(promptBox).toBeInTheDocument()
     const promptText = screen.getByTestId('agent-prompt-text').textContent ?? ''
     expect(promptText).toContain('http://127.0.0.1:8765/api/v1/readonly')
-    expect(promptText).toContain('Authorization: Bearer rt_ro_secret123')
+    expect(promptText).not.toContain('rt_ro_secret123')
     expect(promptText).toContain('Puoi leggere le mie lezioni universitarie da RT')
 
-    // Copia prompt copia il testo completo
+    // Copia prompt copia il testo completo, con la chiave vera
     const copyPromptBtn = screen.getByTestId('copy-agent-prompt')
     await user.click(copyPromptBtn)
-    expect(writeText).toHaveBeenCalledWith(promptText)
+    expect(writeText).toHaveBeenCalledWith(promptText.split('rt_r' + '•'.repeat(12)).join('rt_ro_secret123'))
 
     // Clicca Revoca
     const revokeBtn = await screen.findByTestId('btn-revoke-readonly-key')

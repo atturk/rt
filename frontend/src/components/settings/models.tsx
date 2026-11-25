@@ -8,12 +8,12 @@ import {
   isTerminal,
   useAddModel,
   useAssignPhase,
+  useClearPhase,
   useCreateConnection,
   useDeleteConnection,
   useJob,
   useRoute,
   useSaveRoute,
-  useSaveRewrite,
   useTestCredential,
   useTestModel,
   type RouteOut,
@@ -25,12 +25,20 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
-import { SettingsSelect as Select } from './common'
+import { Textarea } from '@/components/ui/textarea'
 import { optionRevealClass, useOptionKey } from '@/lib/optionKey'
 import { PROVIDERS, ROUTE_ROLES, defaultBaseUrl, providerLabel, type Provider } from '@/lib/settings'
-import { Checkbox, Field, SaveFeedback, Section } from './common'
-
 import { SecretsSection, PricingSection } from './keys'
+import {
+  AutoSaveStatus,
+  SaveFeedback,
+  SettingsGroup,
+  LabelWithInfo,
+  SettingsRow,
+  SettingsSelect as Select,
+  SettingsSwitch,
+} from './ui'
+import { useAutoSave } from './useAutoSave'
 
 type Connection = Settings['connections'][number]
 type Phase = Settings['phases'][number]
@@ -43,24 +51,69 @@ export function PromptEditorSection() {
   const prompts = useQuery({ queryKey: ['prompt-overrides'], queryFn: () => unwrap(api.GET('/api/v1/settings/prompts')) })
   const [phase, setPhase] = useState<'outline' | 'rewrite' | 'review' | 'image_description' | 'recall'>('outline')
   const [drafts, setDrafts] = useState<Partial<Record<typeof phase, string>>>({})
-  const instruction = drafts[phase] ?? prompts.data?.[phase]?.instruction ?? ''
-  const save = useMutation({ mutationFn: () => unwrap(api.PUT('/api/v1/settings/prompts/{phase}', {
-    params: { path: { phase } }, body: { instruction },
-  })), onSuccess: () => { void client.invalidateQueries({ queryKey: ['prompt-overrides'] }) } })
-  return <Section id="prompt" title="Istruzioni dei prompt"
-    description="Ciò che scrivi si aggiunge all'istruzione predefinita della fase, non la sostituisce: il predefinito, il contratto strutturato e la validazione di RT restano attivi. Svuota la casella e salva per usare solo il predefinito.">
-    <Field label="Fase" htmlFor="prompt-phase"><Select id="prompt-phase" value={phase} onChange={(e) => setPhase(e.target.value as typeof phase)}>
-      <option value="outline">Scaletta</option><option value="rewrite">Rielaborazione</option><option value="review">Revisione</option>
-      <option value="image_description">Descrizione immagini</option><option value="recall">Recall</option>
-    </Select></Field>
-    <Field label="Istruzioni aggiuntive" htmlFor="prompt-instruction"><textarea id="prompt-instruction"
-      className="w-full rounded border bg-background p-2 font-mono text-meta placeholder:text-muted-foreground/70" rows={16} maxLength={20000}
-      placeholder={prompts.data?.[phase]?.default ?? ''}
-      value={instruction} onChange={(e) => setDrafts((old) => ({ ...old, [phase]: e.target.value }))} /></Field>
-    <Button disabled={save.isPending || prompts.isPending} onClick={() => save.mutate()}>Salva istruzioni</Button>
-    {save.isSuccess && <p role="status" className="text-meta text-success">Istruzioni salvate.</p>}
-    {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
-  </Section>
+  const savedInstruction = prompts.data?.[phase]?.instruction ?? ''
+  const instruction = drafts[phase] ?? savedInstruction
+
+  const save = useMutation({
+    mutationFn: (text: string) =>
+      unwrap(api.PUT('/api/v1/settings/prompts/{phase}', { params: { path: { phase } }, body: { instruction: text } })),
+    onSuccess: () => { void client.invalidateQueries({ queryKey: ['prompt-overrides'] }) },
+  })
+
+  const autoSave = useAutoSave(save, instruction, {
+    delay: 600,
+    enabled: !prompts.isPending,
+    initial: savedInstruction,
+  })
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-meta text-muted-foreground">
+        Ciò che scrivi si aggiunge all'istruzione predefinita della fase, non la sostituisce: il predefinito, il contratto strutturato e la validazione di RT restano attivi. Svuota la casella per usare solo il predefinito.
+      </p>
+      <div className="divide-y divide-border/60 rounded-lg border bg-background">
+        <SettingsRow
+          label="Fase"
+          htmlFor="prompt-phase"
+          control={
+            <Select
+              id="prompt-phase"
+              className="w-full @sm:w-60"
+              value={phase}
+              onChange={(e) => {
+                autoSave.reset()
+                setPhase(e.target.value as typeof phase)
+              }}
+            >
+              <option value="outline">Scaletta</option>
+              <option value="rewrite">Rielaborazione</option>
+              <option value="review">Revisione</option>
+              <option value="image_description">Descrizione immagini</option>
+              <option value="recall">Recall</option>
+            </Select>
+          }
+        />
+        <SettingsRow
+          label="Istruzioni aggiuntive"
+          htmlFor="prompt-instruction"
+          stacked
+          status={autoSave}
+          control={
+            <Textarea
+              id="prompt-instruction"
+              className="font-mono text-meta"
+              rows={12}
+              maxLength={20000}
+              placeholder={prompts.data?.[phase]?.default ?? ''}
+              value={instruction}
+              onChange={(e) => setDrafts((old) => ({ ...old, [phase]: e.target.value }))}
+              onBlur={autoSave.flush}
+            />
+          }
+        />
+      </div>
+    </div>
+  )
 }
 
 const PHASE_HINTS: Record<string, string> = {
@@ -72,6 +125,7 @@ const PHASE_HINTS: Record<string, string> = {
   enrichment_writer: 'Prepara idee e prompt JSON da una singola subunità, senza generare contenuti.',
   enrichment_visualizer: 'Genera HTML/SVG/JavaScript autonomo per grafici, matrici, diagrammi e simulazioni.',
   enrichment_image: 'Generatore di immagini tramite Images API. Usa un modello con output immagine su OpenRouter o OpenAI-compatible.',
+  study_chat: 'Risponde alle domande nella chat dello Studio. Se non scelto, usa il modello della Revisione.',
 }
 
 // ------------------------------------------------------------------ modelli per fase
@@ -83,131 +137,201 @@ export function PhasesSection({ settings }: { settings: Settings }) {
   })
 
   return (
-    <Section
+    <SettingsGroup
       id="fasi"
       title="Modelli per fase"
-      description="Connessione e modello usati da ciascuna fase. Un modello nuovo viene aggiunto alla connessione. Prova fa una chiamata minima, anche prima di salvare."
+      description="Connessione e modello usati da ciascuna fase. Un modello nuovo viene aggiunto alla connessione. Prova fa una chiamata minima."
     >
       {estimate.data && (
-        <p className="mb-4 text-meta text-muted-foreground" data-testid="cost-estimate">
+        <div className="px-4 py-2.5 text-meta text-muted-foreground" data-testid="cost-estimate">
           Costo stimato con i modelli attuali:{' '}
           <strong className="font-semibold text-foreground">{estimate.data.formatted}</strong>
-        </p>
+        </div>
       )}
-      {settings.connections.length === 0 && <Alert tone="warning">Crea prima una connessione qui sotto.</Alert>}
+      {settings.connections.length === 0 && (
+        <div className="px-4 py-3">
+          <Alert tone="warning">Crea prima una connessione qui sotto.</Alert>
+        </div>
+      )}
       <PhaseRows settings={settings} />
-    </Section>
+    </SettingsGroup>
   )
 }
 
-/** Le fasi, ognuna con connessione, modello, Salva e Prova. Usate anche dalla configurazione
- * guidata ("Scegli per ogni fase"). */
+/** Le fasi, ognuna con connessione, modello, salvataggio automatico e Prova. Usate anche dalla configurazione guidata. */
+const BATCH_INELIGIBLE_PHASES = new Set(['image_description', 'enrichment_image'])
+
 export function PhaseRows({ settings }: { settings: Settings }) {
   return (
-    <div className="flex flex-col divide-y">
+    <div className="@container divide-y divide-border/60">
+      <div className="hidden bg-muted/30 px-4 py-2 text-meta font-medium text-muted-foreground @2xl:grid @2xl:grid-cols-[minmax(0,1fr)_14rem_14rem_5.5rem] @2xl:gap-x-3">
+        <span>Fase</span>
+        <span>Connessione</span>
+        <span>Modello</span>
+        <span className="sr-only">Prova</span>
+      </div>
       {settings.phases.map((phase) => (
-        <PhaseRow key={`${phase.job}:${phase.connection ?? ''}:${phase.model ?? ''}`} phase={phase} connections={settings.connections} settings={settings} />
+        <PhaseRow
+          key={`${phase.job}:${phase.connection ?? ''}:${phase.model ?? ''}:${phase.batch ? 'batch' : 'sync'}`}
+          phase={phase}
+          connections={settings.connections}
+        />
       ))}
     </div>
   )
 }
 
-function PhaseRow({ phase, connections, settings }: { phase: Phase; connections: Connection[]; settings?: Settings }) {
+function PhaseRow({ phase, connections }: { phase: Phase; connections: Connection[] }) {
   const assign = useAssignPhase()
-  const saveRewrite = useSaveRewrite()
+  const clear = useClearPhase()
+  const isStudyChat = phase.job === 'study_chat'
+  const savedDisplay = phase.batch && phase.model && !phase.model.endsWith(':batch') ? `${phase.model}:batch` : (phase.model ?? '')
   const [connection, setConnection] = useState(phase.connection ?? '')
-  const [model, setModel] = useState(phase.model ?? '')
-  const models = connections.find((c) => c.name === connection)?.models ?? []
-  const dirty = connection !== (phase.connection ?? '') || model !== (phase.model ?? '')
+  const [model, setModel] = useState(savedDisplay)
+  const selectedConn = connections.find((c) => c.name === connection)
+  const models = selectedConn?.models ?? []
+  const batchEligible = !isStudyChat && !BATCH_INELIGIBLE_PHASES.has(phase.job) && !!selectedConn?.supports_batch
+  const batchModels = batchEligible ? (selectedConn?.batch_models ?? []) : []
+  const trimmedModel = model.trim()
+  const isBatchSelected = batchEligible && trimmedModel.endsWith(':batch')
   const listId = `modelli-${phase.job}`
+
+  const autoSave = useAutoSave(
+    assign,
+    { connection, model: trimmedModel },
+    {
+      delay: 600,
+      enabled: Boolean(connection) && Boolean(trimmedModel),
+      initial: { connection: phase.connection ?? '', model: savedDisplay },
+      equals: (a, b) => a.connection === b.connection && a.model.trim() === b.model.trim(),
+      serialize: ({ connection: conn, model: mod }) => {
+        const clean = mod.trim()
+        const batch = batchEligible && clean.endsWith(':batch')
+        return {
+          job: phase.job,
+          connection: conn,
+          model: batch ? clean.slice(0, -':batch'.length) : clean,
+          batch,
+        }
+      },
+    },
+  )
+
+  function handleConnectionChange(next: string) {
+    setConnection(next)
+    setModel('')
+    autoSave.reset()
+    if (isStudyChat && !next && phase.connection) {
+      clear.mutate(phase.job)
+    }
+  }
+
   function submit(e: FormEvent) {
     e.preventDefault()
-    assign.mutate({ job: phase.job, connection, model: model.trim() })
+    if (isStudyChat && !connection) {
+      clear.mutate(phase.job)
+      return
+    }
+    if (connection && trimmedModel) {
+      autoSave.saveNow({ connection, model: trimmedModel })
+    }
   }
+
   return (
     <form
       onSubmit={submit}
-      className="grid grid-cols-1 items-end gap-2 py-3 first:pt-0 sm:grid-cols-[10rem_1fr_1fr_auto_auto]"
+      className="px-4 py-3"
       data-testid="phase-row"
       data-job={phase.job}
       aria-label={`Fase ${phase.label}`}
     >
-      <div className="flex flex-col gap-1 self-center">
-        <span className="text-body font-semibold" title={PHASE_HINTS[phase.job]} tabIndex={0} aria-label={`${phase.label}: ${PHASE_HINTS[phase.job]}`}>{phase.label}</span>
-        {phase.model ? (
-          <span className="text-meta text-muted-foreground" data-testid="phase-saved">
-            {phase.connection} · {phase.model}
-          </span>
-        ) : (
-          <Badge tone="warning" className="w-fit">
-            Non assegnato
-          </Badge>
-        )}
-      </div>
-      <Field label="Connessione" htmlFor={`fase-${phase.job}-connessione`}>
-        <Select
-          id={`fase-${phase.job}-connessione`}
-          value={connection}
-          onChange={(e) => {
-            setConnection(e.target.value)
-            setModel('')
-          }}
-        >
-          <option value="">Scegli…</option>
-          {connections.map((c) => (
-            <option key={c.name} value={c.name}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Modello" htmlFor={`fase-${phase.job}-modello`}>
-        <Input
-          id={`fase-${phase.job}-modello`}
-          list={listId}
-          value={model}
-          disabled={!connection}
-          placeholder="es. openai/gpt-4.1"
-          onChange={(e) => setModel(e.target.value)}
-        />
-        <datalist id={listId}>
-          {models.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-      </Field>
-      <Button type="submit" variant={dirty ? 'default' : 'outline'} disabled={!connection || !model.trim() || assign.isPending || !dirty}>
-        Salva
-      </Button>
-      {!phase.job.startsWith('enrichment_') && <ModelTest connection={connection} model={model} label={phase.label} vision={phase.job === 'image_description'} className="contents" resultClassName="sm:col-span-5" />}
-      {phase.job === 'rewrite' && (
-        <div className="flex flex-col gap-1 pt-2 sm:col-span-5" data-testid="rewrite-context-mode-container">
-          <Field label="Contesto della rielaborazione" htmlFor="rewrite-context-mode">
-            <Select
-              id="rewrite-context-mode"
-              value={settings?.rewrite?.context_mode ?? 'macro'}
-              onChange={(e) => saveRewrite.mutate({ context_mode: e.target.value as 'macro' | 'all' })}
-              disabled={saveRewrite.isPending}
-            >
-              <option value="macro">Macro-sezione, in parallelo (predefinito)</option>
-              <option value="all">Tutte le unità precedenti, in sequenza (più lento)</option>
-            </Select>
-          </Field>
-          <p className="text-meta text-muted-foreground">
-            {settings?.rewrite?.context_mode === 'all'
-              ? 'Ogni unità riceve tutte le unità precedenti della lezione. Elaborazione sequenziale più lenta con prompt crescenti.'
-              : 'Ogni unità riceve solo le unità della stessa macro-sezione. Le macro-sezioni girano in parallelo.'}
-          </p>
-          {saveRewrite.isError && (
-            <Alert tone="danger">
-              {errorMessage(saveRewrite.error)}
-            </Alert>
+      <div className="grid grid-cols-1 items-center gap-x-3 gap-y-2 @2xl:grid-cols-[minmax(0,1fr)_14rem_14rem_5.5rem]">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="min-w-0">
+            <span className="text-body font-medium text-foreground">
+              <LabelWithInfo label={phase.label} info={PHASE_HINTS[phase.job]} infoLabel={phase.label} />
+            </span>
+          </div>
+          {phase.model ? (
+            <span className="min-w-0 break-words text-meta text-muted-foreground" data-testid="phase-saved">
+              {phase.connection} · {phase.model}{phase.batch ? ' · batch' : ''}
+            </span>
+          ) : isStudyChat ? (
+            <span className="text-meta text-muted-foreground" data-testid="phase-saved">
+              Come la Revisione
+            </span>
+          ) : (
+            <Badge tone="warning" className="w-fit">
+              Non assegnato
+            </Badge>
           )}
         </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <label htmlFor={`fase-${phase.job}-connessione`} className="text-meta text-muted-foreground @2xl:sr-only">Connessione</label>
+          <Select
+            id={`fase-${phase.job}-connessione`}
+            aria-label="Connessione"
+            className="w-full"
+            value={connection}
+            onChange={(e) => handleConnectionChange(e.target.value)}
+          >
+            <option value="">{isStudyChat ? 'Come la Revisione' : 'Scegli…'}</option>
+            {connections.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <label htmlFor={`fase-${phase.job}-modello`} className="text-meta text-muted-foreground @2xl:sr-only">Modello</label>
+          <Input
+            id={`fase-${phase.job}-modello`}
+            className="h-9 w-full"
+            list={listId}
+            value={model}
+            disabled={!connection}
+            placeholder="es. openai/gpt-4.1"
+            onChange={(e) => setModel(e.target.value)}
+            onBlur={autoSave.flush}
+          />
+          <datalist id={listId}>
+            {models.map((m) => (
+              <option key={m} value={m} />
+            ))}
+            {batchModels.map((bm) => {
+              const value = bm.endsWith(':batch') ? bm : `${bm}:batch`
+              return <option key={value} value={value} label={`${bm} · batch (−50%, risposte entro 24 h)`} />
+            })}
+          </datalist>
+        </div>
+        {!phase.job.startsWith('enrichment_') ? (
+          <ModelTest
+            connection={connection}
+            model={trimmedModel.replace(/:batch$/, '')}
+            label={phase.label}
+            vision={phase.job === 'image_description'}
+            className="contents"
+            buttonClassName="w-full @2xl:w-full"
+            resultClassName="@2xl:col-span-4"
+          />
+        ) : (
+          <div className="hidden @2xl:block" aria-hidden="true" />
+        )}
+      </div>
+      {autoSave.status !== 'idle' && (
+        <div className="mt-1.5 flex justify-end">
+          <AutoSaveStatus status={autoSave.status} error={autoSave.error} onRetry={autoSave.retry} />
+        </div>
       )}
-      {assign.isError && (
-        <Alert tone="danger" className="sm:col-span-5">
-          {errorMessage(assign.error)}
+      {isBatchSelected && (
+        <p className="mt-2 text-meta text-muted-foreground" data-testid="phase-batch-hint">
+          Le risposte arrivano più tardi: RT deve poter lavorare in background (Impostazioni → Aspetto e lettura → Chiudendo la finestra con la X)
+        </p>
+      )}
+      {clear.isError && (
+        <Alert tone="danger" className="mt-2">
+          {errorMessage(clear.error)}
         </Alert>
       )}
     </form>
@@ -225,6 +349,7 @@ export function ModelTest({
   label,
   vision = false,
   className,
+  buttonClassName,
   resultClassName,
 }: {
   connection: string
@@ -232,6 +357,7 @@ export function ModelTest({
   label?: string
   vision?: boolean
   className?: string
+  buttonClassName?: string
   resultClassName?: string
 }) {
   const test = useTestModel()
@@ -262,7 +388,9 @@ export function ModelTest({
   return (
     <div className={className}>
       <Button
+        type="button"
         variant="outline"
+        className={buttonClassName}
         aria-label={label ? `Prova il modello di ${label}` : 'Prova il modello'}
         disabled={!connection || !model.trim() || (current && test.isPending)}
         onClick={() => test.mutate({ connection, model: model.trim(), vision })}
@@ -270,7 +398,7 @@ export function ModelTest({
         Prova
       </Button>
       {outcome && (
-<div className={resultClassName}>{outcome}</div>
+        <div className={resultClassName}>{outcome}</div>
       )}
     </div>
   )
@@ -280,16 +408,24 @@ export function ModelTest({
 
 export function ConnectionsSection({ settings }: { settings: Settings }) {
   return (
-    <Section id="connessioni" title="Connessioni" description="Provider LLM con le loro chiavi. Con più chiavi RT le alterna automaticamente.">
-      {settings.connections.length === 0 && <p className="text-body text-muted-foreground">Nessuna connessione.</p>}
+    <SettingsGroup
+      id="connessioni"
+      title="Connessioni"
+      description="Provider LLM con le loro chiavi. Con più chiavi RT le alterna automaticamente."
+    >
+      {settings.connections.length === 0 && (
+        <p className="px-4 py-3 text-body text-muted-foreground">Nessuna connessione.</p>
+      )}
       {settings.connections.map((c) => (
         <ConnectionItem key={c.name} connection={c} settings={settings} />
       ))}
-      {Object.keys(settings.pricing ?? {}).filter(provider => !settings.connections.some(c => c.provider === provider)).map(provider =>
-        <div key={provider} className="border-t py-3"><h3 className="text-body font-semibold">{providerLabel(provider)} · senza connessione</h3>
-          <PricingSection settings={settings} connection={{ name: `costi-${provider}`, provider, base_url: '', credentials: [], models: Object.keys(settings.pricing[provider]) }} />
-        </div>)}
-    </Section>
+      {Object.keys(settings.pricing ?? {}).filter(provider => !settings.connections.some(c => c.provider === provider)).map(provider => (
+        <div key={provider} className="flex flex-col gap-3 px-4 py-4">
+          <h3 className="text-body font-medium">{providerLabel(provider)} · senza connessione</h3>
+          <PricingSection settings={settings} connection={{ name: `costi-${provider}`, provider, base_url: '', credentials: [], models: Object.keys(settings.pricing[provider]), supports_batch: false }} />
+        </div>
+      ))}
+    </SettingsGroup>
   )
 }
 
@@ -301,9 +437,9 @@ function ConnectionItem({ connection, settings }: { connection: Connection; sett
   const [confirm, setConfirm] = useState(false)
   const keys = connection.credentials.filter((c) => c.set).length
   return (
-    <div className="group relative rounded-lg border p-4" data-testid="connection" data-name={connection.name} aria-label={`Connessione ${connection.name}`} role="group">
+    <div className="group relative flex flex-col gap-4 px-4 py-4" data-testid="connection" data-name={connection.name} aria-label={`Connessione ${connection.name}`} role="group">
       <Button type="button" variant="ghost" size="icon" aria-label={`Elimina la connessione ${connection.name}`}
-        className={`${optionRevealClass(optionDown)} absolute right-2 top-2 text-danger`}
+        className={`${optionRevealClass(optionDown)} absolute right-3 top-3 text-danger`}
         onClick={() => { deletion.reset(); setConfirm(true) }}><Trash2 /></Button>
       <ConfirmDialog open={confirm} title="Elimina connessione" confirmLabel="Elimina"
         confirmDisabled={deletion.isPending}
@@ -317,32 +453,34 @@ function ConnectionItem({ connection, settings }: { connection: Connection; sett
         {deletion.isError && <Alert tone="danger" className="mt-3">{errorMessage(deletion.error)}</Alert>}
       </ConfirmDialog>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pr-10">
-        <h3 className="text-body font-bold">{connection.name}</h3>
+        <h3 className="text-body font-medium text-foreground">{connection.name}</h3>
         <span className="text-meta text-muted-foreground">
           {providerLabel(connection.provider)} · {connection.base_url}
         </span>
       </div>
       <SecretsSection settings={settings} connection={connection} />
       <PricingSection settings={settings} connection={connection} />
-      <div className="mt-2 flex flex-wrap gap-1.5" data-testid="connection-models">
-        {connection.models.length === 0 && <span className="text-meta text-muted-foreground">Nessun modello.</span>}
-        {connection.models.map((m) => (
-          <Badge key={m}>{m}</Badge>
-        ))}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-1.5" data-testid="connection-models">
+          {connection.models.length === 0 && <span className="text-meta text-muted-foreground">Nessun modello.</span>}
+          {connection.models.map((m) => (
+            <Badge key={m}>{m}</Badge>
+          ))}
+        </div>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            addModel.mutate({ connection: connection.name, model: model.trim() }, { onSuccess: () => setModel('') })
+          }}
+        >
+          <Input aria-label={`Nuovo modello per ${connection.name}`} value={model} placeholder="Aggiungi un modello" onChange={(e) => setModel(e.target.value)} />
+          <Button type="submit" variant="outline" disabled={!model.trim() || addModel.isPending}>
+            <Plus /> Aggiungi
+          </Button>
+        </form>
+        {addModel.isError && <Alert tone="danger">{errorMessage(addModel.error)}</Alert>}
       </div>
-      <form
-        className="mt-3 flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          addModel.mutate({ connection: connection.name, model: model.trim() }, { onSuccess: () => setModel('') })
-        }}
-      >
-        <Input aria-label={`Nuovo modello per ${connection.name}`} value={model} placeholder="Aggiungi un modello" onChange={(e) => setModel(e.target.value)} />
-        <Button type="submit" variant="outline" disabled={!model.trim() || addModel.isPending}>
-          <Plus /> Aggiungi
-        </Button>
-      </form>
-      {addModel.isError && <Alert tone="danger" className="mt-2">{errorMessage(addModel.error)}</Alert>}
     </div>
   )
 }
@@ -368,18 +506,22 @@ export function NewConnectionForm({ onCreated, submitLabel = 'Crea connessione' 
   }
 
   return (
-    <form className="flex flex-col gap-3" onSubmit={submit} aria-label="Nuova connessione">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Nome connessione" htmlFor="conn-name">
-          <Input id="conn-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="es. OpenRouter personale" required />
-        </Field>
-        <Field label="Provider" htmlFor="conn-provider">
+    <form className="divide-y divide-border/60" onSubmit={submit} aria-label="Nuova connessione">
+      <SettingsRow
+        label="Nome connessione"
+        htmlFor="conn-name"
+        control={<Input id="conn-name" className="w-full @sm:w-60" value={name} onChange={(e) => setName(e.target.value)} placeholder="es. OpenRouter personale" required />}
+      />
+      <SettingsRow
+        label="Provider"
+        htmlFor="conn-provider"
+        control={
           <Select
             id="conn-provider"
+            className="w-full @sm:w-60"
             value={provider}
             onChange={(e) => {
               const next = e.target.value as Provider
-              // Il base URL segue il provider finché è quello predefinito.
               if (!baseUrl.trim() || baseUrl === defaultBaseUrl(provider)) setBaseUrl(defaultBaseUrl(next))
               setProvider(next)
             }}
@@ -390,44 +532,51 @@ export function NewConnectionForm({ onCreated, submitLabel = 'Crea connessione' 
               </option>
             ))}
           </Select>
-        </Field>
-        <Field label="Base URL" htmlFor="conn-base-url">
-          <Input id="conn-base-url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://…/v1" />
-        </Field>
-      </div>
-      <div className="flex flex-col gap-2">
-        {keys.map((key, i) => (
-          <Field key={i} label={`Chiave API ${i + 1}`} htmlFor={`conn-key-${i}`}>
-            <SecretInput
-              id={`conn-key-${i}`}
-              value={key}
-              required={i === 0}
-              onChange={(e) => setKeys((c) => c.map((k, j) => (j === i ? e.target.value : k)))}
-            />
-          </Field>
-        ))}
-        <div>
-          <Button variant="outline" size="sm" onClick={() => setKeys((c) => [...c, ''])}>
+        }
+      />
+      <SettingsRow
+        label="Base URL"
+        htmlFor="conn-base-url"
+        control={<Input id="conn-base-url" className="w-full @sm:w-60" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://…/v1" />}
+      />
+      {keys.map((key, i) => (
+        <SettingsRow
+          key={i}
+          label={`Chiave API ${i + 1}`}
+          htmlFor={`conn-key-${i}`}
+          control={
+            <div className="w-full @sm:w-60">
+              <SecretInput
+                id={`conn-key-${i}`}
+                value={key}
+                required={i === 0}
+                onChange={(e) => setKeys((c) => c.map((k, j) => (j === i ? e.target.value : k)))}
+              />
+            </div>
+          }
+        />
+      ))}
+      <div className="flex flex-col gap-3 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => setKeys((c) => [...c, ''])}>
             <Plus /> Aggiungi chiave
           </Button>
+          <Button type="submit" disabled={create.isPending || !name.trim() || !keys[0].trim()}>
+            {submitLabel}
+          </Button>
         </div>
+        <p className="text-meta text-muted-foreground">Le chiavi vanno nell'archivio dei segreti di RT e non si rileggono più dalla pagina.</p>
+        <SaveFeedback mutation={create} success="Connessione creata." />
       </div>
-      <p className="text-meta text-muted-foreground">Le chiavi vanno nell'archivio dei segreti di RT e non si rileggono più dalla pagina.</p>
-      <div>
-        <Button type="submit" disabled={create.isPending || !name.trim() || !keys[0].trim()}>
-          {submitLabel}
-        </Button>
-      </div>
-      <SaveFeedback mutation={create} success="Connessione creata." />
     </form>
   )
 }
 
 export function NewConnectionSection() {
   return (
-    <Section id="nuova-connessione" title="Nuova connessione">
+    <SettingsGroup id="nuova-connessione" title="Nuova connessione">
       <NewConnectionForm />
-    </Section>
+    </SettingsGroup>
   )
 }
 
@@ -438,7 +587,6 @@ export function RoutesSection({ settings }: { settings: Settings }) {
   const job = params.get('fase') ?? settings.phases[0]?.job ?? 'outline'
   const role = params.get('ruolo') ?? 'primary'
   const route = useRoute(job, role)
-  // La mutation sta qui: dopo il salvataggio la route riletta rimonta il form (key).
   const save = useSaveRoute()
 
   function set(key: string, value: string) {
@@ -449,36 +597,42 @@ export function RoutesSection({ settings }: { settings: Settings }) {
   }
 
   return (
-    <Section
-      id="route"
-      title="Route avanzate"
-      description="Il primario è lo stesso dei modelli per fase. Il secondario si usa quando il primario fallisce (dopo aver provato tutte le chiavi in rotazione)."
-    >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Fase" htmlFor="route-job">
-          <Select id="route-job" value={job} onChange={(e) => set('fase', e.target.value)}>
-            {settings.phases.map((p) => (
-              <option key={p.job} value={p.job}>
-                {p.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Ruolo" htmlFor="route-role">
-          <Select id="route-role" value={role} onChange={(e) => set('ruolo', e.target.value)}>
-            {ROUTE_ROLES.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
+    <div className="flex flex-col gap-3">
+      <p className="text-meta text-muted-foreground">
+        Il primario è lo stesso dei modelli per fase. Il secondario si usa quando il primario fallisce (dopo aver provato tutte le chiavi in rotazione).
+      </p>
+      <div className="divide-y divide-border/60 rounded-lg border bg-background">
+        <SettingsRow
+          label="Fase"
+          htmlFor="route-job"
+          control={
+            <Select id="route-job" className="w-full @sm:w-60" value={job} onChange={(e) => set('fase', e.target.value)}>
+              {settings.phases.map((p) => (
+                <option key={p.job} value={p.job}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+          }
+        />
+        <SettingsRow
+          label="Ruolo"
+          htmlFor="route-role"
+          control={
+            <Select id="route-role" className="w-full @sm:w-60" value={role} onChange={(e) => set('ruolo', e.target.value)}>
+              {ROUTE_ROLES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </Select>
+          }
+        />
+        {route.isPending && <p className="px-4 py-3 text-body text-muted-foreground">Carico la route…</p>}
+        {route.isError && <div className="px-4 py-3"><Alert tone="danger">{errorMessage(route.error)}</Alert></div>}
+        {route.data && <RouteForm key={JSON.stringify(route.data)} route={route.data} settings={settings} save={save} />}
       </div>
-      {route.isPending && <p className="text-body text-muted-foreground">Carico la route…</p>}
-      {route.isError && <Alert tone="danger">{errorMessage(route.error)}</Alert>}
-      {route.data && <RouteForm key={JSON.stringify(route.data)} route={route.data} settings={settings} save={save} />}
-      <SaveFeedback mutation={save} />
-    </Section>
+    </div>
   )
 }
 
@@ -490,62 +644,127 @@ function RouteForm({ route, settings, save }: { route: RouteOut; settings: Setti
   const [roundRobin, setRoundRobin] = useState(route.round_robin)
   const credentials = settings.credentials.filter((c) => c.provider === provider)
 
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    save.mutate({
+  const state = { provider, credential, model, baseUrl, roundRobin }
+  const valid = Boolean(model.trim()) && (Boolean(credential) || (route.role === 'primary' && roundRobin))
+
+  const autoSave = useAutoSave(save, state, {
+    delay: 600,
+    enabled: valid,
+    initial: {
+      provider: route.provider,
+      credential: route.credential,
+      model: route.model,
+      baseUrl: route.base_url,
+      roundRobin: route.round_robin,
+    },
+    serialize: (val) => ({
       job: route.job,
       role: route.role,
-      body: { provider, credential, model: model.trim(), base_url: baseUrl.trim(), round_robin: route.role === 'primary' && roundRobin },
-    })
-  }
+      body: {
+        provider: val.provider,
+        credential: val.credential,
+        model: val.model.trim(),
+        base_url: val.baseUrl.trim(),
+        round_robin: route.role === 'primary' && val.roundRobin,
+        batch: false,
+      },
+    }),
+  })
 
   return (
-    <form className="grid grid-cols-1 gap-3 sm:grid-cols-2" onSubmit={submit} aria-label="Route">
-      <Field label="Provider della route" htmlFor="route-provider">
-        <Select
-          id="route-provider"
-          value={provider}
-          onChange={(e) => {
-            if (!baseUrl.trim() || baseUrl === defaultBaseUrl(provider)) setBaseUrl(defaultBaseUrl(e.target.value))
-            setProvider(e.target.value)
-            setCredential('')
-          }}
-        >
-          {PROVIDERS.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Chiave" htmlFor="route-credential">
-        <Select id="route-credential" value={credential} onChange={(e) => setCredential(e.target.value)}>
-          <option value="">Scegli…</option>
-          {credentials.map((c) => (
-            <option key={c.name} value={c.name}>
-              {c.name}
-              {c.set ? '' : ' (mancante)'}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Modello della route" htmlFor="route-model">
-        <Input id="route-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder="es. deepseek/deepseek-v4-flash" />
-      </Field>
-      <Field label="Base URL della route" htmlFor="route-base-url">
-        <Input id="route-base-url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-      </Field>
+    <div className="divide-y divide-border/60" aria-label="Route">
+      <SettingsRow
+        label="Provider della route"
+        htmlFor="route-provider"
+        control={
+          <Select
+            id="route-provider"
+            className="w-full @sm:w-60"
+            value={provider}
+            onChange={(e) => {
+              const nextProv = e.target.value
+              const nextUrl = !baseUrl.trim() || baseUrl === defaultBaseUrl(provider) ? defaultBaseUrl(nextProv) : baseUrl
+              setBaseUrl(nextUrl)
+              setProvider(nextProv)
+              setCredential('')
+            }}
+          >
+            {PROVIDERS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </Select>
+        }
+      />
+      <SettingsRow
+        label="Chiave"
+        htmlFor="route-credential"
+        control={
+          <Select
+            id="route-credential"
+            className="w-full @sm:w-60"
+            value={credential}
+            onChange={(e) => {
+              const nextCred = e.target.value
+              setCredential(nextCred)
+              if (model.trim() && (nextCred || (route.role === 'primary' && roundRobin))) {
+                autoSave.saveNow({ provider, credential: nextCred, model, baseUrl, roundRobin })
+              }
+            }}
+          >
+            <option value="">Scegli…</option>
+            {credentials.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name}
+                {c.set ? '' : ' (mancante)'}
+              </option>
+            ))}
+          </Select>
+        }
+      />
+      <SettingsRow
+        label="Modello della route"
+        htmlFor="route-model"
+        status={autoSave}
+        control={
+          <Input
+            id="route-model"
+            className="w-full @sm:w-60"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            onBlur={autoSave.flush}
+            placeholder="es. deepseek/deepseek-v4-flash"
+          />
+        }
+      />
+      <SettingsRow
+        label="Base URL della route"
+        htmlFor="route-base-url"
+        control={
+          <Input
+            id="route-base-url"
+            className="w-full @sm:w-60"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            onBlur={autoSave.flush}
+          />
+        }
+      />
       {route.role === 'primary' && (
-        <div className="sm:col-span-2">
-          <Checkbox id="route-rr" label="Alterna tutte le chiavi del provider" checked={roundRobin} onChange={setRoundRobin} />
-        </div>
+        <SettingsSwitch
+          id="route-rr"
+          label="Alterna tutte le chiavi del provider"
+          checked={roundRobin}
+          onChange={(next) => {
+            setRoundRobin(next)
+            if (model.trim() && (credential || next)) {
+              autoSave.saveNow({ provider, credential, model, baseUrl, roundRobin: next })
+            }
+          }}
+        />
       )}
-      <div className="sm:col-span-2">
-        <Button type="submit" disabled={save.isPending || !model.trim() || (!credential && !roundRobin)}>
-          Salva route
-        </Button>
-      </div>
-    </form>
+    </div>
   )
 }
 

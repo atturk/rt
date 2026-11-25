@@ -8,6 +8,7 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 """
 
 import os
+import threading
 from functools import lru_cache
 from typing import Dict, Any, Optional, List, Literal
 import yaml
@@ -49,6 +50,7 @@ class RouteConfig(BaseModel):
     temperature: Optional[float] = Field(default=None)
     max_tokens: Optional[int] = Field(default=None)
     timeout_seconds: int = Field(default=180)
+    batch: bool = Field(default=False, description="Modalità batch differita (~50% costo, risposte entro 24h)")
     pricing: Optional[ModelPricing] = Field(default=None, description="Prezzo specifico per questa route (priorità massima: sovrascrive sia il pricing custom globale sia DEFAULT_PRICING)")
     provider_routing: Optional[Dict[str, Any]] = Field(
         default=None,
@@ -75,6 +77,10 @@ class RouteConfig(BaseModel):
         allowed_providers = {"deepseek", "openrouter", "google", "openai_compatible"}
         if clean_p not in allowed_providers:
             raise ValueError(f"Provider LLM non supportato: '{self.provider}'. Provider ammessi: {sorted(allowed_providers)}")
+        if self.batch:
+            from rt.llm.providers import get_provider
+            if not get_provider(clean_p).supports_batch:
+                raise ValueError(f"Il provider '{self.provider}' non supporta la modalità batch.")
         if not self.model or not str(self.model).strip():
             raise ValueError(f"Il modello per il provider '{self.provider}' non può essere vuoto.")
         if clean_p == "openai_compatible" and not self.base_url:
@@ -224,7 +230,17 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
         "enrichment_visualizer": empty_shell(max_tokens=16384, timeout=240),
         "enrichment_image": empty_shell(timeout=300),
         "recall": empty_shell(max_tokens=8192, timeout=180),
+        "study_chat": empty_shell(max_tokens=8192, timeout=180),
     }
+
+
+DEFAULT_TELEGRAM_NOTIFY: Dict[str, bool] = {
+    "lezione_pronta": True,
+    "verifica_pronta": True,
+    "errore": True,
+    "scaletta_da_approvare": True,
+    "issue_da_decidere": True,
+}
 
 
 class TelegramRuntimeConfig(BaseModel):
@@ -237,6 +253,10 @@ class TelegramRuntimeConfig(BaseModel):
         description="Cartella che contiene direttamente tutte le sotto-cartelle di lezione (una "
                     "per lezione, struttura piatta senza annidamento) delle installazioni 3.x: "
                     "serve alla migrazione verso il database (rt db migrate-storage)."
+    )
+    notify: Dict[str, bool] = Field(
+        default_factory=lambda: dict(DEFAULT_TELEGRAM_NOTIFY),
+        description="Eventi per cui inviare una notifica Telegram (lezione_pronta, verifica_pronta, errore, scaletta_da_approvare, issue_da_decidere)",
     )
     # ------------------------------------------------------
     # Recall configuration
@@ -259,6 +279,11 @@ class TelegramRuntimeConfig(BaseModel):
             self.enabled = True
         elif forced in ("0", "false", "no", "off"):
             self.enabled = False
+        merged = dict(DEFAULT_TELEGRAM_NOTIFY)
+        for key, value in (self.notify or {}).items():
+            if key in DEFAULT_TELEGRAM_NOTIFY:
+                merged[key] = bool(value)
+        self.notify = merged
         return self
 
 
@@ -315,9 +340,27 @@ class UiConfig(BaseModel):
     dismissed_notices: List[str] = Field(default_factory=list,
                                          description="Avvisi della web con 'Non mostrare più' (es. preview_edit_beta)")
     group_background: Literal["colors", "gray", "none"] = Field(default="colors", description="Sfondo dei gruppi in Lezioni: colors | gray | none")
-    outline_auto_approval_seconds: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
+    outline_mode: Literal["auto", "timer", "manual"] = Field(default="auto", description="Approvazione della scaletta: 'auto' (procedi sempre), 'timer' (dopo N secondi), 'manual' (aspetta sempre)")
+    outline_auto_approval_seconds: int = Field(default=10, ge=1, le=3600, description="Secondi di attesa per l'approvazione automatica della scaletta in modalità timer")
     study_statuses: List[CustomStudyStatus] = Field(default_factory=list, description="Stati di studio personalizzati")
     study_status_order: List[str] = Field(default_factory=list, description="Ordine di tutti gli stati di studio")
+    close_action: Literal["background", "quit"] = Field(default="background", description="Azione alla chiusura della finestra con la X nell'app desktop: 'background' | 'quit'")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_outline_mode(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        secs = data.get("outline_auto_approval_seconds")
+        if "outline_mode" not in data or data["outline_mode"] is None:
+            if secs == 0:
+                data["outline_mode"] = "manual"
+            elif isinstance(secs, (int, float)) and secs > 0:
+                data["outline_mode"] = "auto"
+        if secs == 0:
+            data.pop("outline_auto_approval_seconds", None)
+        return data
 
 
 class JevConfig(BaseModel):
@@ -707,6 +750,10 @@ def telegram_enabled() -> bool:
     return load_config().telegram.enabled
 
 
+_DOTENV_INJECTED: Dict[str, str] = {}
+_TELEGRAM_ENV_KEYS = ("RT_TELEGRAM_BOT_TOKEN", "RT_TELEGRAM_CHAT_ID")
+
+
 def load_env_file(dotenv_path: Optional[str] = None, override: bool = False) -> None:
     """
     Carica variabili d'ambiente da un file .env locale (se presente).
@@ -716,16 +763,27 @@ def load_env_file(dotenv_path: Optional[str] = None, override: bool = False) -> 
     qualunque altra cartella. Non solleva errori se il file non esiste in nessuna
     delle due posizioni. Poi sovrappone i segreti di config/secrets.enc (rt.security.secrets).
     """
-    from dotenv import load_dotenv
+    from dotenv import dotenv_values, load_dotenv
     if dotenv_path is None:
         from rt.core.paths import env_file
         dotenv_path = env_file(_default_project_root())
+    raw_dotenv = dotenv_values(dotenv_path) if os.path.isfile(dotenv_path) else {}
+    # Se RT_TELEGRAM_* era arrivato da .env (non da ambiente esplicito / test), aggiorna se .env cambia.
+    for key in _TELEGRAM_ENV_KEYS:
+        val = raw_dotenv.get(key)
+        cur = os.environ.get(key)
+        if val is not None and val != "":
+            if override or cur is None or cur == _DOTENV_INJECTED.get(key):
+                os.environ[key] = val
+                _DOTENV_INJECTED[key] = val
+        elif key in _DOTENV_INJECTED and cur == _DOTENV_INJECTED.get(key):
+            os.environ.pop(key, None)
+            _DOTENV_INJECTED.pop(key, None)
     load_dotenv(dotenv_path=dotenv_path, override=override)
     # RT4-C1: i segreti dell'archivio cifrato (se esiste) vincono su .env ma non sulle
     # variabili esportate a mano. Senza config/secrets.enc non cambia nulla.
-    from dotenv import dotenv_values
     from rt.security.secrets import apply_to_environ
-    apply_to_environ(dotenv_values(dotenv_path) if os.path.isfile(dotenv_path) else {})
+    apply_to_environ(raw_dotenv)
 
 
 def get_api_key(provider_or_credential: str) -> Optional[str]:
@@ -839,11 +897,24 @@ def _cached_config(key):
     return _load_config_uncached(config_path)
 
 
+_MIGRATE_LOCK = threading.Lock()
+
+
 @lru_cache(maxsize=64)
 def _migrate_general(path, stamp, size):
+    # Un lock: due worker in parallelo non riscrivono insieme general.yaml (su Windows
+    # leggere mentre l'altro fa os.replace dà PermissionError).
+    with _MIGRATE_LOCK:
+        _migrate_general_locked(path)
+
+
+def _migrate_general_locked(path):
     from rt.recall.migration import migrate_registry, migrate_exercise_prompt
-    with open(path, encoding="utf-8") as stream:
-        data = yaml.safe_load(stream)
+    try:
+        with open(path, encoding="utf-8") as stream:
+            data = yaml.safe_load(stream)
+    except OSError:
+        return
     if isinstance(data, dict):
         try:
             data = migrate_registry(path, data)

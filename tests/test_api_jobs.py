@@ -47,7 +47,20 @@ def upload(client, run=False, mock=True, with_review=True):
                                  "with_review": str(with_review).lower()})
 
 
+def _set_outline_mode(mode: str, seconds: int = 10):
+    import yaml
+    path = os.path.join("config", "general.yaml")
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    ui = data.setdefault("ui", {})
+    ui["outline_mode"] = mode
+    ui["outline_auto_approval_seconds"] = seconds
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+
+
 def test_end_to_end_upload_outline_review_decisions_build(api_client, ws, worker):
+    _set_outline_mode("manual")
     res = upload(api_client)
     assert res.status_code == 202, res.text
     accepted = res.json()
@@ -120,6 +133,7 @@ def test_fresh_config_without_lessons_root_creates_and_lists_lessons(api_client,
 
 
 def test_upload_with_run_runs_whole_pipeline(api_client, ws, worker):
+    _set_outline_mode("manual")
     accepted = upload(api_client, run=True).json()
     assert accepted["type"] == "run_pipeline"
     drain(worker)
@@ -397,6 +411,7 @@ def test_decision_undo_and_errors(api_client, lesson, worker):
 
 
 def test_outline_revision_job(api_client, lesson, worker):
+    _set_outline_mode("timer", seconds=60)
     lesson_id, _ = lesson
     api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"mock": True})
     drain(worker)

@@ -124,6 +124,7 @@ export function useDeleteStudyNote(lessonId: number) {
     mutationFn: (noteId: number) => studyNotesApi.delete(lessonId, noteId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: studyNotesKeys.all(lessonId) })
+      void queryClient.invalidateQueries({ queryKey: ['study-chat', lessonId] })
     },
   })
 }

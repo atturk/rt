@@ -134,3 +134,38 @@ def test_rt_web_opens_browser_when_services_run(monkeypatch, rt_db):
     monkeypatch.setattr("uvicorn.Server.run", lambda *a, **k: pytest.fail("non doveva avviare un'altra API"))
     assert launcher.run_spa(say=lambda _m: None, open_browser=False) == 0
     assert opened and "/login?code=" in opened[0]
+
+
+@pytest.mark.parametrize("output,expected", [
+    ('disabled services = {\n\t"com.atturk.rt.api" => disabled\n\t"com.atturk.rt.worker" => enabled\n}\n', True),
+    ('disabled services = {\n\t"com.atturk.rt.worker" => true\n}\n', True),
+    ('disabled services = {\n\t"com.atturk.rt.api" => enabled\n\t"com.other.app" => disabled\n}\n', False),
+    ('', False),
+])
+def test_parse_launchctl_disabled(output, expected):
+    assert sm.parse_launchctl_disabled(output) is expected
+
+
+def test_background_disabled_checks_launchctl_output(monkeypatch):
+    monkeypatch.setattr(sm, "supported", lambda: True)
+    monkeypatch.setattr(sm.os, "getuid", lambda: 501, raising=False)
+    monkeypatch.setattr(
+        sm,
+        "_launchctl",
+        lambda *args: subprocess.CompletedProcess(
+            ["launchctl", *args], 0, '"com.atturk.rt.api" => disabled\n', ""
+        ),
+    )
+    assert sm.background_disabled() is True
+
+    monkeypatch.setattr(
+        sm,
+        "_launchctl",
+        lambda *args: subprocess.CompletedProcess(
+            ["launchctl", *args], 0, '"com.atturk.rt.api" => false\n', ""
+        ),
+    )
+    assert sm.background_disabled() is False
+
+    monkeypatch.setattr(sm, "supported", lambda: False)
+    assert sm.background_disabled() is False

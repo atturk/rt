@@ -17,7 +17,7 @@ def test_system_info_donazioni_custom(api_client, monkeypatch):
     res = api_client.get("/api/v1/system/info")
     assert res.status_code == 200
     data = res.json()
-    assert data["donazioni_url"] == "https://ko-fi.com/example"
+    assert data["donazioni_url"] == "https://ko-fi.com/example/donate"
 
 
 def test_build_docs_site_donazioni_empty(tmp_path):

@@ -7,12 +7,34 @@ apre l'impostazione di sistema. Su Windows WebView2 riceve il via libera per la 
 consenso vero resta quello di Windows.
 """
 import logging
+import os
+import subprocess
 import sys
+import threading
 from urllib.parse import urlparse
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost"}
 MAC_SETTINGS = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+MAC_SETTINGS_FILES = "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders"
+MAC_SETTINGS_AUTOMATION = "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+MAC_SETTINGS_BACKGROUND = "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
+MAC_SETTINGS_LOCAL_NETWORK = "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork"
 WINDOWS_SETTINGS = "ms-settings:privacy-microphone"
+WINDOWS_SETTINGS_FIREWALL = "windowsdefender://network/"
+
+SETTINGS_URLS = {
+    "darwin": {
+        "microfono": MAC_SETTINGS,
+        "file_e_cartelle": MAC_SETTINGS_FILES,
+        "automazione": MAC_SETTINGS_AUTOMATION,
+        "elementi_background": MAC_SETTINGS_BACKGROUND,
+        "rete_locale": MAC_SETTINGS_LOCAL_NETWORK,
+    },
+    "win32": {
+        "microfono": WINDOWS_SETTINGS,
+        "firewall": WINDOWS_SETTINGS_FIREWALL,
+    },
+}
 # WKPermissionDecision
 PROMPT, GRANT, DENY = 0, 1, 2
 
@@ -127,21 +149,107 @@ def install_windows(window, base_url: str) -> None:
     window.native.Invoke(Action(configure))
 
 
-def check(window, notice, open_path) -> None:
-    """Voce di menu "Controlla permessi"."""
-    if sys.platform == "win32":
-        open_path(WINDOWS_SETTINGS)
-        notice(window, "Attiva il microfono per le app desktop, poi riprova a registrare.")
-        return
+def request_mic_sync(timeout: float = 60.0) -> dict:
+    """Richiede il microfono su macOS se ancora 'undetermined' e attende l'esito."""
+    if sys.platform != "darwin":
+        return {"status": "unknown"}
     status = mic_status()
-    if status == "undetermined":
-        def done(granted):
-            notice(window, "Microfono consentito." if granted else "Microfono non consentito.")
-            if granted:
-                window.evaluate_js("location.reload()")
-        request_mic(done)
-    elif status == "authorized":
-        notice(window, "Microfono consentito.")
-    else:
-        open_path(MAC_SETTINGS)
-        notice(window, "Attiva RT in Microfono, poi riapri RT.")
+    if status != "undetermined":
+        return {"status": status}
+    done = threading.Event()
+    result = {"status": status}
+
+    def callback(granted: bool) -> None:
+        result["status"] = "authorized" if granted else "denied"
+        done.set()
+
+    try:
+        request_mic(callback)
+        done.wait(timeout=timeout)
+    except Exception as exc:
+        log.warning("Richiesta microfono non riuscita: %s", exc)
+    return result
+
+
+def _folder_access_status() -> dict:
+    """Stato non bloccante dell'accesso alla cartella lezioni se è in Scrivania/Documenti/Download."""
+    from rt.desktop import _lessons_root
+    root = _lessons_root()
+    if sys.platform != "darwin" or not root:
+        return {"rilevante": False, "stato": "not_needed", "percorso": root}
+    real_root = os.path.realpath(os.path.expanduser(root))
+    protected = [os.path.realpath(os.path.expanduser(f"~/{name}")) for name in ("Desktop", "Documents", "Downloads")]
+    if not any(real_root == base or real_root.startswith(base + os.sep) for base in protected):
+        return {"rilevante": False, "stato": "not_needed", "percorso": root}
+    try:
+        os.listdir(root)
+        stato = "authorized"
+    except PermissionError:
+        stato = "denied"
+    except OSError:
+        stato = "authorized"
+    return {"rilevante": True, "stato": stato, "percorso": root}
+
+
+def permissions_status() -> dict:
+    """Stato dei permessi dell'app desktop senza mostrare alert bloccanti."""
+    from rt.core.lan import lan_enabled
+    from rt.core.materials import _soffice
+    from rt.services import service_manager as sm
+
+    platform = sys.platform
+    try:
+        lan_active = bool(lan_enabled())
+    except Exception:
+        lan_active = False
+
+    if platform == "darwin":
+        try:
+            bg_disabled = bool(sm.background_disabled())
+        except Exception:
+            bg_disabled = False
+        return {
+            "platform": platform,
+            "microfono": mic_status(),
+            "file_e_cartelle": _folder_access_status(),
+            "automazione_keynote": {"rilevante": _soffice() is None},
+            "elementi_background": {"stato": "denied" if bg_disabled else "authorized"},
+            "rete_locale": {"attivo": lan_active},
+        }
+    if platform == "win32":
+        return {
+            "platform": platform,
+            "microfono": "unknown",
+            "rete_locale": {"attivo": lan_active},
+        }
+    return {"platform": platform, "microfono": "unknown"}
+
+
+def open_system_settings(chiave: str) -> dict:
+    """Apre una sezione delle impostazioni di sistema da whitelist."""
+    target = SETTINGS_URLS.get(sys.platform, {}).get(chiave)
+    if not target:
+        return {"ok": False, "errore": "Impostazione di sistema non disponibile."}
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", target])
+        elif sys.platform == "win32":
+            try:
+                os.startfile(target)
+            except OSError:
+                if chiave == "firewall":
+                    subprocess.Popen(["control", "firewall.cpl"], creationflags=0x08000000)
+                else:
+                    raise
+        else:
+            return {"ok": False, "errore": "Piattaforma non supportata."}
+        return {"ok": True}
+    except Exception as exc:
+        log.warning("Apertura impostazioni di sistema (%s) non riuscita: %s", chiave, exc)
+        return {"ok": False, "errore": str(exc)}
+
+
+def check(window, base_url: str = "") -> None:
+    """Voce di menu 'Controlla permessi': apre la pagina /permessi nella finestra."""
+    target = f"{base_url.rstrip('/')}/permessi" if base_url else "/permessi"
+    window.load_url(target)

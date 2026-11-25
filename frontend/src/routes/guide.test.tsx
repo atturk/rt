@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, createMemoryRouter, RouterProvider } from 'react-router'
 import { GuidePage } from './guide'
 import { searchGuide, getGuidePage, GUIDE_PAGE_ORDER } from '@/lib/guideDocs'
 import { GuideMarkdown } from '@/components/guide/GuideMarkdown'
-import { ReturnAddressContext } from '@/lib/returnAddress'
+import { GuideReturnContext, rememberGuideReturn } from '@/lib/returnAddress'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { Layout } from '@/components/Layout'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -105,8 +105,8 @@ describe('Guide offline documentation & search', () => {
     const searchInput = screen.getByRole('searchbox', { name: 'Cerca nella guida' })
     await user.type(searchInput, 'smartscreen')
 
-    expect(screen.getByTestId('guide-search-results')).toBeInTheDocument()
-    expect(screen.getByText(/Installazione/)).toBeInTheDocument()
+    const results = screen.getByTestId('guide-search-results')
+    expect(within(results).getByText(/Installazione/)).toBeInTheDocument()
 
     // Cliccando sul pulsante di cancellazione torna all'articolo
     const clearBtn = screen.getByRole('button', { name: 'Cancella ricerca' })
@@ -197,11 +197,11 @@ describe('Guide offline documentation & search', () => {
   it('Indietro con ReturnAddressContext torna alla lezione ed esce dalla guida', () => {
     render(
       <MemoryRouter initialEntries={['/guida']}>
-        <ReturnAddressContext.Provider value="/lezioni/15">
+        <GuideReturnContext.Provider value="/lezioni/15">
           <Routes>
             <Route path="/guida" element={<GuidePage />} />
           </Routes>
-        </ReturnAddressContext.Provider>
+        </GuideReturnContext.Provider>
       </MemoryRouter>,
     )
 
@@ -209,18 +209,57 @@ describe('Guide offline documentation & search', () => {
     expect(backBtn).toHaveAttribute('href', '/lezioni/15')
   })
 
-  it('Indietro da Impostazioni va a / e non a impostazioni', () => {
+  it('Indietro torna alle Impostazioni se si è entrati da lì', () => {
     render(
       <MemoryRouter initialEntries={['/guida']}>
-        <ReturnAddressContext.Provider value="/impostazioni/aspetto">
+        <GuideReturnContext.Provider value="/impostazioni/aspetto">
           <Routes>
             <Route path="/guida" element={<GuidePage />} />
           </Routes>
-        </ReturnAddressContext.Provider>
+        </GuideReturnContext.Provider>
       </MemoryRouter>,
     )
 
     const backBtn = screen.getByRole('link', { name: 'Indietro' })
-    expect(backBtn).toHaveAttribute('href', '/')
+    expect(backBtn).toHaveAttribute('href', '/impostazioni/aspetto')
+  })
+
+  it('la pagina di ritorno ignora le pagine della guida e ricorda le altre', () => {
+    const at = (pathname: string, search = '', hash = '') => ({ pathname, search, hash })
+    let back = '/'
+    back = rememberGuideReturn(back, at('/lezioni/15'))
+    back = rememberGuideReturn(back, at('/impostazioni/aspetto'))
+    back = rememberGuideReturn(back, at('/guida'))
+    back = rememberGuideReturn(back, at('/guida/studio', '', '#modalita-zen'))
+    expect(back).toBe('/impostazioni/aspetto')
+  })
+
+  it('il menu Aiuto nativo apre la guida senza ricaricare e Indietro torna alla pagina di prima', async () => {
+    const qc = new QueryClient()
+    const router = createMemoryRouter(
+      [
+        {
+          element: <Layout />,
+          children: [
+            { path: '/lezioni/:id', element: <div>Lezione</div> },
+            { path: '/guida', element: <GuidePage /> },
+            { path: '/guida/:pagina', element: <GuidePage /> },
+          ],
+        },
+      ],
+      { initialEntries: ['/lezioni/7'] },
+    )
+    render(
+      <QueryClientProvider client={qc}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    expect(screen.getByText('Lezione')).toBeInTheDocument()
+    expect(window.rtNavigate).toBeTypeOf('function')
+    window.rtNavigate?.('/guida/studio')
+    await waitFor(() => expect(screen.getByTestId('guide-page')).toBeInTheDocument())
+    window.rtNavigate?.('/guida/installazione')
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: /Installazione/ })).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: 'Indietro' })).toHaveAttribute('href', '/lezioni/7')
   })
 })

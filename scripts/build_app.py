@@ -257,6 +257,8 @@ def macos_info_plist(version: str) -> dict:
         "LSMinimumSystemVersion": "14.0", "NSHighResolutionCapable": True,
         "LSApplicationCategoryType": "public.app-category.education",
         "NSMicrophoneUsageDescription": "RT usa il microfono per registrare note vocali.",
+        "NSAppleEventsUsageDescription": "RT usa Keynote per convertire le presentazioni in PDF quando LibreOffice non è installato.",
+        "NSLocalNetworkUsageDescription": "RT permette di aprire le lezioni dagli altri dispositivi sulla stessa rete Wi‑Fi.",
         "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
         "UTExportedTypeDeclarations": [
             {

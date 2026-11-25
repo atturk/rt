@@ -285,7 +285,7 @@ class StudyNote(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"))
     unit_id: Mapped[str] = mapped_column(String(64))
-    kind: Mapped[str] = mapped_column(String(32))  # "verifica" | "chiedi"
+    kind: Mapped[str] = mapped_column(String(32))  # "verifica" | "chiedi" | "chat"
     anchor: Mapped[dict[str, Any]] = mapped_column(JSON)
     unit_fingerprint: Mapped[str] = mapped_column(String(64), default="")
     request: Mapped[str] = mapped_column(Text, default="")
@@ -418,3 +418,57 @@ class SubjectTeacher(Base):
     materia: Mapped[str] = mapped_column(String(256), primary_key=True)
     nome: Mapped[str] = mapped_column(String(256), primary_key=True)
     creata_il: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class LessonSummaryCache(Base):
+    """Vetrina persistente dei riepiloghi delle lezioni (elenco rapido all'avvio)."""
+    __tablename__ = "lesson_summary_cache"
+
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(128))
+    schema: Mapped[int] = mapped_column(Integer, default=1)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class StudyChatMessage(Base):
+    """Messaggio della chat dello Studio associata a una lezione."""
+    __tablename__ = "study_chat_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(16))  # "user" | "assistant"
+    content: Mapped[str] = mapped_column(Text, default="")
+    images: Mapped[list[str]] = mapped_column(JSON, default=list)
+    unit_id: Mapped[str] = mapped_column(String(64), default="")
+    model: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    saved_note_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("study_notes.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class LlmDeferred(Base):
+    """Cache e stato delle chiamate LLM in modalità batch differita."""
+    __tablename__ = "llm_deferred"
+    __table_args__ = (
+        Index("ix_llm_deferred_job_state", "job_id", "state"),
+        Index("ix_llm_deferred_batch_state", "batch_id", "state"),
+    )
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    lesson_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True, index=True)
+    batch_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, index=True)
+    provider: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(256))
+    credential_ref: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    base_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    request: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    state: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    response: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

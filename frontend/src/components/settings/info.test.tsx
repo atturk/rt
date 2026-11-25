@@ -128,12 +128,13 @@ it('Novità apre la versione installata, lascia chiuse le precedenti e mostra te
   vi.spyOn(api, 'GET').mockResolvedValue(result(sections) as never)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><ChangelogSection version="4.2.4b1" /></QueryClientProvider>)
-  const current = (await screen.findByText('4.2.4b1')).closest('details')!
-  expect(current).toHaveAttribute('open')
-  expect(screen.getByText('4.2.3').closest('details')).not.toHaveAttribute('open')
+  const currentBtn = await screen.findByRole('button', { name: /4\.2\.4b1/ })
+  expect(currentBtn).toHaveAttribute('aria-expanded', 'true')
+  const prevBtn = screen.getByRole('button', { name: /4\.2\.3/ })
+  expect(prevBtn).toHaveAttribute('aria-expanded', 'false')
   expect(screen.getByText('<b>Testo semplice</b>')).toBeVisible()
-  expect(current.querySelector('b')).toBeNull()
-  await userEvent.click(screen.getByText('4.2.3'))
+  expect(currentBtn.parentElement!.querySelector('b')).toBeNull()
+  await userEvent.click(prevBtn)
   expect(screen.getByText('Prima.')).toBeVisible()
 })
 
@@ -153,16 +154,18 @@ it('Novità conserva le caselle per versione e testo e permette di toglierle', a
   vi.spyOn(api, 'GET').mockResolvedValue(result(sections) as never)
   const mount = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ChangelogSection version="4.2.4b3" /></QueryClientProvider>)
   const first = mount()
-  const latest = within((await screen.findByText('4.2.4b3')).closest('details')!)
+  const latestBtn = await screen.findByRole('button', { name: /4\.2\.4b3/ })
+  const latest = within(latestBtn.parentElement!)
   await userEvent.click(latest.getByRole('checkbox', { name: 'Voce uguale.' }))
   expect(latest.getByText('Voce uguale.')).toHaveClass('line-through')
   first.unmount()
   mount()
-  const current = within((await screen.findByText('4.2.4b3')).closest('details')!)
+  const current = within((await screen.findByRole('button', { name: /4\.2\.4b3/ })).parentElement!)
   expect(current.getByRole('checkbox', { name: 'Voce uguale.' })).toBeChecked()
   expect(current.getByRole('checkbox', { name: 'Voce diversa.' })).not.toBeChecked()
-  await userEvent.click(screen.getByText('4.2.4b2'))
-  expect(within(screen.getByText('4.2.4b2').closest('details')!).getByRole('checkbox', { name: 'Voce uguale.' })).not.toBeChecked()
+  const oldBtn = screen.getByRole('button', { name: /4\.2\.4b2/ })
+  await userEvent.click(oldBtn)
+  expect(within(oldBtn.parentElement!).getByRole('checkbox', { name: 'Voce uguale.' })).not.toBeChecked()
   await userEvent.click(current.getByRole('checkbox', { name: 'Voce uguale.' }))
   expect(current.getByText('Voce uguale.')).not.toHaveClass('line-through')
   expect(localStorage.length).toBe(0)
@@ -231,54 +234,8 @@ it('Novità mostra in grassetto il testo tra ** senza gli asterischi', async () 
   const sections = [{ version: '4.3.5', date: '', groups: [{ title: 'Novità', items: ['**Token**: copia e rigenera.'] }] }]
   vi.spyOn(api, 'GET').mockResolvedValue(result(sections) as never)
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ChangelogSection version="4.3.5" /></QueryClientProvider>)
-  const current = (await screen.findByText('4.3.5')).closest('details')!
+  const current = (await screen.findByRole('button', { name: /4\.3\.5/ })).parentElement!
   expect(within(current).getByText('Token').tagName).toBe('STRONG')
   expect(current.textContent).not.toContain('**')
   expect(within(current).getByRole('checkbox', { name: 'Token: copia e rigenera.' })).toBeInTheDocument()
-})
-
-it('link Sostieni RT compare solo se donazioni_url non è vuoto', async () => {
-  const base = {
-    version: '4.3.8',
-    prerelease: false,
-    update_channel: 'stable',
-    install_dir: '/install',
-    data_dir: '/data',
-    config_dir: '/config',
-    python_version: '3.12.0',
-    platform: 'Darwin 24.1.0',
-    build: null,
-  }
-
-  // 1. Vuoto: nessun link
-  vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(result(
-    path === '/api/v1/system/info' ? { ...base, donazioni_url: '' } :
-    path === '/api/v1/settings' ? { data_dir: '/data' } :
-    path === '/api/v1/system/cache' ? empty :
-    path === '/api/v1/system/update' ? { supported: false, current: '4.3.8', available: false, releases_url: '', progress: { phase: 'idle', downloaded: 0 } } :
-    path === '/api/v1/system/changelog' ? [] : {},
-  ))) as never)
-
-  const client1 = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const { unmount } = render(<QueryClientProvider client={client1}><InfoSection /></QueryClientProvider>)
-  expect(await screen.findByText('4.3.8')).toBeInTheDocument()
-  expect(screen.queryByTestId('link-sostieni-rt')).not.toBeInTheDocument()
-  expect(screen.queryByText('Sostieni RT')).not.toBeInTheDocument()
-  unmount()
-
-  // 2. Con URL: link presente
-  vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(result(
-    path === '/api/v1/system/info' ? { ...base, donazioni_url: 'https://example.com/donate' } :
-    path === '/api/v1/settings' ? { data_dir: '/data' } :
-    path === '/api/v1/system/cache' ? empty :
-    path === '/api/v1/system/update' ? { supported: false, current: '4.3.8', available: false, releases_url: '', progress: { phase: 'idle', downloaded: 0 } } :
-    path === '/api/v1/system/changelog' ? [] : {},
-  ))) as never)
-
-  const client2 = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(<QueryClientProvider client={client2}><InfoSection /></QueryClientProvider>)
-  const link = await screen.findByTestId('link-sostieni-rt')
-  expect(link).toBeInTheDocument()
-  expect(link).toHaveAttribute('href', 'https://example.com/donate')
-  expect(link).toHaveTextContent('Sostieni RT')
 })

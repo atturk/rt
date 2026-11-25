@@ -34,6 +34,9 @@ class JobOutcome:
     decision: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     lesson_path: Optional[str] = None
+    progress: Optional[Dict[str, Any]] = None
+    event_type: Optional[str] = None
+    event_payload: Optional[Dict[str, Any]] = None
 
 
 JobHandler = Callable[[JobInfo, RunContext], JobOutcome]
@@ -53,7 +56,10 @@ def mock_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 # Job lunghi di cui avvisare quando non riescono (le notifiche le registra chi avvia il worker:
 # rt/services non conosce Telegram).
-NOTIFY_FAILED_TYPES = frozenset({"run_pipeline", "run_phase", "ingest_audio", "update_lesson", "add_images"})
+NOTIFY_FAILED_TYPES = frozenset({
+    "run_pipeline", "run_phase", "ingest_audio", "ingest_sources", "ingest_notes",
+    "update_lesson", "add_images", "review_unit", "review_part",
+})
 _JOB_NOTIFIERS: List[Any] = []
 
 
@@ -228,7 +234,7 @@ class Worker:
                  job_types: Optional[Sequence[str]] = None, lease_seconds: int = DEFAULT_LEASE_SECONDS,
                  poll_interval: float = 1.0, handlers: Optional[Dict[str, JobHandler]] = None,
                  on_message: Optional[Callable[[str], None]] = None, mock: bool = False,
-                 stt: Optional[str] = "auto"):
+                 stt: Optional[str] = "auto", batch_poll_interval: float = 60.0):
         from rt.services.jobs import detect_stt_capability
         self.queue = queue
         self.mock = mock
@@ -239,8 +245,13 @@ class Worker:
         self.worker_id = worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
         self.lease_seconds = lease_seconds
         self.poll_interval = poll_interval
+        self.batch_poll_interval = max(0.05, float(batch_poll_interval))
         self.on_message = on_message or (lambda msg: logger.info(msg))
         self._registered = False
+        self._last_batch_poll = 0.0
+        self._last_batch_cleanup = 0.0
+        self._batch_backoff_until: Dict[str, float] = {}
+        self._batch_backoff_strikes: Dict[str, int] = {}
 
     def register(self) -> None:
         if not self._registered:
@@ -256,6 +267,17 @@ class Worker:
         done = 0
         try:
             while not (stop_event is not None and stop_event.is_set()):
+                now_mono = time.monotonic()
+                if now_mono - self._last_batch_poll >= self.batch_poll_interval:
+                    self._last_batch_poll = now_mono
+                    self.poll_provider_batches(now=now_mono)
+                if now_mono - self._last_batch_cleanup >= 3600.0:
+                    self._last_batch_cleanup = now_mono
+                    try:
+                        from rt.llm import deferred
+                        deferred.cleanup(db=self.queue.db)
+                    except Exception:
+                        logger.debug("Pulizia cache batch non riuscita", exc_info=True)
                 job = self.run_once()
                 if job is not None:
                     done += 1
@@ -270,6 +292,155 @@ class Worker:
         finally:
             self.queue.stop_worker(self.worker_id)
         return done
+
+    def poll_provider_batches(self, now: Optional[float] = None) -> int:
+        """Controlla tutti i lotti batch aperti e rimette in coda i job completati o falliti."""
+        from rt.llm import deferred
+        from rt.llm.credentials import GLOBAL_CREDENTIALS
+        from rt.llm.errors import RateLimitFailure
+        from rt.llm.providers import get_provider
+
+        now_mono = time.monotonic() if now is None else now
+        resumed = 0
+        try:
+            batches = deferred.open_batches(db=self.queue.db)
+        except Exception as exc:
+            logger.warning("Lettura dei lotti batch aperti non riuscita: %s", exc)
+            return 0
+
+        for batch in batches:
+            batch_id = batch["batch_id"]
+            if self._batch_backoff_until.get(batch_id, 0.0) > now_mono:
+                continue
+            provider_name = batch["provider"]
+            cred_ref = batch.get("credential_ref")
+            base_url = batch.get("base_url")
+            try:
+                provider = get_provider(provider_name)
+                api_key = GLOBAL_CREDENTIALS.get_api_key(cred_ref) if cred_ref else None
+                if not api_key:
+                    default_cred = GLOBAL_CREDENTIALS.get_default_credential_for_provider(provider_name)
+                    if default_cred:
+                        api_key = GLOBAL_CREDENTIALS.get_api_key(default_cred)
+                if not api_key:
+                    logger.warning("API key mancante per controllare il lotto %s (%s)", batch_id, provider_name)
+                    continue
+                status, results = provider.poll_batch(batch_id, api_key=api_key, base_url=base_url)
+            except RateLimitFailure as rl:
+                strikes = self._batch_backoff_strikes.get(batch_id, 0) + 1
+                self._batch_backoff_strikes[batch_id] = strikes
+                delay = rl.retry_after if rl.retry_after and rl.retry_after > 0 else min(900.0, 60.0 * (2 ** (strikes - 1)))
+                self._batch_backoff_until[batch_id] = now_mono + delay
+                logger.warning("Rate limit (429) controllando il lotto %s: riprovo tra %.0fs", batch_id, delay)
+                continue
+            except Exception as exc:
+                logger.warning("Errore controllando il lotto %s (%s): %s", batch_id, provider_name, exc)
+                continue
+
+            self._batch_backoff_until.pop(batch_id, None)
+            self._batch_backoff_strikes.pop(batch_id, None)
+
+            if status == "completed":
+                affected = deferred.store_results(batch_id, results or {}, db=self.queue.db)
+                try:
+                    provider.cleanup_batch(batch_id, api_key=api_key, base_url=base_url)
+                except Exception:
+                    logger.debug("Pulizia remota lotto %s non riuscita", batch_id, exc_info=True)
+                for jid in affected:
+                    if not deferred.job_has_waiting_items(jid, db=self.queue.db):
+                        try:
+                            info = self.queue.get(jid)
+                            if info and info.state == JobState.WAITING_FOR_PROVIDER.value:
+                                self.queue.resume_after_provider(jid)
+                                resumed += 1
+                        except Exception:
+                            logger.warning("Ripresa del job %s dopo lotto %s non riuscita", jid, batch_id, exc_info=True)
+            elif status in ("failed", "expired", "cancelled"):
+                affected = deferred.mark_batch_fallback(batch_id, error=status, db=self.queue.db)
+                try:
+                    provider.cleanup_batch(batch_id, api_key=api_key, base_url=base_url)
+                except Exception:
+                    logger.debug("Pulizia remota lotto %s non riuscita", batch_id, exc_info=True)
+                for jid in affected:
+                    if not deferred.job_has_waiting_items(jid, db=self.queue.db):
+                        try:
+                            info = self.queue.get(jid)
+                            if info and info.state == JobState.WAITING_FOR_PROVIDER.value:
+                                self.queue.resume_after_provider(
+                                    jid,
+                                    fallback_sync=True,
+                                    reason=f"Lotto batch {status}: ripresa automatica in modalità sincrona",
+                                )
+                                resumed += 1
+                        except Exception:
+                            logger.warning("Ripresa in fallback del job %s dopo lotto %s non riuscita", jid, batch_id, exc_info=True)
+        return resumed
+
+    def _submit_deferred_job(self, job: JobInfo, ctx: RunContext) -> JobOutcome:
+        from rt.llm import deferred
+        from rt.llm.credentials import GLOBAL_CREDENTIALS
+        from rt.llm.errors import AuthenticationFailure
+        from rt.llm.providers import get_provider
+
+        pending = deferred.pending_for_job(job.id, db=self.queue.db)
+        if not pending and not deferred.job_has_waiting_items(job.id, db=self.queue.db):
+            raise RuntimeError("Fase differita senza richieste pendenti registrate.")
+
+        grouped: Dict[tuple, list] = {}
+        for entry in pending:
+            group_key = (entry.provider, entry.model, entry.credential_ref or "", entry.base_url or "")
+            grouped.setdefault(group_key, []).append(entry)
+
+        batch_ids: List[str] = []
+        providers_used: List[str] = []
+        total_requests = len(pending)
+
+        try:
+            for (provider_name, model_name, cred_ref, base_url), entries in grouped.items():
+                provider = get_provider(provider_name)
+                api_key = GLOBAL_CREDENTIALS.get_api_key(cred_ref) if cred_ref else None
+                if not api_key:
+                    default_cred = GLOBAL_CREDENTIALS.get_default_credential_for_provider(provider_name)
+                    if default_cred:
+                        api_key = GLOBAL_CREDENTIALS.get_api_key(default_cred)
+                if not api_key:
+                    raise AuthenticationFailure(
+                        f"API key mancante per inviare il lotto batch al provider '{provider_name}'.",
+                        provider=provider_name,
+                        model=model_name,
+                    )
+                reqs = [{"custom_id": e.key, "body": e.request} for e in entries]
+                batch_id = provider.submit_batch(
+                    reqs,
+                    model=model_name,
+                    api_key=api_key,
+                    base_url=base_url or None,
+                )
+                deferred.mark_submitted([e.key for e in entries], batch_id, db=self.queue.db)
+                batch_ids.append(batch_id)
+                if provider_name not in providers_used:
+                    providers_used.append(provider_name)
+        except Exception:
+            deferred.delete_for_job(job.id, states=("pending",), db=self.queue.db)
+            raise
+
+        provider_label = ", ".join(providers_used) if providers_used else "provider"
+        return JobOutcome(
+            state=JobState.WAITING_FOR_PROVIDER,
+            lesson_path=ctx.lesson_dir or job.lesson_path,
+            progress={
+                "phase": "batch",
+                "message": "In attesa del provider (batch)",
+                "requests": total_requests,
+                "provider": provider_label,
+            },
+            event_type="job_waiting_provider",
+            event_payload={
+                "requests": total_requests,
+                "provider": provider_label,
+                "batches": batch_ids,
+            },
+        )
 
     def run_once(self) -> Optional[JobInfo]:
         """Prende ed esegue un job; None se la coda è vuota."""
@@ -307,13 +478,23 @@ class Worker:
         outcome: Optional[JobOutcome] = None
         try:
             try:
+                from rt.llm.deferred import use_batch_fallback, use_job_id
+                from rt.llm.errors import DeferredCall, DeferredPhase
                 ctx.check_cancelled()
                 if job.type in {'ingest_audio', 'ingest_sources', 'ingest_notes', 'run_pipeline'} and not job.lesson_path:
                     options = job.payload.get('options') or {}
                     if options.get('date') and options.get('materia') and options.get('dest_dir'):
                         from rt.services.lesson_conflicts import require_no_lesson_conflict
                         require_no_lesson_conflict(options['date'], options['materia'], options.get('ora'), options['dest_dir'])
-                outcome = handler(job, ctx)
+                fallback_flag = bool((job.payload or {}).get("batch_fallback"))
+                with use_job_id(job.id), use_batch_fallback(fallback_flag):
+                    outcome = handler(job, ctx)
+            except (DeferredCall, DeferredPhase):
+                try:
+                    outcome = self._submit_deferred_job(job, ctx)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Invio batch del job %s fallito", job.id)
+                    outcome = JobOutcome(state=JobState.FAILED, error=_sanitize(job_error_message(exc)))
             except RunCancelled:
                 outcome = JobOutcome(state=JobState.CANCELLED)
             except Exception as exc:  # noqa: BLE001 - l'errore diventa lo stato del job
@@ -335,8 +516,12 @@ class Worker:
             self.on_message(f"⚠️ job {job.id[:8]}: lease perso, il risultato non viene registrato")
             return
         self.queue.finish(job.id, self.worker_id, outcome.state, result=outcome.result, error=outcome.error,
-                          decision=outcome.decision, lesson_path=outcome.lesson_path)
-        _notify_job_outcome(job, outcome)
+                          decision=outcome.decision, lesson_path=outcome.lesson_path,
+                          progress=outcome.progress, event_type=outcome.event_type,
+                          event_payload=outcome.event_payload)
+        from rt.llm.deferred import use_job_id
+        with use_job_id(job.id):
+            _notify_job_outcome(job, outcome)
         if job.type == "documents" and outcome.state == JobState.SUCCEEDED and job.lesson_path:
             from rt.services.documents_service import ensure_documents_queued
             ensure_documents_queued(job.lesson_path, self.queue)

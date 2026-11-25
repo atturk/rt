@@ -56,7 +56,22 @@ def test_revision_invalidates_approval(temp_lesson_dir, monkeypatch):
     assert ctx.telemetry.get_summary()["total_requests"] == 1
 
 
-def test_pipeline_resumes_after_approval(temp_lesson_dir):
+def _set_outline_mode(monkeypatch, mode: str, seconds: int = 10):
+    from rt.core import config as config_mod
+    real_load = config_mod.load_config
+
+    def patched(*args, **kwargs):
+        cfg = real_load(*args, **kwargs)
+        cfg.ui.outline_mode = mode
+        cfg.ui.outline_auto_approval_seconds = seconds
+        return cfg
+
+    monkeypatch.setattr(config_mod, "load_config", patched)
+    monkeypatch.setattr(outline_service, "load_config", patched)
+
+
+def test_pipeline_resumes_after_approval(temp_lesson_dir, monkeypatch):
+    _set_outline_mode(monkeypatch, "manual")
     opts = PipelineOptions(mock=True, rename=False)
     res = run_pipeline(temp_lesson_dir, opts, RunContext())
     assert res.status == PipelineStatus.WAITING_FOR_DECISION
@@ -107,7 +122,8 @@ def test_outline_timer_suspend(temp_lesson_dir):
     assert review_after["approved"] is False
 
 
-def test_revision_restarts_suspended_timer(temp_lesson_dir):
+def test_revision_restarts_suspended_timer(temp_lesson_dir, monkeypatch):
+    _set_outline_mode(monkeypatch, "timer", seconds=60)
     _outline_ready(temp_lesson_dir)
     previous = outline_service.start_outline_timer(temp_lesson_dir, seconds=60)
     outline_service.suspend_outline_timer(temp_lesson_dir)
@@ -146,3 +162,36 @@ def test_expired_timer_recovers_approval_on_read(temp_lesson_dir):
     review = outline_service.get_outline_review(temp_lesson_dir)
     assert review["approved"] is True
     assert review["approval"]["actor"] == "server"
+
+
+def test_outline_mode_migration():
+    from rt.core.config import RTConfig
+    assert RTConfig.model_validate({}).ui.outline_mode == "auto"
+    cfg_zero = RTConfig.model_validate({"ui": {"outline_auto_approval_seconds": 0}})
+    assert cfg_zero.ui.outline_mode == "manual"
+    assert cfg_zero.ui.outline_auto_approval_seconds == 10
+    cfg_ten = RTConfig.model_validate({"ui": {"outline_auto_approval_seconds": 10}})
+    assert cfg_ten.ui.outline_mode == "auto"
+    assert cfg_ten.ui.outline_auto_approval_seconds == 10
+    cfg_explicit = RTConfig.model_validate({"ui": {"outline_mode": "timer", "outline_auto_approval_seconds": 25}})
+    assert cfg_explicit.ui.outline_mode == "timer"
+    assert cfg_explicit.ui.outline_auto_approval_seconds == 25
+
+
+def test_pipeline_auto_mode_approves_without_waiting(temp_lesson_dir, monkeypatch):
+    _set_outline_mode(monkeypatch, "auto")
+    res = run_pipeline(temp_lesson_dir, PipelineOptions(mock=True, rename=False), RunContext())
+    assert res.status == PipelineStatus.COMPLETED, res.error
+    assert outline_service.is_outline_approved(temp_lesson_dir)
+    approval = outline_service.get_outline_approval(temp_lesson_dir)
+    assert approval["actor"] == "server" and approval["channel"] == "server"
+    assert outline_service.get_outline_timer(temp_lesson_dir) is None
+
+
+def test_pipeline_manual_mode_waits_without_timer(temp_lesson_dir, monkeypatch):
+    _set_outline_mode(monkeypatch, "manual")
+    res = run_pipeline(temp_lesson_dir, PipelineOptions(mock=True, rename=False), RunContext())
+    assert res.status == PipelineStatus.WAITING_FOR_DECISION
+    assert res.decision.kind == "outline_approval"
+    assert not outline_service.is_outline_approved(temp_lesson_dir)
+    assert outline_service.get_outline_timer(temp_lesson_dir) is None

@@ -34,15 +34,28 @@ const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente
 // ---------------------------------------------------------------- intestazione
 
 /** Azioni dell'intestazione: raggruppa (icone), ordina, cerca, seleziona; sul telefono Raggruppa e Ordina a un tocco. */
-export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting, onSelecting, fixed = false, onToggleFixed }: {
+export function LessonsHeaderActions({
+  prefs,
+  onPrefs,
+  query,
+  onQuery,
+  selecting,
+  onSelecting,
+  pinActive = false,
+  pinLabel = 'Fissa la ricerca',
+  pinDisabled = false,
+  onTogglePin,
+}: {
   prefs: LessonsPrefs
   onPrefs: (patch: Partial<LessonsPrefs>) => void
   query: string
   onQuery: (q: string) => void
   selecting: boolean
   onSelecting: (on: boolean) => void
-  fixed?: boolean
-  onToggleFixed?: () => void
+  pinActive?: boolean
+  pinLabel?: string
+  pinDisabled?: boolean
+  onTogglePin?: () => void
 }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [savedDateChoice, setSavedDateChoice] = useState<'data' | 'mese'>(() => (prefs.group === 'mese' ? 'mese' : 'data'))
@@ -156,15 +169,15 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
           />
         </>
       )}
-      {/* Telefono: niente «Fissa questa vista», altrimenti il titolo Lezioni non ci sta. */}
-      {!phone && <IconButton
-        label={fixed ? 'Vista fissata: tocca per non fissarla più' : 'Fissa questa vista'}
+      <IconButton
+        label={pinLabel}
         icon={Pin}
-        active={fixed}
-        aria-pressed={fixed}
-        className={cn(fixed && '[&_svg]:fill-current')}
-        onClick={onToggleFixed}
-      />}
+        active={pinActive}
+        aria-pressed={pinActive}
+        disabled={pinDisabled}
+        className={cn(pinActive && '[&_svg]:fill-current')}
+        onClick={onTogglePin}
+      />
       {phone && (
         <IconButton
           label="Nuova lezione"
@@ -306,23 +319,51 @@ export function StudyRing({ lesson }: { lesson: Lesson }) {
   </Link>}</Tooltip>
 }
 
-function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup }: {
+function GroupHeader({
+  group,
+  grouping,
+  selecting,
+  selectedCount,
+  onSelectGroup,
+  pinned = false,
+  hidePin = false,
+  onTogglePin,
+}: {
   group: LessonGroup
   grouping: LessonsGrouping
   selecting: boolean
   selectedCount: number
   onSelectGroup: (checked: boolean) => void
+  pinned?: boolean
+  hidePin?: boolean
+  onTogglePin?: () => void
 }) {
   const label = groupLabel(group, grouping)
+  const pinLabel = pinned ? `Togli ${label} dalla cima` : `Fissa in cima ${label}`
   // Recall su un gruppo: si seleziona il gruppo (o le lezioni che si vogliono) e Recall nella barra in basso.
   return (
-    <div className="flex items-center gap-3 px-2.5 pt-1 pb-0.5 max-md:gap-3 max-md:px-2">
+    <div className="group/header flex items-center gap-2 px-2.5 pt-1 pb-0.5 max-md:gap-2 max-md:px-2">
       {selecting && (
         <Checkbox
           label={`Seleziona il gruppo ${label}`}
           checked={selectedCount > 0 && selectedCount === group.lessons.length}
           indeterminate={selectedCount > 0 && selectedCount < group.lessons.length}
           onChange={onSelectGroup}
+        />
+      )}
+      {!hidePin && (
+        <IconButton
+          icon={Pin}
+          label={pinLabel}
+          aria-pressed={pinned}
+          data-testid="group-pin"
+          className={cn(
+            'size-5 min-h-5 min-w-5 [&_svg]:size-3.5 max-md:size-7 max-md:min-h-7 max-md:min-w-7 max-md:[&_svg]:size-4',
+            pinned
+              ? 'opacity-100 text-success [&_svg]:fill-current'
+              : 'text-muted-foreground opacity-0 group-hover/header:opacity-100 group-focus-within/header:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 max-md:opacity-100',
+          )}
+          onClick={onTogglePin}
         />
       )}
       <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}{grouping !== 'nessuno' && <MissingLessonsButton grouping={grouping} groupKey={group.key} />}</h2>
@@ -332,7 +373,18 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
 
 // ---------------------------------------------------------------- elenco e selezione
 
-export function LessonsList({ groups, grouping, running, selecting, selected, onSelected, highlightedLessonId }: {
+export function LessonsList({
+  groups,
+  grouping,
+  running,
+  selecting,
+  selected,
+  onSelected,
+  highlightedLessonId,
+  pinnedGroupKey,
+  hideGroupPins = false,
+  onToggleGroupPin,
+}: {
   groups: LessonGroup[]
   grouping: LessonsGrouping
   running: Set<number>
@@ -340,6 +392,9 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
   selected: Set<number>
   onSelected: (next: Set<number>) => void
   highlightedLessonId?: number | null
+  pinnedGroupKey?: string
+  hideGroupPins?: boolean
+  onToggleGroupPin?: (key: string) => void
 }) {
   const background = useSettings().data?.preferences?.sfondo_gruppi
   const toggle = (ids: number[], on: boolean) => {
@@ -368,6 +423,9 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
               selecting={selecting}
               selectedCount={group.lessons.filter((l) => selected.has(l.id)).length}
               onSelectGroup={(on) => toggle(group.lessons.map((l) => l.id), on)}
+              pinned={!hideGroupPins && pinnedGroupKey !== undefined && group.key === pinnedGroupKey}
+              hidePin={hideGroupPins}
+              onTogglePin={onToggleGroupPin ? () => onToggleGroupPin(group.key) : undefined}
             />
           )}
           <ul className="flex flex-col">

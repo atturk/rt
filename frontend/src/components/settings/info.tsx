@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { formatBytes } from '@/lib/jobs'
-import { Section } from './common'
+import { SettingsDisclosure, SettingsGroup } from './ui'
 import { UpdateSection } from './update'
 
 /** Scheda Info: versione e canale di aggiornamento (come 'rt -v'; il canale si cambia con
@@ -20,47 +20,42 @@ export function InfoSection() {
   const inUse = useSettings().data?.data_dir
   return (
     <>
-      <Section id="info" title="Info" description="Versione di RT, canale di aggiornamento e cartelle in uso: utili da allegare a una segnalazione.">
-        {info.isPending && <p className="text-body text-muted-foreground">Carico le informazioni…</p>}
-        {info.isError && <Alert tone="danger">{errorMessage(info.error)}</Alert>}
+      <SettingsGroup
+        id="info"
+        title="Info"
+        description="Versione di RT, canale di aggiornamento e cartelle in uso: utili da allegare a una segnalazione."
+      >
+        {info.isPending && <p className="px-4 py-3 text-body text-muted-foreground">Carico le informazioni…</p>}
+        {info.isError && (
+          <div className="px-4 py-3">
+            <Alert tone="danger">{errorMessage(info.error)}</Alert>
+          </div>
+        )}
         {info.data && (
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-body sm:grid-cols-[10rem_1fr]" data-testid="system-info">
-            <Row label="Versione">
+          <dl className="divide-y divide-border/60 text-body" data-testid="system-info">
+            <InfoRow label="Versione">
               <span className="inline-flex items-center gap-2">
                 <span className="font-semibold tabular-nums">{info.data.version}</span>
                 {info.data.prerelease && <Badge tone="warning">Beta</Badge>}
               </span>
-            </Row>
+            </InfoRow>
             {info.data.build && (
-              <Row label="Build">
+              <InfoRow label="Build">
                 <span className="tabular-nums">{info.data.build}</span>
-              </Row>
+              </InfoRow>
             )}
-            <Row label="Canale di aggiornamento">
+            <InfoRow label="Canale di aggiornamento">
               {info.data.update_channel === 'beta' ? 'Beta (anche le versioni di prova)' : 'Stabile'}
-            </Row>
-            <Row label="Cartella dati"><Path value={info.data.data_dir} /></Row>
-            {inUse && inUse !== info.data.data_dir && <Row label="Database e media in uso"><Path value={inUse} /></Row>}
-            <Row label="Configurazione"><Path value={info.data.config_dir} /></Row>
-            <Row label="Installazione"><Path value={info.data.install_dir} /></Row>
-            <Row label="Python">{info.data.python_version}</Row>
-            <Row label="Sistema">{info.data.platform}</Row>
-            {info.data.donazioni_url ? (
-              <Row label="Sostieni RT">
-                <a
-                  href={info.data.donazioni_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
-                  data-testid="link-sostieni-rt"
-                >
-                  Sostieni RT
-                </a>
-              </Row>
-            ) : null}
+            </InfoRow>
+            <InfoRow label="Cartella dati"><Path value={info.data.data_dir} /></InfoRow>
+            {inUse && inUse !== info.data.data_dir && <InfoRow label="Database e media in uso"><Path value={inUse} /></InfoRow>}
+            <InfoRow label="Configurazione"><Path value={info.data.config_dir} /></InfoRow>
+            <InfoRow label="Installazione"><Path value={info.data.install_dir} /></InfoRow>
+            <InfoRow label="Python">{info.data.python_version}</InfoRow>
+            <InfoRow label="Sistema">{info.data.platform}</InfoRow>
           </dl>
         )}
-      </Section>
+      </SettingsGroup>
       <UpdateSection />
       <ChangelogSection version={info.data?.version} />
       <CacheSection />
@@ -72,18 +67,38 @@ export function InfoSection() {
 export function ChangelogSection({ version }: { version?: string }) {
   const changelog = useQuery({ queryKey: ['system', 'changelog'], queryFn: () => unwrap(api.GET('/api/v1/system/changelog')) })
   const sections = Array.isArray(changelog.data) ? changelog.data : []
-  return <Section id="novita" title="Novità">
-    {changelog.isPending && <p className="text-body text-muted-foreground">Carico le novità…</p>}
-    {changelog.isError && <Alert tone="danger">{errorMessage(changelog.error)}</Alert>}
-    {changelog.isSuccess && sections.length === 0 && <p className="text-body text-muted-foreground">Nessuna nota disponibile.</p>}
-    {sections.map(section => <details key={`${section.version}:${version}`} open={section.version === version} className="rounded-lg border p-3">
-      <summary className="cursor-pointer text-body font-semibold">{section.version} <span className="text-meta font-normal text-muted-foreground">· {section.date}</span></summary>
-      {section.groups.map((group, index) => <div key={index} className="mt-3">
-        <h3 className="text-meta font-semibold text-muted-foreground">{group.title}</h3>
-        <ul className="mt-1 space-y-1 text-body">{group.items.map(item => <ChangelogItem key={JSON.stringify([section.version, item])} version={section.version} text={item} />)}</ul>
-      </div>)}
-    </details>)}
-  </Section>
+  return (
+    <SettingsGroup id="novita" title="Novità">
+      {changelog.isPending && <p className="px-4 py-3 text-body text-muted-foreground">Carico le novità…</p>}
+      {changelog.isError && (
+        <div className="px-4 py-3">
+          <Alert tone="danger">{errorMessage(changelog.error)}</Alert>
+        </div>
+      )}
+      {changelog.isSuccess && sections.length === 0 && (
+        <p className="px-4 py-3 text-body text-muted-foreground">Nessuna nota disponibile.</p>
+      )}
+      {sections.map(section => (
+        <SettingsDisclosure
+          key={`${section.version}:${version}`}
+          defaultOpen={section.version === version}
+          label={section.version}
+          summary={section.date || undefined}
+        >
+          {section.groups.map((group, index) => (
+            <div key={index} className={index > 0 ? 'mt-3' : undefined}>
+              <h4 className="text-meta font-medium text-muted-foreground">{group.title}</h4>
+              <ul className="mt-1 space-y-1 text-body">
+                {group.items.map(item => (
+                  <ChangelogItem key={JSON.stringify([section.version, item])} version={section.version} text={item} />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </SettingsDisclosure>
+      ))}
+    </SettingsGroup>
+  )
 }
 
 function ChangelogItem({ version, text }: { version: string; text: string }) {
@@ -91,13 +106,27 @@ function ChangelogItem({ version, text }: { version: string; text: string }) {
   const [checked, setChecked] = useState(() => {
     try { return localStorage.getItem(storageKey) === '1' } catch { return false }
   })
-  return <li><label className="flex cursor-pointer items-start gap-2">
-    <Checkbox label={text.replace(/\*\*/g, '')} checked={checked} className="mt-1" onChange={value => {
-      setChecked(value)
-      try { if (value) localStorage.setItem(storageKey, '1'); else localStorage.removeItem(storageKey) } catch { /* La casella resta utilizzabile senza memoria del browser. */ }
-    }} />
-    <span className={checked ? 'text-muted-foreground line-through' : undefined}>{text.split(/\*\*(.+?)\*\*/g).map((part, i) => i % 2 ? <strong key={i}>{part}</strong> : part)}</span>
-  </label></li>
+  return (
+    <li>
+      <label className="flex cursor-pointer items-start gap-2">
+        <Checkbox
+          label={text.replace(/\*\*/g, '')}
+          checked={checked}
+          className="mt-1"
+          onChange={value => {
+            setChecked(value)
+            try {
+              if (value) localStorage.setItem(storageKey, '1')
+              else localStorage.removeItem(storageKey)
+            } catch { /* La casella resta utilizzabile senza memoria del browser. */ }
+          }}
+        />
+        <span className={checked ? 'text-muted-foreground line-through' : undefined}>
+          {text.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : part))}
+        </span>
+      </label>
+    </li>
+  )
 }
 
 const cacheKey = ['system', 'cache'] as const
@@ -130,20 +159,24 @@ export function CacheSection() {
   const liberabili = compactPreview.data?.spazio_stimato_liberato ?? 0
 
   return (
-    <Section id="cache" title="Spazio e cache" description="La cache si rigenera da sola quando serve.">
-      {cache.isPending && <p className="text-body text-muted-foreground">Calcolo lo spazio…</p>}
-      {cache.isError && <Alert tone="danger">{errorMessage(cache.error)}</Alert>}
+    <SettingsGroup id="cache" title="Spazio e cache" description="La cache si rigenera da sola quando serve.">
+      {cache.isPending && <p className="px-4 py-3 text-body text-muted-foreground">Calcolo lo spazio…</p>}
+      {cache.isError && (
+        <div className="px-4 py-3">
+          <Alert tone="danger">{errorMessage(cache.error)}</Alert>
+        </div>
+      )}
       {cache.data && (
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-body sm:grid-cols-[10rem_1fr]">
-          <Row label="Audio">{cacheSize(cache.data.audio.bytes)} · {cache.data.audio.entries} file</Row>
-          <Row label="Forme d’onda">{cacheSize(cache.data.waveform.bytes)} · {cache.data.waveform.entries} file</Row>
-          <Row label="Totale"><span className="font-semibold tabular-nums">{cacheSize(cache.data.total.bytes)}</span></Row>
+        <dl className="divide-y divide-border/60 text-body">
+          <InfoRow label="Audio">{cacheSize(cache.data.audio.bytes)} · {cache.data.audio.entries} file</InfoRow>
+          <InfoRow label="Forme d’onda">{cacheSize(cache.data.waveform.bytes)} · {cache.data.waveform.entries} file</InfoRow>
+          <InfoRow label="Totale"><span className="font-semibold tabular-nums">{cacheSize(cache.data.total.bytes)}</span></InfoRow>
           {compactPreview.data && (
-            <Row label="Audio convertibile">
+            <InfoRow label="Audio convertibile">
               {liberabili > 0 ? (
                 <span>
                   ~{cacheSize(liberabili)} liberabili
-                  <span className="text-meta text-muted-foreground ml-2">
+                  <span className="ml-2 text-meta text-muted-foreground">
                     ({compactPreview.data.file_convertibili} file da convertire
                     {compactPreview.data.file_orfani > 0 ? `, ${compactPreview.data.file_orfani} orfani` : ''})
                   </span>
@@ -151,18 +184,20 @@ export function CacheSection() {
               ) : (
                 <span className="text-muted-foreground">Tutti gli audio sono già compressi</span>
               )}
-            </Row>
+            </InfoRow>
           )}
         </dl>
       )}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" disabled={!cache.data?.total.entries || clear.isPending}
-          onClick={() => { clear.reset(); setConfirm(true) }}>Svuota la cache</Button>
-        <Button variant="outline" disabled={liberabili <= 0 || compact.isPending}
-          onClick={() => { compact.reset(); setConfirmCompact(true) }}>Alleggerisci l’audio delle lezioni</Button>
+      <div className="flex flex-col gap-2 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" disabled={!cache.data?.total.entries || clear.isPending}
+            onClick={() => { clear.reset(); setConfirm(true) }}>Svuota la cache</Button>
+          <Button variant="outline" disabled={liberabili <= 0 || compact.isPending}
+            onClick={() => { compact.reset(); setConfirmCompact(true) }}>Alleggerisci l’audio delle lezioni</Button>
+        </div>
+        {clear.isSuccess && <p role="status" className="text-meta text-success">Liberati {cacheSize(clear.data.total.bytes)}.</p>}
+        {compact.isSuccess && <p role="status" className="text-meta text-success">Operazione avviata: controlla l’avanzamento nei Job.</p>}
       </div>
-      {clear.isSuccess && <p role="status" className="text-meta text-success">Liberati {cacheSize(clear.data.total.bytes)}.</p>}
-      {compact.isSuccess && <p role="status" className="text-meta text-success">Operazione avviata: controlla l’avanzamento nei Job.</p>}
       <ConfirmDialog open={confirm} title="Svuota la cache" confirmLabel="Svuota"
         confirmDisabled={clear.isPending} onCancel={() => setConfirm(false)} onConfirm={() => clear.mutate()}>
         <p>Svuotare la cache{cache.data ? ` (${cacheSize(cache.data.total.bytes)})` : ''}?</p>
@@ -176,16 +211,16 @@ export function CacheSection() {
         </p>
         {compact.isError && <Alert tone="danger" className="mt-3">{errorMessage(compact.error)}</Alert>}
       </ConfirmDialog>
-    </Section>
+    </SettingsGroup>
   )
 }
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
+function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <>
-      <dt className="text-meta font-semibold text-muted-foreground sm:pt-0.5">{label}</dt>
+    <div className="grid grid-cols-1 gap-x-6 gap-y-1 px-4 py-2.5 sm:grid-cols-[12rem_1fr]">
+      <dt className="text-meta font-medium text-muted-foreground sm:pt-0.5">{label}</dt>
       <dd className="min-w-0">{children}</dd>
-    </>
+    </div>
   )
 }
 

@@ -272,6 +272,46 @@ def _local_port(request: Request) -> int:
     return int(server[1] or request.url.port or DEFAULT_PORT)
 
 
+RT_SITE_URL = "https://atturk.github.io/rt/"
+# Preferenza personale (Impostazioni › Aspetto): false toglie il QR di RT dai PDF.
+PDF_QR_PREFERENCE = "pdf.qr-sito"
+
+
+def _stamp_first_page(pdf: bytes, stamp: bytes) -> bytes:
+    """Sovrappone il timbro QR alla prima pagina di `pdf`, mantenendo testo e link.
+    Se qualcosa non riesce registra un avviso e restituisce `pdf` invariato."""
+    try:
+        import pymupdf
+
+        with pymupdf.open(stream=pdf, filetype="pdf") as doc, pymupdf.open(stream=stamp, filetype="pdf") as st:
+            if doc.page_count == 0 or st.page_count == 0:
+                return pdf
+            first = doc[0]
+            first.show_pdf_page(first.rect, st, 0, overlay=True)
+            copied_link = False
+            for link in st[0].get_links():
+                if link.get("kind") == pymupdf.LINK_URI and link.get("uri"):
+                    first.insert_link({
+                        "kind": pymupdf.LINK_URI,
+                        "from": link["from"],
+                        "uri": link["uri"],
+                    })
+                    copied_link = True
+            if not copied_link:
+                mm = 72.0 / 25.4
+                x1 = first.rect.width - 18.0 * mm
+                x0 = x1 - 14.0 * mm
+                first.insert_link({
+                    "kind": pymupdf.LINK_URI,
+                    "from": pymupdf.Rect(x0, 3.0 * mm, x1, 17.0 * mm),
+                    "uri": RT_SITE_URL,
+                })
+            return doc.tobytes(garbage=3, deflate=True)
+    except Exception as exc:
+        logging.getLogger(__name__).warning("PDF: timbro QR non applicato: %s", exc)
+        return pdf
+
+
 def _render_pdf(lesson_id: int, port: int) -> bytes:
     from playwright.sync_api import sync_playwright
     from rt.api import auth
@@ -314,7 +354,7 @@ def _render_pdf(lesson_id: int, port: int) -> bytes:
                                    "riprova, e se si ripete controlla api.log.") from exc
 
                 footer_html = '<div style="font-size: 8px; color: #888888; width: 100%; text-align: center;"><span class="pageNumber"></span></div>'
-                return page.pdf(
+                pdf_main = page.pdf(
                     format="A4",
                     prefer_css_page_size=True,
                     print_background=True,
@@ -322,6 +362,36 @@ def _render_pdf(lesson_id: int, port: int) -> bytes:
                     footer_template=footer_html,
                     header_template="<span></span>",
                 )
+                from rt.services.preferences_service import list_preferences
+                if list_preferences().get(PDF_QR_PREFERENCE, True) is False:
+                    return pdf_main
+                try:
+                    stamp_data = page.evaluate("""() => {
+                        const el = document.querySelector('[data-rt-stamp]');
+                        if (!el) return null;
+                        const style = document.querySelector('article.print-page style') || document.querySelector('style');
+                        return { html: el.innerHTML, css: style ? (style.textContent || '') : '' };
+                    }""")
+                    if isinstance(stamp_data, dict) and stamp_data.get("html"):
+                        stamp_html = (
+                            "<!doctype html><html><head><meta charset='utf-8'><style>"
+                            f"{stamp_data.get('css', '')}\n"
+                            "@page { size: A4; margin: 0; }\n"
+                            "html, body { margin: 0; padding: 0; background: transparent; }\n"
+                            ".stamp { position: absolute; top: 3mm; right: 18mm; }\n"
+                            "</style></head>"
+                            f"<body><div class='stamp'>{stamp_data['html']}</div></body></html>"
+                        )
+                        page.set_content(stamp_html)
+                        stamp_pdf = page.pdf(
+                            format="A4",
+                            prefer_css_page_size=True,
+                            print_background=False,
+                        )
+                        return _stamp_first_page(pdf_main, stamp_pdf)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("PDF: errore nella creazione del timbro QR: %s", exc)
+                return pdf_main
             finally:
                 browser.close()
         finally:

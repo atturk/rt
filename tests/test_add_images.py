@@ -458,13 +458,13 @@ def test_fetch_web_images_per_unit_with_fake_searxng():
     server, url = fake_searxng_server()
     try:
         images, found = fetch_web_images("dummy_dir", outline, per_unit=2, base_url=url)
-        assert server.queries == ["Lipidi", "Steroidi", "Cere"]
+        assert sorted(server.queries) == sorted(["Lipidi", "Steroidi", "Cere"])
         assert found == {"1.1": 2, "1.2": 2, "2.1": 2} and len(images) == 6
         assert [img.source_label for img in images[:2]] == ["websearch:Lipidi"] * 2
 
         server.queries.clear()
         images, found = fetch_web_images("dummy_dir", outline, per_unit=3, base_url=url, unit_ids=["2.1", "1.1"])
-        assert server.queries == ["Lipidi", "Cere"]
+        assert sorted(server.queries) == sorted(["Lipidi", "Cere"])
         assert found == {"1.1": 3, "2.1": 3} and len(images) == 6
     finally:
         server.shutdown()
@@ -506,3 +506,204 @@ def test_add_images_reports_increasing_progress(drafted_synthetic_lesson, tmp_pa
     assert any(e.message == 'Leggo le pagine 2/3' for e in events)
     assert any(e.message == 'Cerco immagini sul web' for e in events)
     assert any(e.message.startswith('Colloco le immagini ') for e in events)
+
+
+def test_describe_new_images_parallel_cancel_and_failures(tmp_path, monkeypatch):
+    import threading
+    import time
+    from unittest.mock import patch
+    from rt.core.config import RTConfig, PipelineConfig
+    from rt.llm.cancel import RunCancelled, use_cancel_token
+    from rt.services.context import CancelToken
+    from rt.llm.errors import TimeoutFailure
+    from rt.pipeline.unit_failures import UnitFailureTracker
+
+    lesson_dir = str(tmp_path)
+    (tmp_path / "info.yaml").write_text("materia: BIOCHIMICA\ntitolo: Lipidi\n")
+    cfg = RTConfig(pipeline=PipelineConfig(parallel_pages=4))
+    monkeypatch.setattr("rt.core.config.load_config", lambda: cfg)
+
+    imgs = [ExtractedImage(image_bytes=f"img-{i}".encode(), source_label=f"pdf:s.pdf#{i}") for i in range(4)]
+    items = [(img, compute_image_hash(img.image_bytes)) for img in imgs]
+
+    lock = threading.Lock()
+    threads_used = set()
+    active = [0]
+    max_active = [0]
+
+    def parallel_call(self, prompt, system_prompt, response_model, **kwargs):
+        with lock:
+            threads_used.add(threading.get_ident())
+            active[0] += 1
+            max_active[0] = max(max_active[0], active[0])
+        time.sleep(0.08)
+        with lock:
+            active[0] -= 1
+        return ImageDescription(
+            slide_title="Titolo",
+            ocr_text="Testo",
+            visual_elements=[{"kind": "schema", "description": "desc"}],
+            summary_keywords=["k1"],
+            alt_text="alt",
+        )
+
+    prog_events = []
+    with patch.object(LLMClient, "call_structured", parallel_call):
+        describe_new_images(lesson_dir, items, progress=lambda c, t: prog_events.append((c, t)))
+
+    assert max_active[0] >= 2
+    assert len(threads_used) >= 2
+    assert prog_events[0] == (0, 4) and prog_events[-1] == (4, 4)
+    saved = load_image_descriptions(lesson_dir)
+    assert set(saved.keys()) == {h for _, h in items}
+
+    # Cancellazione rispettata
+    lesson_cancel = str(tmp_path / "cancel")
+    os.makedirs(lesson_cancel)
+    items_cancel = [(ExtractedImage(image_bytes=f"c-{i}".encode(), source_label=f"pdf:c.pdf#{i}"),
+                     compute_image_hash(f"c-{i}".encode())) for i in range(6)]
+    token = CancelToken()
+
+    def cancelling_call(self, *a, **kw):
+        time.sleep(0.03)
+        token.cancel()
+        return ImageDescription(slide_title="T", ocr_text="O", visual_elements=[], summary_keywords=[], alt_text="A")
+
+    with use_cancel_token(token):
+        with patch.object(LLMClient, "call_structured", cancelling_call):
+            with pytest.raises(RunCancelled):
+                describe_new_images(lesson_cancel, items_cancel)
+
+    # failures.too_many() rispettato
+    lesson_fail = str(tmp_path / "fail")
+    os.makedirs(lesson_fail)
+    items_fail = [(ExtractedImage(image_bytes=f"f-{i}".encode(), source_label=f"pdf:f.pdf#{i}"),
+                   compute_image_hash(f"f-{i}".encode())) for i in range(12)]
+    cfg_fail = RTConfig(pipeline=PipelineConfig(parallel_pages=2))
+    monkeypatch.setattr("rt.core.config.load_config", lambda: cfg_fail)
+    tracker = UnitFailureTracker()
+    fail_calls = [0]
+
+    def failing_call(self, *a, **kw):
+        with lock:
+            fail_calls[0] += 1
+        time.sleep(0.02)
+        raise TimeoutFailure("timeout finto", provider="openrouter", model="m")
+
+    with patch.object(LLMClient, "call_structured", failing_call):
+        describe_new_images(lesson_fail, items_fail, failures=tracker)
+    assert tracker.too_many()
+    assert len(tracker.failures) == 3
+    assert fail_calls[0] < 12
+
+
+def test_judge_images_by_macro_parallel_cache_order_and_cancel(tmp_path, monkeypatch):
+    import threading
+    import time
+    from types import SimpleNamespace
+    from rt.core.config import RTConfig, PipelineConfig
+    from rt.llm.cancel import RunCancelled, use_cancel_token
+    from rt.services.context import CancelToken
+    from rt.llm.jev_client import JevChoiceAnswer
+    from rt.pipeline.unit_failures import UnitFailureTracker
+    from rt.services import enrichment_service as es
+
+    lesson_dir = str(tmp_path)
+    cfg = RTConfig(pipeline=PipelineConfig(parallel_pages=4))
+    monkeypatch.setattr("rt.core.config.load_config", lambda: cfg)
+    monkeypatch.setattr(es, "units", lambda _: [
+        {"id": "1.1", "macro_id": "1", "title": "U1", "content": "Testo 1"},
+        {"id": "2.1", "macro_id": "2", "title": "U2", "content": "Testo 2"},
+    ])
+    outline = MockOutline(macro_sections=[
+        MockMacro(id="1", title="Macro 1", units=[]),
+        MockMacro(id="2", title="Macro 2", units=[]),
+    ])
+    descs = {f"h{i}": {"filename": f"{i}.png", "alt_text": f"img {i}"} for i in range(4)}
+    save_image_descriptions(lesson_dir, descs)
+
+    lock = threading.Lock()
+    active = [0]
+    max_active = [0]
+    called_units = []
+
+    def fake_decision(state, questions, **kwargs):
+        with lock:
+            called_units.append(kwargs.get("unit_id"))
+            active[0] += 1
+            max_active[0] = max(max_active[0], active[0])
+        time.sleep(0.08)
+        with lock:
+            active[0] -= 1
+        uid = kwargs.get("unit_id")
+        choice = "macro_0" if uid in ("h0", "h2") else "macro_1"
+        return SimpleNamespace(answers={"placement": JevChoiceAnswer(choice=choice, confidence=0.9)})
+
+    monkeypatch.setattr(es, "decision", fake_decision)
+    res = judge_images_by_macro(lesson_dir, outline)
+    assert max_active[0] >= 2
+    assert res == {"1": ["h0", "h2"], "2": ["h1", "h3"]}
+
+    # Seconda chiamata: tutte in cache, nessuna chiamata a decision
+    called_units.clear()
+    res_cached = judge_images_by_macro(lesson_dir, outline)
+    assert called_units == []
+    assert res_cached == {"1": ["h0", "h2"], "2": ["h1", "h3"]}
+
+    # Cancellazione
+    token = CancelToken()
+    token.cancel()
+    with use_cancel_token(token):
+        with pytest.raises(RunCancelled):
+            judge_images_by_macro(lesson_dir, outline)
+
+    # too_many
+    cfg_fail2 = RTConfig(pipeline=PipelineConfig(parallel_pages=2))
+    monkeypatch.setattr("rt.core.config.load_config", lambda: cfg_fail2)
+    descs2 = {f"x{i}": {"filename": f"{i}.png", "alt_text": f"img {i}"} for i in range(12)}
+    save_image_descriptions(lesson_dir, descs2)
+    tracker = UnitFailureTracker()
+    monkeypatch.setattr(es, "decision", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+    judge_images_by_macro(lesson_dir, outline, failures=tracker)
+    assert tracker.too_many()
+    assert len(tracker.failures) == 3
+
+
+def test_fetch_web_images_parallel_preserves_query_order(monkeypatch):
+    import threading
+    import time
+    from rt.core.config import RTConfig, PipelineConfig
+
+    cfg = RTConfig(pipeline=PipelineConfig(parallel_pages=3))
+    monkeypatch.setattr("rt.core.config.load_config", lambda: cfg)
+
+    outline = MockOutline(
+        macro_sections=[
+            MockMacro(id="1", title="M1", units=[
+                MockUnit(id="1.1", title="U1", key_concepts=["Alpha"]),
+                MockUnit(id="1.2", title="U2", key_concepts=["Beta"]),
+                MockUnit(id="1.3", title="U3", key_concepts=["Gamma"]),
+            ]),
+        ]
+    )
+
+    lock = threading.Lock()
+    active = [0]
+    max_active = [0]
+
+    def fake_search(base_url, query, count=1):
+        with lock:
+            active[0] += 1
+            max_active[0] = max(max_active[0], active[0])
+        time.sleep(0.08 if query == "Alpha" else 0.02)
+        with lock:
+            active[0] -= 1
+        return [type("Res", (), {"image_url": f"http://img/{query}"})()]
+
+    monkeypatch.setattr("rt.pipeline.add_images.search_images", fake_search)
+    monkeypatch.setattr("rt.pipeline.add_images.download_image", lambda url: url.encode())
+
+    images, found = fetch_web_images("dummy", outline, per_unit=1, base_url="http://searxng.local")
+    assert max_active[0] >= 2
+    assert found == {"1.1": 1, "1.2": 1, "1.3": 1}
+    assert [img.source_label for img in images] == ["websearch:Alpha", "websearch:Beta", "websearch:Gamma"]

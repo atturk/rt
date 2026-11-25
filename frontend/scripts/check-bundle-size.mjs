@@ -10,7 +10,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
 
-const BUDGET = { raw: 490_000, gzip: 156_000 }
+// 4.3.9b4: gzip da 156 a 158 kB (pin per categoria, file aperti dal Finder, chat dello Studio); raw invariato.
+const BUDGET = { raw: 490_000, gzip: 158_000 }
 
 const dist = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
 let html

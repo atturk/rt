@@ -6,6 +6,7 @@ risposte, domande stale. L'interfaccia è la web (API). Il motore delle domande 
 """
 from rt.services.custom_question_types import question_key, type_key, resolve_type, lesson_types
 import json
+import re
 import uuid
 from typing import Any, List, Optional
 
@@ -179,14 +180,15 @@ def handle_recall_answer(
         completezza=getattr(evaluation, "completezza", None),
         attinenza=getattr(evaluation, "attinenza", None),
         domanda_followup=getattr(evaluation, "domanda_followup", None),
+        parte_mancante=None if is_followup else getattr(evaluation, "parte_mancante", None),
         is_followup=is_followup,
     )
     return evaluation
 
 
-def skip_recall_followup(lesson_dir: str, question_id: str) -> None:
+def skip_recall_followup(lesson_dir: str, question_id: str) -> Optional[str]:
     from rt.pipeline.recall import skip_recall_followup as skip_followup
-    skip_followup(lesson_dir, question_id)
+    return skip_followup(lesson_dir, question_id)
 
 
 def next_question(
@@ -300,6 +302,30 @@ def question_view(question, reveal: bool = False, outcome=None, *, lesson_dir=No
 
 
 
+_LEGACY_SCORES_PREFIX = re.compile(r"^(?:(?:Correttezza|Completezza|Attinenza):\s*\d+%\s*\n*)+", re.I)
+_LEGACY_SCORE_LINE = re.compile(r"(Correttezza|Completezza|Attinenza):\s*(\d+)%", re.I)
+
+
+def _normalize_answer_scores(record: dict) -> dict:
+    """Estrae i punteggi dal testo delle valutazioni salvate col vecchio formato e toglie le righe."""
+    for text_key, score_prefix in (("evaluation", ""), ("followup_evaluation", "followup_")):
+        c_key = f"{score_prefix}correttezza"
+        comp_key = f"{score_prefix}completezza"
+        att_key = f"{score_prefix}attinenza"
+        text = record.get(text_key)
+        if not text or record.get(c_key) is not None or record.get(comp_key) is not None or record.get(att_key) is not None:
+            continue
+        match = _LEGACY_SCORES_PREFIX.match(text)
+        if not match:
+            continue
+        for label, value in _LEGACY_SCORE_LINE.findall(match.group(0)):
+            field_key = f"{score_prefix}{label.lower()}"
+            if record.get(field_key) is None:
+                record[field_key] = int(value)
+        record[text_key] = text[match.end():].lstrip("\n")
+    return record
+
+
 def question_resume_view(lesson_dir, question, actor=None):
     """Riprende una valutazione salvata o un job ancora in corso, senza consumare la domanda."""
     result = question_view(question, lesson_dir=lesson_dir)
@@ -310,11 +336,12 @@ def question_resume_view(lesson_dir, question, actor=None):
     cur = current_answers(bank, question)
     saved = next((a for a in reversed(cur) if a.evaluation), None)
     if saved is not None:
-        result['saved_evaluation'] = {key: getattr(saved, key) for key in (
+        result['saved_evaluation'] = _normalize_answer_scores({key: getattr(saved, key) for key in (
             'answer_text', 'evaluation', 'outcome', 'correttezza', 'completezza', 'attinenza',
             'domanda_followup', 'followup_question', 'followup_answer', 'followup_evaluation',
             'followup_correttezza', 'followup_completezza', 'followup_attinenza'
-        )}
+        )})
+        result['saved_evaluation']['parte_mancante'] = None if saved.domanda_followup else saved.parte_mancante
     else:
         from rt.services.jobs import get_job_queue, ACTIVE_STATES
         pending = next((job for job in get_job_queue().list(state=list(ACTIVE_STATES), lesson_id=lesson_dir)
@@ -361,7 +388,13 @@ def recall_history(lesson_dir: str) -> dict:
     outcomes = _latest_outcomes(bank)
     questions = [question_view(q, reveal=q.status != RecallQuestionStatus.PENDING, outcome=outcomes.get(q.id), lesson_dir=lesson_dir) for q in bank.questions]
     answers = sorted(bank.answers, key=lambda a: a.answered_at, reverse=True)
-    return {"questions": questions, "answers": [a.model_dump(mode="json") for a in answers]}
+    serialized_answers = []
+    for a in answers:
+        d = _normalize_answer_scores(a.model_dump(mode="json"))
+        if d.get("domanda_followup"):
+            d["parte_mancante"] = None
+        serialized_answers.append(d)
+    return {"questions": questions, "answers": serialized_answers}
 
 
 def question_list(lesson_dir: str, reveal: bool = False) -> dict:

@@ -1,9 +1,10 @@
 """Stato del servizio e sessione della SPA."""
 import os
+import sys
 import threading
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Request, Response
 from pydantic import BaseModel, Field
 
 from rt.api import auth, schemas
@@ -112,7 +113,7 @@ def system_info(_actor: Actor) -> SystemInfo:
     import platform
     from rt.core import bundle, paths
     from rt.core.config import _default_project_root
-    from rt.core.donazioni import DONAZIONI_URL
+    from rt.core.donazioni import donazioni_app_url
     from rt.core.version import get_current_version, get_update_channel, is_prerelease
     root = _default_project_root()
     version = get_current_version(root)
@@ -123,7 +124,7 @@ def system_info(_actor: Actor) -> SystemInfo:
                       install_dir=str(root), data_dir=str(paths.data_dir()), config_dir=str(paths.config_dir(root)),
                       python_version=platform.python_version(),
                       platform=f"{platform.system()} {platform.release()} ({platform.machine()})",
-                      donazioni_url=DONAZIONI_URL)
+                      donazioni_url=donazioni_app_url())
 
 
 class UpdateProgress(BaseModel):
@@ -264,12 +265,22 @@ def create_session(body: SessionRequest, request: Request, response: Response) -
     return SessionInfo(csrf_token=open_browser_session(request, response))
 
 
+def _https_request(request: Request) -> bool:
+    """True se HTTPS diretto oppure se Tailscale Serve (loopback) inoltra una richiesta HTTPS."""
+    if request.url.scheme == "https":
+        return True
+    from rt.api.readonly_auth import _is_loopback
+    peer = request.client.host if request.client else ""
+    proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    return _is_loopback(peer) and proto == "https"
+
+
 def open_browser_session(request: Request, response: Response) -> str:
     """Crea la sessione e imposta i cookie di sessione e CSRF; restituisce il valore CSRF."""
     session_id = auth.create_session()
     csrf = auth.secrets.token_urlsafe(24)
     max_age = auth.SESSION_DAYS * 86400
-    secure = request.url.scheme == "https"
+    secure = _https_request(request)
     response.set_cookie(auth.SESSION_COOKIE, session_id, max_age=max_age, httponly=True,
                         samesite="strict", secure=secure, path="/")
     response.set_cookie(auth.CSRF_COOKIE, csrf, max_age=max_age, httponly=False,
@@ -295,6 +306,7 @@ class TailnetInfo(BaseModel):
                                                     "None senza Tailscale")
     serve: bool = Field(False, description="Tailscale Serve inoltra già l'indirizzo a RT")
     funnel: bool = Field(False, description="L'indirizzo è pubblico su Internet (Tailscale Funnel)")
+    local_port: int = Field(8765, description="Porta locale su cui ascolta RT")
 
 
 @router.get("/system/tailnet", response_model=TailnetInfo,
@@ -302,19 +314,69 @@ class TailnetInfo(BaseModel):
 def system_tailnet(request: Request, _actor: Actor) -> TailnetInfo:
     from rt.core.tailscale import tailnet_address
     server = request.scope.get("server") or (None, None)
-    port = server[1] or request.url.port or 8765
-    found = tailnet_address(int(port))
+    port = int(server[1] or request.url.port or 8765)
+    found = tailnet_address(port)
     if found is None:
-        return TailnetInfo()
-    return TailnetInfo(origin=found.origin, serve=found.serve, funnel=found.funnel)
+        return TailnetInfo(local_port=port)
+    return TailnetInfo(origin=found.origin, serve=found.serve, funnel=found.funnel, local_port=port)
+
+
+class LanInfo(BaseModel):
+    enabled: bool = Field(description="Accesso dalla stessa rete locale acceso nelle Impostazioni")
+    active: bool = Field(description="Il server ascolta già sulla rete locale (non solo su 127.0.0.1)")
+    addresses: list[str] = Field(default_factory=list,
+                                 description="Indirizzi per gli altri dispositivi della rete: http://nome-mac.local:porta, poi gli IP")
+    restarting: bool = Field(False, description="RT si sta riavviando per applicare la scelta")
+
+
+class LanUpdate(BaseModel):
+    enabled: bool
+
+
+def _lan_info(request: Request, restarting: bool = False) -> LanInfo:
+    from rt.core.lan import lan_addresses, lan_enabled
+    from rt.api.server import LOOPBACK
+    server = request.scope.get("server") or (None, None)
+    port = int(server[1] or request.url.port or 8765)
+    active = getattr(request.app.state, "bind_host", "127.0.0.1") not in LOOPBACK
+    return LanInfo(enabled=lan_enabled(), active=active, addresses=lan_addresses(port), restarting=restarting)
+
+
+@router.get("/system/lan", response_model=LanInfo,
+            summary="Accesso dalla stessa rete locale (Wi-Fi di casa o hotspot): stato e indirizzi del computer")
+def system_lan(request: Request, _actor: Actor) -> LanInfo:
+    return _lan_info(request)
+
+
+@router.put("/system/lan", response_model=LanInfo, summary="Accende o spegne l'accesso dalla rete locale (solo da questo computer)",
+            responses={403: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
+def put_system_lan(body: LanUpdate, request: Request, background: BackgroundTasks, _actor: Actor) -> LanInfo:
+    from rt.api.readonly_auth import is_local_request
+    from rt.core.lan import network_id, set_lan_enabled
+    if not is_local_request(request):
+        raise ApiError(403, "local_only", "L'accesso dalla rete locale si accende o si spegne solo da questo computer.")
+    if body.enabled and network_id() is None:
+        raise ApiError(409, "no_network", "Questo computer non è collegato a una rete locale (Wi-Fi o hotspot).")
+    set_lan_enabled(body.enabled)
+    info = _lan_info(request)
+    server = getattr(request.app.state, "uvicorn_server", None)
+    # Il server ascolta su un solo indirizzo: per cambiarlo si riavvia (dopo aver risposto).
+    if server is not None and info.enabled != info.active:
+        def restart() -> None:
+            request.app.state.restart_requested = True
+            server.should_exit = True
+        background.add_task(restart)
+        info.restarting = True
+    return info
 
 
 @router.delete("/auth/session", status_code=204, summary="Chiude la sessione della SPA")
 def delete_session(request: Request, _actor: Actor) -> Response:
     auth.drop_session(request.cookies.get(auth.SESSION_COOKIE, ""))
     response = Response(status_code=204)
-    response.delete_cookie(auth.SESSION_COOKIE, path="/")
-    response.delete_cookie(auth.CSRF_COOKIE, path="/")
+    secure = _https_request(request)
+    response.delete_cookie(auth.SESSION_COOKIE, path="/", samesite="strict", secure=secure, httponly=True)
+    response.delete_cookie(auth.CSRF_COOKIE, path="/", samesite="strict", secure=secure, httponly=False)
     return response
 
 
@@ -366,3 +428,56 @@ def client_log(entry: ClientLogEntry, _actor: Actor) -> Response:
     # stdout del server è api.log, con data e ora (rt.core.log_stamp).
     print("\n".join(lines), flush=True)
     return Response(status_code=204)
+
+
+class PptxConverterInfo(BaseModel):
+    available: bool = Field(description="True se è disponibile almeno un convertitore affidabile per .pptx")
+    methods: list[str] = Field(description="Nomi dei convertitori disponibili (es. LibreOffice, PowerPoint, Keynote)")
+    platform: str = Field(description="Piattaforma del server (sys.platform)")
+
+
+class ConvertersInfo(BaseModel):
+    pptx: PptxConverterInfo
+
+
+@router.get("/system/converters", response_model=ConvertersInfo,
+            summary="Programmi disponibili per rendere le presentazioni come immagini")
+def get_system_converters(_actor: Actor) -> ConvertersInfo:
+    from rt.core.materials import available_slide_methods
+    methods = available_slide_methods()
+    return ConvertersInfo(
+        pptx=PptxConverterInfo(
+            available=bool(methods),
+            methods=methods,
+            platform=sys.platform,
+        )
+    )
+
+
+class SupportPromptState(BaseModel):
+    visible: bool
+    url: str
+
+
+class SupportPromptEvent(BaseModel):
+    event: Literal["opened", "hidden", "donated", "already_donated"]
+
+
+@router.get("/system/support-prompt", response_model=SupportPromptState,
+            summary="Stato del promemoria per sostenere RT")
+def get_support_prompt(_actor: Actor) -> SupportPromptState:
+    from rt.core.donazioni import donazioni_app_url
+    from rt.services.support_prompt import check_support_prompt
+    url = donazioni_app_url()
+    visible = check_support_prompt() and bool(url)
+    return SupportPromptState(visible=visible, url=url)
+
+
+@router.post("/system/support-prompt", response_model=SupportPromptState,
+             summary="Registra un'azione sul promemoria per sostenere RT")
+def post_support_prompt(body: SupportPromptEvent, _actor: Actor) -> SupportPromptState:
+    from rt.core.donazioni import donazioni_app_url
+    from rt.services.support_prompt import record_support_event
+    url = donazioni_app_url()
+    visible = record_support_event(body.event) and bool(url)
+    return SupportPromptState(visible=visible, url=url)

@@ -66,6 +66,8 @@ def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bo
     from rt.api.spa import find_spa_dir
 
     _legacy_layout_hint(say)
+    if os.environ.pop("RT_RESTARTED", None):
+        open_browser = False
     if host in LOOPBACK and _already_running(port):
         # fase G: API e worker girano già come servizi (launchd): basta aprire il browser
         shown = f"[{host}]" if ":" in host else host
@@ -77,9 +79,12 @@ def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bo
             from rt.services.logs_service import show_logs
             show_logs(lines=50, follow=True)
         return 0
-    if host not in LOOPBACK:
-        say(f"⚠️  RT sarà raggiungibile da altri dispositivi su {host}:{port}. Proteggi il token.")
-    if not prepare(host=host, say=say):
+    # 'Stessa rete locale' (Impostazioni): l'indirizzo per questo computer resta 127.0.0.1
+    from rt.core.lan import bind_host
+    bind = bind_host() if host == DEFAULT_HOST else host
+    if bind not in LOOPBACK:
+        say(f"⚠️  RT sarà raggiungibile da altri dispositivi su {bind}:{port}. Proteggi il token.")
+    if not prepare(host=bind, say=say):
         return 1
     spa_dir = find_spa_dir()
     if not spa_dir:
@@ -102,9 +107,12 @@ def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bo
     try:
         # Gli stream SSE della pagina aperta non fanno aspettare Ctrl+C più di qualche secondo.
         app = create_app(spa_dir=spa_dir)
-        server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning",
+        server = uvicorn.Server(uvicorn.Config(app, host=bind, port=port, log_level="warning",
                                              timeout_graceful_shutdown=5))
         app.state.uvicorn_server = server
+        app.state.bind_host = bind
+        from rt.api.server import watch_lan
+        watch_lan(app, server)
         server.run()
     finally:
         if child is not None and child.poll() is None:
@@ -114,4 +122,7 @@ def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bo
             except subprocess.TimeoutExpired:
                 child.kill()
         say("⏹ RT fermato.")
+    if getattr(app.state, "restart_requested", False):
+        from rt.api.server import restart_process
+        restart_process()
     return 0

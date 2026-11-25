@@ -19,7 +19,20 @@ def _no_stdin(monkeypatch):
     monkeypatch.setattr("builtins.input", _fail)
 
 
-def test_waits_for_outline_approval_without_provider(temp_lesson_dir):
+def _manual_outline(monkeypatch):
+    from rt.core import config as config_mod
+    real_load = config_mod.load_config
+
+    def patched(*args, **kwargs):
+        cfg = real_load(*args, **kwargs)
+        cfg.ui.outline_mode = "manual"
+        return cfg
+
+    monkeypatch.setattr(config_mod, "load_config", patched)
+
+
+def test_waits_for_outline_approval_without_provider(temp_lesson_dir, monkeypatch):
+    _manual_outline(monkeypatch)
     rep = ListReporter()
     res = run_pipeline(temp_lesson_dir, PipelineOptions(mock=True), RunContext(reporter=rep))
     assert res.status == PipelineStatus.WAITING_FOR_DECISION
@@ -40,7 +53,8 @@ def test_completes_with_auto_accept(temp_lesson_dir):
     assert ctx.telemetry.get_summary()["total_requests"] == 3
 
 
-def test_waits_for_science_review_without_auto_accept(temp_lesson_dir):
+def test_waits_for_science_review_without_auto_accept(temp_lesson_dir, monkeypatch):
+    _manual_outline(monkeypatch)
     from rt.services import outline_service
     opts = PipelineOptions(mock=True, with_review=True, rename=False)
     res = run_pipeline(temp_lesson_dir, opts, RunContext())

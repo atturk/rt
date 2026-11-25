@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from rt.api.deps import Actor
 from rt.api.errors import ApiError, require_telegram
+from rt.core.config import DEFAULT_TELEGRAM_NOTIFY
 from rt.core.jev_decision import JevDecisionConfig
 
 router = APIRouter(tags=["impostazioni"])
@@ -95,6 +96,8 @@ class Connection(BaseModel):
     provider: str
     base_url: str
     models: List[str]
+    supports_batch: bool = False
+    batch_models: List[str] = Field(default_factory=list)
     credentials: List[ConnectionCredential]
 
 
@@ -103,6 +106,7 @@ class PhaseAssignment(BaseModel):
     label: str
     connection: Optional[str] = None
     model: Optional[str] = None
+    batch: bool = False
 
 
 class Transcription(BaseModel):
@@ -124,6 +128,8 @@ class TelegramSettings(BaseModel):
                                                                "il valore completo solo con POST /settings/telegram/reveal")
     chat_id_set: bool = False
     chat_id_preview: Optional[str] = Field(None, description="Primi e ultimi caratteri del Chat ID")
+    notify: Dict[str, bool] = Field(default_factory=lambda: dict(DEFAULT_TELEGRAM_NOTIFY),
+                                    description="Eventi per cui inviare una notifica Telegram")
 
 
 class WorkerSettings(BaseModel):
@@ -153,9 +159,11 @@ class CustomStudyStatusIn(BaseModel):
 
 
 class PreferencesSettings(BaseModel):
-    secondi_approvazione: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
+    modalita_scaletta: Literal["auto", "timer", "manual"] = Field(default="auto", description="Approvazione della scaletta: auto, timer o manual")
+    secondi_approvazione: int = Field(default=10, ge=1, le=3600, description="Secondi di attesa per l'approvazione automatica della scaletta in modalità timer")
     sfondo_gruppi: Literal["colori", "grigi", "niente"] = Field(default="colori", description="Sfondo dei gruppi in Lezioni")
     modalita_arricchimento: Literal["manuale", "automatica", "disattivata"] = Field(default="manuale", description="Modalità dell'arricchimento")
+    chiusura_x: Literal["background", "esci"] = Field(default="background", description="Azione chiudendo la finestra dell'app con la X")
 
 
 class StudyStatusesUpdate(BaseModel):
@@ -227,9 +235,13 @@ class RevealOut(BaseModel):
 
 class Notification(BaseModel):
     sent_at: str
-    kind: str = Field(description="lezione_pronta, decisione, errore o prova")
+    kind: str = Field(description="lezione_pronta, verifica_pronta, scaletta_da_approvare, issue_da_decidere, errore o prova")
     text: str
     ok: bool = True
+
+
+class NotificationsClearedOut(BaseModel):
+    cleared: int
 
 
 class ConnectionIn(BaseModel):
@@ -247,6 +259,7 @@ class ModelIn(BaseModel):
 class PhaseIn(BaseModel):
     connection: str
     model: str
+    batch: bool = False
 
 
 class RouteIn(BaseModel):
@@ -256,6 +269,7 @@ class RouteIn(BaseModel):
     base_url: str = ""
     round_robin: bool = False
     round_robin_credentials: Optional[List[str]] = None
+    batch: bool = False
 
 
 class RouteOut(BaseModel):
@@ -266,6 +280,7 @@ class RouteOut(BaseModel):
     model: str
     base_url: str
     round_robin: bool
+    batch: bool = False
 
 
 class SecretIn(BaseModel):
@@ -376,10 +391,21 @@ class TelegramEnabledIn(BaseModel):
     enabled: bool
 
 
+class TelegramNotifyIn(BaseModel):
+    notify: Dict[str, bool]
+
+
 @router.put("/settings/telegram/enabled", response_model=Settings, summary="Accende o spegne le notifiche Telegram")
 def put_telegram_enabled(body: TelegramEnabledIn, _actor: Actor):
     from rt.services.settings_service import set_telegram_enabled, snapshot
     _call(set_telegram_enabled, _project_root(), body.enabled)
+    return snapshot(_project_root())
+
+
+@router.put("/settings/telegram/notify", response_model=Settings, summary="Sceglie quali eventi inviano notifiche Telegram")
+def put_telegram_notify(body: TelegramNotifyIn, _actor: Actor):
+    from rt.services.settings_service import save_telegram_notify, snapshot
+    _call(save_telegram_notify, _project_root(), body.notify)
     return snapshot(_project_root())
 
 
@@ -432,6 +458,13 @@ def notifications(_actor: Actor, limit: int = Query(20, ge=1, le=50)):
     return recent_notifications(limit)
 
 
+@router.delete("/telegram/notifications", response_model=NotificationsClearedOut,
+               summary="Svuota lo storico delle notifiche inviate in RT (i messaggi su Telegram restano)")
+def delete_notifications(_actor: Actor):
+    from rt.telegram.notify_log import clear_notifications
+    return NotificationsClearedOut(cleared=clear_notifications())
+
+
 @router.post("/settings/connections", response_model=Settings, status_code=201,
              summary="Nuova connessione LLM (provider, base URL, una o più chiavi)")
 def post_connection(body: ConnectionIn, _actor: Actor):
@@ -467,29 +500,38 @@ def delete_connection(name: str, _actor: Actor):
 
 
 @router.put("/settings/phases/{job}", response_model=Settings,
-            summary="Assegna connessione e modello a una fase (outline, rewrite, review, recall, immagini)")
+            summary="Assegna connessione e modello a una fase (outline, rewrite, review, recall, immagini, chat)")
 def put_phase(job: str, body: PhaseIn, _actor: Actor):
     from rt.services.connections_service import assign_phase
     from rt.services.settings_service import snapshot
-    _call(assign_phase, _project_root(), job, body.connection, body.model)
+    _call(assign_phase, _project_root(), job, body.connection, body.model, batch=body.batch)
+    return snapshot(_project_root())
+
+
+@router.delete("/settings/phases/{job}", response_model=Settings,
+               summary="Ripristina il ripiego predefinito per una fase (es. Chat dello Studio come la Revisione)")
+def delete_phase(job: str, _actor: Actor):
+    from rt.services.connections_service import clear_phase
+    from rt.services.settings_service import snapshot
+    _call(clear_phase, _project_root(), job)
     return snapshot(_project_root())
 
 
 @router.get("/settings/routes/{job}/{role}", response_model=RouteOut, summary="Route di un job LLM (primaria, secondaria, fallback)")
 def get_route(job: str, role: str, _actor: Actor):
-    from rt.services.settings_service import ROUTE_ROLES, route_settings
+    from rt.services.settings_service import ROUTE_ROLES, route_batch, route_settings
     if role not in ROUTE_ROLES:
         raise ApiError(404, "route_not_found", "Ruolo non riconosciuto.")
     provider, credential, model, base_url, round_robin = route_settings(_project_root(), job, role)
     return RouteOut(job=job, role=role, provider=provider, credential=credential, model=model,
-                    base_url=base_url, round_robin=round_robin)
+                    base_url=base_url, round_robin=round_robin, batch=route_batch(_project_root(), job, role))
 
 
 @router.put("/settings/routes/{job}/{role}", response_model=RouteOut, summary="Salva la route di un job LLM")
 def put_route(job: str, role: str, body: RouteIn, actor: Actor):
     from rt.services.settings_service import save_route
     _call(save_route, _project_root(), job, role, body.provider, body.credential, body.model,
-          body.base_url, body.round_robin, body.round_robin_credentials)
+          body.base_url, body.round_robin, body.round_robin_credentials, batch=body.batch)
     return get_route(job, role, actor)
 
 

@@ -1,4 +1,4 @@
-import { BookOpen, Brain, Download, Image, Info, Plus, ShieldCheck } from 'lucide-react'
+import { BookOpen, Brain, Download, Image, Info, Plus, SearchX, ShieldCheck } from 'lucide-react'
 import { lazy, Suspense, useEffect, useRef, useState, type RefObject } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
@@ -24,7 +24,21 @@ import { useSources } from '@/api/sources'
 import { LessonUpdateBar } from '@/components/lesson/LessonUpdateBar'
 import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
-import { formatDuration, lessonsGroups, sameView, shortDate, subjectName, useLessonsPrefs, usePinnedLessonsView, type LessonsPrefs, type LessonsView } from '@/lib/lessonsPage'
+import {
+  LEGACY_PINNED_VIEW_PREF,
+  categoryPinLabel,
+  formatDuration,
+  isPinnableGrouping,
+  lessonsGroups,
+  sameSearchPin,
+  shortDate,
+  subjectName,
+  useCategoryPins,
+  useLessonsPrefs,
+  useSearchPin,
+  type LessonsPrefs,
+  type SearchPin,
+} from '@/lib/lessonsPage'
 import { consumeLastClosedLessonId, setLastClosedLessonId } from '@/lib/lastClosedLesson'
 import { fetchExport } from '@/lib/fileExport'
 import { trackFileExport } from '@/lib/fileStatus'
@@ -50,17 +64,24 @@ export function DashboardPage() {
   const { filters, setFilter, resetFilters, applyFilters, filtered } = useFilteredLessons(all.data)
   const [prefs, setPrefs] = useLessonsPrefs()
   const [welcomeDismissed, setWelcomeDismissed] = usePreference('welcome.dismissed', false)
-  const { pinned, pin, unpin } = usePinnedLessonsView()
+  const { pins, togglePin, unpinGroup } = useCategoryPins()
+  const { searchPin, pinSearch, unpinSearch } = useSearchPin()
+  const [legacyPinned, setLegacyPinned] = usePreference<unknown>(LEGACY_PINNED_VIEW_PREF, undefined)
   const [searchParams] = useSearchParams()
   const mountedRef = useRef(false)
+
+  useEffect(() => {
+    if (legacyPinned !== undefined) {
+      setLegacyPinned(undefined)
+    }
+  }, [legacyPinned, setLegacyPinned])
 
   useEffect(() => {
     if (mountedRef.current) return
     mountedRef.current = true
     const hasUrlFilters = Boolean(searchParams.get('q') || searchParams.get('materia') || searchParams.get('stato'))
-    if (pinned && !hasUrlFilters) {
-      setPrefs({ group: pinned.group, sort: pinned.sort })
-      applyFilters({ q: pinned.q, materia: pinned.materia, stato: pinned.stato })
+    if (searchPin && !hasUrlFilters) {
+      applyFilters({ q: searchPin.q, materia: searchPin.materia, stato: searchPin.stato })
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -94,69 +115,48 @@ export function DashboardPage() {
     return () => clearTimeout(timer)
   }, [highlightedLessonId])
 
-  const current: LessonsView = {
-    group: prefs.group,
-    sort: prefs.sort,
-    q: filters.q,
-    materia: filters.materia,
-    stato: filters.state,
-  }
-  const fixed = pinned !== null && sameView(pinned, current)
+  const pinnableGrouping = isPinnableGrouping(prefs.group) ? prefs.group : null
+  const activeCategoryPin = !searchPin && pinnableGrouping ? pins[pinnableGrouping] : undefined
+  const hasSearchFilters = Boolean(filters.q.trim() || filters.materia || filters.state)
+  const pinActive = Boolean(searchPin || activeCategoryPin !== undefined)
+  const pinDisabled = !pinActive && !hasSearchFilters
+  const pinLabel = searchPin
+    ? 'Togli la ricerca fissata'
+    : activeCategoryPin !== undefined && pinnableGrouping
+      ? `Togli ${categoryPinLabel(pinnableGrouping, activeCategoryPin)} dalla cima`
+      : 'Fissa la ricerca'
 
-  const handleToggleFixed = () => {
-    if (fixed) {
-      unpin()
-    } else {
-      pin({
-        group: prefs.group,
-        sort: prefs.sort,
-        q: filters.q.trim(),
-        materia: filters.materia,
-        stato: filters.state,
-      })
+  const handleTogglePin = () => {
+    if (searchPin) {
+      unpinSearch()
+    } else if (activeCategoryPin !== undefined && pinnableGrouping) {
+      unpinGroup(pinnableGrouping)
+    } else if (hasSearchFilters) {
+      pinSearch({ q: filters.q.trim(), materia: filters.materia, stato: filters.state })
     }
   }
 
   const handlePrefs = (patch: Partial<LessonsPrefs>) => {
-    if (pinned) {
-      const nextView: LessonsView = {
-        ...current,
-        group: patch.group ?? prefs.group,
-        sort: patch.sort ?? prefs.sort,
-      }
-      if (!sameView(pinned, nextView)) {
-        unpin()
-      }
-    }
     setPrefs(patch)
   }
 
   const handleFilter = (key: keyof LessonListFilters, value: string) => {
-    if (pinned) {
-      const nextView: LessonsView = {
-        ...current,
-        q: key === 'q' ? value : filters.q,
+    if (searchPin) {
+      const nextFilters: SearchPin = {
+        q: (key === 'q' ? value : filters.q).trim(),
         materia: key === 'materia' ? value : filters.materia,
         stato: key === 'state' ? value : filters.state,
       }
-      if (!sameView(pinned, nextView)) {
-        unpin()
+      if (!sameSearchPin(searchPin, nextFilters)) {
+        unpinSearch()
       }
     }
     setFilter(key, value)
   }
 
   const handleResetFilters = () => {
-    if (pinned) {
-      const nextView: LessonsView = {
-        ...current,
-        q: '',
-        materia: '',
-        stato: '',
-      }
-      if (!sameView(pinned, nextView)) {
-        unpin()
-      }
+    if (searchPin) {
+      unpinSearch()
     }
     resetFilters()
   }
@@ -164,7 +164,7 @@ export function DashboardPage() {
   const [selecting, setSelecting] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
   const running = new Set((jobs.data ?? []).filter((j) => isActive(j.state) && j.lesson_id != null).map((j) => j.lesson_id!))
-  const groups = lessonsGroups(filtered, prefs)
+  const groups = lessonsGroups(filtered, prefs, undefined, activeCategoryPin)
   const chosen = filtered.filter((l) => selected.has(l.id))
   useSearchShortcut('lessons-search')
   const stopSelecting = () => {
@@ -183,8 +183,10 @@ export function DashboardPage() {
             onQuery={(q) => handleFilter('q', q)}
             selecting={selecting}
             onSelecting={(on) => (on ? setSelecting(true) : stopSelecting())}
-            fixed={fixed}
-            onToggleFixed={handleToggleFixed}
+            pinActive={pinActive}
+            pinLabel={pinLabel}
+            pinDisabled={pinDisabled}
+            onTogglePin={handleTogglePin}
           />
         }
       />
@@ -211,10 +213,10 @@ export function DashboardPage() {
           )
         )}
         {all.data && all.data.length > 0 && filtered.length === 0 && (
-          <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
-            Nessuna lezione corrisponde alla ricerca.
-            <Button variant="outline" size="sm" onClick={handleResetFilters}>Azzera</Button>
-          </p>
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center text-muted-foreground" data-testid="lessons-empty">
+            <SearchX className="size-10 opacity-60" strokeWidth={1.5} aria-hidden />
+            <p className="text-body">Nessuna lezione corrisponde alla ricerca.</p>
+          </div>
         )}
         {filters.materia && filtered.length > 0 && (
           <p className="mb-4 text-meta text-muted-foreground">
@@ -223,7 +225,20 @@ export function DashboardPage() {
           </p>
         )}
         {filtered.length > 0 && (
-          <LessonsList groups={groups} grouping={prefs.group} running={running} selecting={selecting} selected={selected} onSelected={setSelected} highlightedLessonId={highlightedLessonId} />
+          <LessonsList
+            groups={groups}
+            grouping={prefs.group}
+            running={running}
+            selecting={selecting}
+            selected={selected}
+            onSelected={setSelected}
+            highlightedLessonId={highlightedLessonId}
+            pinnedGroupKey={activeCategoryPin}
+            hideGroupPins={Boolean(searchPin)}
+            onToggleGroupPin={(key) => {
+              if (pinnableGrouping) togglePin(pinnableGrouping, key)
+            }}
+          />
         )}
       </div>
       {selecting && <SelectionBar

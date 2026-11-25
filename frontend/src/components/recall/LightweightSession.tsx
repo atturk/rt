@@ -27,6 +27,7 @@ import {
   useAnswerVoice,
   useEndSession,
   useNextQuestion,
+  usePrefetchRecallStatic,
   useRecallHistory,
   useRecallOverview,
   useRecallQuestions,
@@ -133,6 +134,7 @@ export function LightweightSession({
   // Hooks mutazioni
   const nextLesson = useNextQuestion(lessonId ?? 0)
   const nextSubject = useSubjectNext(subjectKey)
+  const prefetchStatic = usePrefetchRecallStatic()
   const answerSeen = useAnswerSeen(activeLessonId)
   const markSeen = answerSeen.mutateAsync
   const answerMutation = useAnswer(activeLessonId)
@@ -182,12 +184,14 @@ export function LightweightSession({
 
   // Stato domanda corrente e risposta
   const [currentQuestion, setCurrentQuestion] = useState<RecallQuestion | null>(null)
+  const [loadingNext, setLoadingNext] = useState<boolean>(false)
   const [questionCount, setQuestionCount] = useState<number>(0)
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null)
   const [writtenAnswer, setWrittenAnswer] = useState<string>('')
   const [showVoiceRecorder, setShowVoiceRecorder] = useState<boolean>(false)
   const [emptyPoolError, setEmptyPoolError] = useState<boolean>(false)
   const [generalError, setGeneralError] = useState<string | null>(null)
+  const [nextError, setNextError] = useState<string | null>(null)
 
   // Esito dopo risposta
   const [evaluatedResult, setEvaluatedResult] = useState<{
@@ -202,6 +206,10 @@ export function LightweightSession({
     followupQuestion?: string | null
     followupAnswer?: string | null
     followupEvaluation?: string | null
+    followupCorrettezza?: number | null
+    followupCompletezza?: number | null
+    followupAttinenza?: number | null
+    parteMancante?: string | null
   } | null>(null)
 
   // Risposta di approfondimento
@@ -236,6 +244,10 @@ export function LightweightSession({
         followupQuestion: saved.followup_question,
         followupAnswer: saved.followup_answer,
         followupEvaluation: saved.followup_evaluation,
+        followupCorrettezza: saved.followup_correttezza,
+        followupCompletezza: saved.followup_completezza,
+        followupAttinenza: saved.followup_attinenza,
+        parteMancante: saved.parte_mancante,
       })
     }).catch(error => { if (active) setGeneralError(errorMessage(error)) })
     return () => { active = false }
@@ -246,8 +258,10 @@ export function LightweightSession({
   const askNext = useCallback(
     async (typeToAsk: SessionType = qtype, excludeId?: string) => {
       const seq = ++requestSeq.current
+      setLoadingNext(true)
       setEmptyPoolError(false)
       setGeneralError(null)
+      setNextError(null)
       setSelectedChoice(null)
       setWrittenAnswer('')
       setShowVoiceRecorder(false)
@@ -286,7 +300,12 @@ export function LightweightSession({
           setEmptyPoolError(true)
           setCurrentQuestion(null)
         } else {
-          setGeneralError(errorMessage(err))
+          setCurrentQuestion(null)
+          setNextError(errorMessage(err))
+        }
+      } finally {
+        if (seq === requestSeq.current) {
+          setLoadingNext(false)
         }
       }
     },
@@ -343,6 +362,7 @@ export function LightweightSession({
         explanation: quiz?.question.explanation ?? undefined,
         correctIndex: quiz?.question.correct_index ?? undefined,
       })
+      prefetchStatic(activeLessonId)
     } catch (err) {
       setSelectedChoice(null)
       setGeneralError(errorMessage(err))
@@ -388,7 +408,7 @@ export function LightweightSession({
     }
     const questionId = currentQuestion?.id
     const { data } = await history.refetch()
-    const saved = data?.answers.filter((a) => a.question_id === questionId).pop()
+    const saved = data?.answers.find((a) => a.question_id === questionId) // la cronologia arriva dalla più recente
     if (questionId && saved?.evaluation) await answerSeen.mutateAsync(questionId)
     setEvaluationJob(null)
     setEvaluatedResult({
@@ -401,9 +421,14 @@ export function LightweightSession({
       followupQuestion: saved?.followup_question,
       followupAnswer: saved?.followup_answer,
       followupEvaluation: saved?.followup_evaluation,
+      followupCorrettezza: saved?.followup_correttezza,
+      followupCompletezza: saved?.followup_completezza,
+      followupAttinenza: saved?.followup_attinenza,
+      parteMancante: saved?.parte_mancante,
     })
     setFollowupAnswer('')
     setShowFollowupVoice(false)
+    if (activeLessonId) prefetchStatic(activeLessonId)
   }
 
   // Risposta di approfondimento scritta
@@ -457,11 +482,19 @@ export function LightweightSession({
   const handleSkipFollowup = async () => {
     if (!currentQuestion || !activeLessonId) return
     try {
-      await answerMutation.mutateAsync({
+      const res = await answerMutation.mutateAsync({
         questionId: currentQuestion.id,
         skipFollowup: true,
       })
-      setEvaluatedResult((prev) => (prev ? { ...prev, domandaFollowup: null } : null))
+      const quizRes = (res as { quiz?: { parte_mancante?: string | null } } | undefined)?.quiz
+      let parteMancante: string | null | undefined =
+        quizRes && 'parte_mancante' in quizRes ? quizRes.parte_mancante : undefined
+      if (parteMancante === undefined) {
+        const refetched = await history.refetch()
+        const saved = refetched?.data?.answers?.find((a) => a.question_id === currentQuestion.id)
+        parteMancante = saved?.parte_mancante ?? null
+      }
+      setEvaluatedResult((prev) => (prev ? { ...prev, domandaFollowup: null, parteMancante } : null))
     } catch (err) {
       setGeneralError(errorMessage(err))
     }
@@ -483,6 +516,7 @@ export function LightweightSession({
         explanation: quiz?.question.explanation ?? currentQuestion.explanation ?? undefined,
         correctIndex: quiz?.question.correct_index ?? undefined,
       })
+      prefetchStatic(activeLessonId)
     } catch (err) {
       setGeneralError(errorMessage(err))
     }
@@ -609,7 +643,24 @@ export function LightweightSession({
   // Le domande vaste non si attaccano a una singola unità: nel ripasso dell'unità non ci sono.
   const isQuiz = currentQuestion?.type === 'quiz'
   const isAnswered = evaluatedResult !== null || evaluationJob !== null
+  const hasFollowupEval = Boolean(evaluatedResult?.followupEvaluation)
+  const displayCorrettezza = hasFollowupEval
+    ? (evaluatedResult?.followupCorrettezza ?? evaluatedResult?.correttezza)
+    : evaluatedResult?.correttezza
+  const displayCompletezza = hasFollowupEval
+    ? (evaluatedResult?.followupCompletezza ?? evaluatedResult?.completezza)
+    : evaluatedResult?.completezza
+  const displayAttinenza = hasFollowupEval
+    ? (evaluatedResult?.followupAttinenza ?? evaluatedResult?.attinenza)
+    : evaluatedResult?.attinenza
+  const hasDisplayScores = displayCorrettezza != null || displayCompletezza != null || displayAttinenza != null
+  const mainComment = evaluatedResult?.followupEvaluation ?? evaluatedResult?.explanation
+  const hasInitialScores =
+    evaluatedResult?.correttezza != null ||
+    evaluatedResult?.completezza != null ||
+    evaluatedResult?.attinenza != null
   const busy =
+    loadingNext ||
     answerMutation.isPending ||
     voiceMutation.isPending ||
     voteMutation.isPending ||
@@ -654,7 +705,7 @@ export function LightweightSession({
           <div
             role="group"
             aria-label="Tipo di domanda"
-            className="flex flex-wrap gap-1.5"
+            className="flex flex-wrap justify-center gap-1.5"
           >
             {sessionTypes.map(({ id: typeId, label }) => {
               const active = qtype === typeId
@@ -674,6 +725,20 @@ export function LightweightSession({
           </div>
 
           {generalError && <Alert tone="danger">{generalError}</Alert>}
+
+          {nextError && (
+            <div className="rounded-lg border border-danger/30 bg-danger-soft p-4" data-testid="recall-next-error">
+              <p className="text-body text-danger">{nextError}</p>
+              <div className="mt-3 flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => void askNext()}>
+                  Riprova
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleEnd}>
+                  Termina
+                </Button>
+              </div>
+            </div>
+          )}
 
           {emptyPoolError && (
             <div className="rounded-lg border bg-card p-6 text-center" data-testid="recall-empty">
@@ -757,8 +822,42 @@ export function LightweightSession({
             </div>
           )}
 
+          {/* Caricamento prossima domanda */}
+          {loadingNext && (
+            <div className="flex flex-col gap-4" data-testid="recall-loading">
+              <div
+                role="status"
+                aria-busy="true"
+                aria-label="Caricamento della prossima domanda"
+                className="flex flex-col gap-4"
+              >
+                <div className="flex flex-col gap-1">
+                  <div className="rt-skeleton h-4 w-44 rounded-md" />
+                  <div className="rt-unit-pending">
+                    <div />
+                    <div />
+                    <div />
+                  </div>
+                </div>
+                {(qtype === 'quiz' || (qtype === 'mista' && isQuiz)) && (
+                  <div className="flex flex-col gap-2">
+                    <div className="rt-skeleton h-12 w-full rounded-md" />
+                    <div className="rt-skeleton h-12 w-full rounded-md" />
+                    <div className="rt-skeleton h-12 w-full rounded-md" />
+                    <div className="rt-skeleton h-12 w-full rounded-md" />
+                  </div>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-end gap-3 border-t pt-3">
+                <Button variant="outline" onClick={handleEnd} disabled={busy}>
+                  Termina
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Domanda corrente */}
-          {currentQuestion && (
+          {!loadingNext && currentQuestion && (
             <div className="flex flex-col gap-4" data-testid="recall-question" data-question-id={currentQuestion.id} data-type={questionTypeId(currentQuestion)}>
               <div className="flex flex-col gap-1">
                 <p className="text-meta text-muted-foreground">
@@ -949,39 +1048,36 @@ export function LightweightSession({
                           : 'Valutazione'}
                   </p>
 
-                  {(evaluatedResult.correttezza != null ||
-                    evaluatedResult.completezza != null ||
-                    evaluatedResult.attinenza != null) && (
+                  {hasDisplayScores && (
                     <div className="mt-2 flex flex-wrap gap-2" data-testid="recall-eval-scores">
-                      {evaluatedResult.correttezza != null && (
+                      {displayCorrettezza != null && (
                         <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                          Correttezza {evaluatedResult.correttezza}%
+                          Correttezza {displayCorrettezza}%
                         </span>
                       )}
-                      {evaluatedResult.completezza != null && (
+                      {displayCompletezza != null && (
                         <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                          Completezza {evaluatedResult.completezza}%
+                          Completezza {displayCompletezza}%
                         </span>
                       )}
-                      {evaluatedResult.attinenza != null && (
+                      {displayAttinenza != null && (
                         <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                          Attinenza {evaluatedResult.attinenza}%
+                          Attinenza {displayAttinenza}%
                         </span>
                       )}
                     </div>
                   )}
 
-                  {evaluatedResult.explanation && (
+                  {mainComment && (
                     <p className="mt-1 text-meta leading-relaxed">
-                      <MathText
-                        text={cleanComment(
-                          evaluatedResult.explanation,
-                          evaluatedResult.correttezza != null ||
-                            evaluatedResult.completezza != null ||
-                            evaluatedResult.attinenza != null,
-                        )}
-                      />
+                      <MathText text={cleanComment(mainComment, hasDisplayScores)} />
                     </p>
+                  )}
+                  {!evaluatedResult.domandaFollowup && !evaluatedResult.followupEvaluation && evaluatedResult.parteMancante && (
+                    <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-meta" data-testid="recall-missing-part">
+                      <p className="text-xs font-semibold text-muted-foreground">Cosa mancava</p>
+                      <p className="mt-0.5 leading-relaxed"><MathText text={evaluatedResult.parteMancante} /></p>
+                    </div>
                   )}
                   {currentQuestion.unit_ids.length > 0 && activeLessonId > 0 && (
                     <p className="mt-2 text-meta">
@@ -995,15 +1091,40 @@ export function LightweightSession({
                   )}
 
                   {/* Recap Approfondimento se completato */}
-                  {evaluatedResult.followupQuestion && (
-                    <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs" data-testid="recall-followup-recap">
-                      <p className="font-semibold text-muted-foreground">Domanda di approfondimento:</p>
-                      <p className="mt-0.5"><MathText text={evaluatedResult.followupQuestion} /></p>
+                  {(evaluatedResult.followupQuestion || evaluatedResult.followupEvaluation) && (
+                    <div className="mt-3 rounded-lg border border-border/50 bg-muted/20 p-2.5 text-xs text-muted-foreground" data-testid="recall-followup-recap">
+                      {evaluatedResult.followupQuestion && (
+                        <>
+                          <p className="font-semibold">Domanda di approfondimento:</p>
+                          <p className="mt-0.5"><MathText text={evaluatedResult.followupQuestion} /></p>
+                        </>
+                      )}
                       {evaluatedResult.followupAnswer && (
                         <>
-                          <p className="mt-2 font-semibold text-muted-foreground">La tua risposta:</p>
+                          <p className="mt-2 font-semibold">La tua risposta:</p>
                           <p className="mt-0.5 italic"><MathText text={evaluatedResult.followupAnswer} /></p>
                         </>
+                      )}
+                      {evaluatedResult.followupEvaluation && (hasInitialScores || evaluatedResult.explanation) && (
+                        <div className="mt-2 border-t border-border/40 pt-2 text-[11px] opacity-85">
+                          {hasInitialScores && (
+                            <p>
+                              Prima valutazione:{' '}
+                              {[
+                                evaluatedResult.correttezza != null ? `Correttezza ${evaluatedResult.correttezza}%` : null,
+                                evaluatedResult.completezza != null ? `Completezza ${evaluatedResult.completezza}%` : null,
+                                evaluatedResult.attinenza != null ? `Attinenza ${evaluatedResult.attinenza}%` : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </p>
+                          )}
+                          {evaluatedResult.explanation && (
+                            <p className="mt-1">
+                              <MathText text={cleanComment(evaluatedResult.explanation, hasInitialScores)} />
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}

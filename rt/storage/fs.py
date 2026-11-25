@@ -21,7 +21,7 @@ import shutil
 import threading
 import time
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from contextlib import contextmanager
 
@@ -41,8 +41,8 @@ MEDIA_EXTENSIONS = {
 _MAX_DEPTH = 6
 
 _lock = threading.RLock()
-# url del DB -> {path della lezione -> id}: solo risultati positivi (una lezione "db" resta
-# tale finché non viene cancellata da questo processo, che svuota la voce).
+# url del DB -> {path della lezione -> id}: solo risultati positivi. Una lezione può essere
+# cancellata da un altro processo: exists/isdir/is_db_lesson sulla radice ricontrollano (_alive).
 _known: Dict[str, Dict[str, int]] = {}
 # Istantanea di lettura attiva nel thread (vedi read_snapshot).
 _snapshot = threading.local()
@@ -133,7 +133,7 @@ def reset_cache() -> None:
 
 
 def is_db_lesson(lesson_dir) -> bool:
-    t = resolve(lesson_dir)
+    t = _root_target(lesson_dir)
     return t is not None and t.rel == ""
 
 
@@ -188,15 +188,20 @@ def read_snapshot() -> Iterator[None]:
         yield
         return
     _snapshot.rows, _snapshot.missing = {}, set()
+    _snapshot.segments_cache = {}
+    _snapshot.phase_status_cache = {}
     try:
         yield
     finally:
         _snapshot.rows = _snapshot.missing = None
+        _snapshot.segments_cache = _snapshot.phase_status_cache = None
 
 
 def _drop_snapshot() -> None:
     if getattr(_snapshot, "rows", None) is not None:
         _snapshot.rows, _snapshot.missing = {}, set()
+        _snapshot.segments_cache = {}
+        _snapshot.phase_status_cache = {}
 
 
 @dataclass(frozen=True)
@@ -234,6 +239,22 @@ def _read_row(t: DbTarget):
         if row is None:
             return None
         return _SnapRow(row.content, row.media_path, row.size, row.sha256, row.mtime)
+
+
+def file_cache_key(path) -> Optional[Tuple[str, Any]]:
+    """Chiave di cache (percorso, sha o mtime) basata sul backend storage."""
+    p = os.fspath(path)
+    t = resolve(p)
+    if t is not None:
+        row = _read_row(t)
+        if row is None:
+            return None
+        return (p, row.sha256 if row.sha256 is not None else row.mtime)
+    try:
+        st = os.stat(p)
+        return (p, st.st_mtime_ns)
+    except OSError:
+        return None
 
 
 # ---------------------------------------------------------------- righe lesson_files
@@ -427,8 +448,29 @@ def _is_file(t: DbTarget) -> bool:
     return _read_row(t) is not None
 
 
-def exists(path) -> bool:
+def _alive(t: DbTarget) -> bool:
+    """La lezione "db" esiste ancora? La cache _known è per processo: se la lezione è stata
+    cancellata da un altro processo (l'API, mentre il worker la ricorda) la voce è vecchia e
+    la lezione ricreata con lo stesso nome risultava "già esistente"."""
+    from rt.db.models import Lesson
+    with _reader(t) as s:
+        row = s.get(Lesson, t.lesson_id)
+        if row is not None and row.path == t.lesson_path and row.storage == STORAGE_DB:
+            return True
+    forget(t.lesson_path)
+    return False
+
+
+def _root_target(path) -> Optional[DbTarget]:
+    """resolve() per chi chiede se la lezione stessa esiste: scarta una voce vecchia."""
     t = resolve(path)
+    if t is not None and t.rel == "" and not _alive(t):
+        t = resolve(path)
+    return t
+
+
+def exists(path) -> bool:
+    t = _root_target(path)
     if t is None:
         return os.path.exists(path)
     return t.rel == "" or _is_file(t) or _has_prefix(t, t.rel)
@@ -442,7 +484,7 @@ def isfile(path) -> bool:
 
 
 def isdir(path) -> bool:
-    t = resolve(path)
+    t = _root_target(path)
     if t is None:
         return os.path.isdir(path)
     return t.rel == "" or (not _is_file(t) and _has_prefix(t, t.rel))

@@ -47,6 +47,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
 import { AUDIO_EXTENSIONS, formatBytes } from '@/lib/jobs'
 import { cancelUpload, enqueueUpload, isUploadActive, useUpload, type UploadSend } from '@/lib/uploadQueue'
+import { usePptxConverterGuard } from '@/components/shell/PptxConverterWarning'
 import { cn } from '@/lib/utils'
 
 const DROP_LABEL = "Trascina l'audio o il pacchetto della lezione, o fai clic"
@@ -241,6 +242,7 @@ export function NewLessonDialog({
   const upload = useUpload(uploadId)
   const [recreating, setRecreating] = useState(false)
   const [uploadError, setUploadError] = useState<unknown>(null)
+  const { guardPptxFiles, warningDialog: pptxWarningDialog } = usePptxConverterGuard()
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -394,7 +396,8 @@ export function NewLessonDialog({
           setProblem('Scegli o solo file audio/materiali o solo pacchetti .rt/.zip.')
           return
         }
-        setZipFiles(zipsFound)
+        // I pacchetti si aggiungono a quelli già scelti (anche aperti dal Finder con la finestra aperta).
+        setZipFiles((prev) => [...prev, ...zipsFound.filter((z) => !prev.some((p) => p.name === z.name && p.size === z.size))])
         setNotice(null)
         setAudioFiles([])
         setMaterialFiles([])
@@ -421,21 +424,25 @@ export function NewLessonDialog({
         (a, b) => a.lastModified - b.lastModified || a.name.localeCompare(b.name),
       )
 
-      setZipFiles([])
-      setAudioFiles((prev) => [...prev, ...sortedAuds])
-      setMaterialFiles((prev) => [...prev, ...mats])
-      setProblem(null)
-      setNotice(repeatedNotice(repeated))
-      setZipJob(null)
-      setUploadError(null)
+      const apply = () => {
+        setZipFiles([])
+        setAudioFiles((prev) => [...prev, ...sortedAuds])
+        setMaterialFiles((prev) => [...prev, ...mats])
+        setProblem(null)
+        setNotice(repeatedNotice(repeated))
+        setZipJob(null)
+        setUploadError(null)
+      }
+      guardPptxFiles(mats, apply)
     },
-    [busy, audioFiles, materialFiles],
+    [busy, audioFiles, materialFiles, guardPptxFiles],
   )
 
-  const initialFilesHandled = useRef(false)
+  // Ogni nuovo gruppo di file (anche aperto dal Finder con la finestra già aperta) si carica una volta.
+  const initialFilesHandled = useRef<File[] | null>(null)
   useEffect(() => {
-    if (!initialFilesHandled.current && initialFiles && initialFiles.length > 0) {
-      initialFilesHandled.current = true
+    if (initialFiles && initialFiles.length > 0 && initialFilesHandled.current !== initialFiles) {
+      initialFilesHandled.current = initialFiles
       choose(initialFiles)
     }
   }, [initialFiles, choose])
@@ -448,8 +455,10 @@ export function NewLessonDialog({
       return
     }
     const { fresh, repeated } = withoutRepeated(chosen.filter(isMaterialFile), [...audioFiles, ...materialFiles])
-    setMaterialFiles((prev) => [...prev, ...fresh])
-    setNotice(repeatedNotice(repeated))
+    guardPptxFiles(fresh, () => {
+      setMaterialFiles((prev) => [...prev, ...fresh])
+      setNotice(repeatedNotice(repeated))
+    })
   }
 
   // Togliendo la guida passa al primo documento con testo rimasto (primaryMaterialName).
@@ -697,7 +706,7 @@ export function NewLessonDialog({
         onClose={onClose}
         title="Nuova lezione"
         testId="new-lesson"
-        className="w-[min(680px,calc(100vw-32px))]"
+        className="w-[min(760px,calc(100vw-32px))]"
       >
       <form onSubmit={submit} aria-label="Nuova lezione" noValidate>
         {/* Input file principale (audio, zip, o materiali) */}
@@ -706,7 +715,9 @@ export function NewLessonDialog({
           type="file"
           multiple
           hidden
-          accept={['audio/*', '.zip', '.rt', ...MATERIAL_EXTENSIONS, ...AUDIO_EXTENSIONS].join(',')}
+          // Solo estensioni, niente 'audio/*': nell'app desktop (pywebview su macOS) il Finder
+          // filtra solo sui tipi MIME e ignora le estensioni, quindi con 'audio/*' PDF e zip erano grigi.
+          accept={['.zip', '.rt', ...MATERIAL_EXTENSIONS, ...AUDIO_EXTENSIONS].join(',')}
           aria-label="Audio o pacchetto della lezione"
           onChange={(event) => {
             choose(Array.from(event.target.files ?? []))
@@ -881,7 +892,7 @@ export function NewLessonDialog({
                   const total = facts[i]?.data?.pagine_totali ?? null
                   return (
                     <div key={m.name} data-testid="source-layer"
-                      className="-mx-3 -mb-3 mt-1 flex flex-wrap items-center gap-3 rounded-b-lg border-t bg-muted/40 px-3 py-2 sm:flex-nowrap">
+                      className="-mx-3 -mb-3 mt-1 flex flex-wrap items-center gap-3 rounded-b-lg border-t bg-muted/40 px-3 py-2">
                       <ExtractOptions value={current.estrai ?? 'immagini'} unavailable={reasons.extract}
                         onChange={(estrai) => updateMaterial(m, i, { estrai })} />
                       <UseOptions value={current.uso ?? 'contesto'} unavailable={reasons.use} off={reasons.off}
@@ -1287,6 +1298,7 @@ export function NewLessonDialog({
         </div>
       </Modal>
     )}
+    {pptxWarningDialog}
     </>
   )
 }

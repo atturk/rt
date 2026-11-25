@@ -71,6 +71,16 @@ def _disable_real_telegram_notifications():
 
 
 @pytest.fixture(autouse=True)
+def _reset_dotenv_injected():
+    """Le chiavi Telegram lette da .env in un test non devono cancellare quelle impostate a mano
+    dal test successivo sullo stesso processo (rt.core.config._DOTENV_INJECTED è globale)."""
+    from rt.core import config as config_mod
+    config_mod._DOTENV_INJECTED.clear()
+    yield
+    config_mod._DOTENV_INJECTED.clear()
+
+
+@pytest.fixture(autouse=True)
 def _isolate_data_dir(tmp_path_factory, monkeypatch):
     """RT4-G1: nessun test legge la cartella dati reale (~/.rt con config/, .env e rt.db):
     RT_DATA_DIR è tolta e la cartella dati predefinita punta a un percorso vuoto. I test della

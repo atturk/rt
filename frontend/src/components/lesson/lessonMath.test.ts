@@ -25,6 +25,11 @@ describe('formule nell’editor', () => {
     expect(found.map((m) => [m.source, m.display, m.block])).toEqual([['x^2', false, false], ['a = b', true, true]])
   })
 
+  it('un $$ spaiato non si accoppia con quello di un paragrafo successivo', () => {
+    const found = ranges('pulsazione angolare $$ dalla relazione $T_0$.\n\n## Titolo\n\n$$\n\\Delta E = h f_0\n$$\n\nfine.')
+    expect(found.map((m) => [m.source, m.display, m.block])).toEqual([['T_0', false, false], ['\n\\Delta E = h f_0\n', true, true]])
+  })
+
   it('salta i blocchi di codice e il codice in riga', () => {
     expect(ranges('```\n$x^2$\n```\n')).toEqual([])
     expect(ranges('prezzi in `$x$` e testo')).toEqual([])
