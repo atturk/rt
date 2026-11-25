@@ -1,5 +1,5 @@
 import { clearLastClosedLessonId } from '@/lib/lastClosedLesson'
-import { ReturnAddressContext, rememberReturnAddress, useReturnAddress } from '@/lib/returnAddress'
+import { GuideReturnContext, ReturnAddressContext, rememberGuideReturn, rememberReturnAddress, useReturnAddress } from '@/lib/returnAddress'
 import { Activity, BookOpen, Calendar, Plus, Settings, type LucideIcon } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
@@ -101,10 +101,13 @@ export function Layout() {
   const location = useLocation()
   const matches = useMatches()
   const [returnAddress, setReturnAddress] = useState('/')
+  const [guideReturn, setGuideReturn] = useState('/')
   useEffect(() => {
     // L'indirizzo vive solo nella sessione di navigazione: una ricarica usa Lezioni.
     // oxlint-disable-next-line react/set-state-in-effect
     setReturnAddress(previous => rememberReturnAddress(previous, location))
+    // oxlint-disable-next-line react/set-state-in-effect
+    setGuideReturn(previous => rememberGuideReturn(previous, location))
     if (
       location.pathname !== '/' &&
       location.pathname !== '/lezioni' &&
@@ -135,7 +138,13 @@ export function Layout() {
       }
     }
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    // Il menu Aiuto nativo naviga dentro l'app (senza ricaricare): così «Indietro» della guida
+    // sa da quale pagina si è entrati.
+    window.rtNavigate = (to: string) => navigate(to)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      delete window.rtNavigate
+    }
   }, [navigate])
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
@@ -172,7 +181,7 @@ export function Layout() {
     )
   }
   return (
-    <ReturnAddressContext value={returnAddress}><StudyZenContext value={studyZen}><RsvpLayoutContext value={setRsvp}><ZenContext value={setZen}><NewLessonContext value={openNewLesson}>
+    <ReturnAddressContext value={returnAddress}><GuideReturnContext value={guideReturn}><StudyZenContext value={studyZen}><RsvpLayoutContext value={setRsvp}><ZenContext value={setZen}><NewLessonContext value={openNewLesson}>
       <div className="rt-layout flex min-h-dvh bg-background" data-rsvp={rsvp.active || undefined} data-zen={zen.active || undefined} data-tint={layout.active ? layout.tint ?? undefined : undefined}>
         {!phone && <nav
           aria-label="Navigazione" aria-hidden={layout.active || undefined} inert={layout.active || undefined}
@@ -240,6 +249,6 @@ export function Layout() {
           />
         </Suspense>
       )}
-    </NewLessonContext></ZenContext></RsvpLayoutContext></StudyZenContext></ReturnAddressContext>
+    </NewLessonContext></ZenContext></RsvpLayoutContext></StudyZenContext></GuideReturnContext></ReturnAddressContext>
   )
 }

@@ -872,12 +872,23 @@ def _guide_slugify(text: str) -> str:
     return hyphenated.strip("-")
 
 
+def _open_guide(window, base_url: str, route: str):
+    """Apre la guida navigando dentro l'app, senza ricaricare la pagina: così «Indietro»
+    della guida riporta alla pagina da cui si è entrati. Ricarica solo se l'app non risponde."""
+    try:
+        if window.evaluate_js(f"Boolean(window.rtNavigate && (window.rtNavigate({json.dumps(route)}), true))"):
+            return
+    except Exception as exc:
+        _log(f"Guida: navigazione interna non riuscita: {exc}")
+    window.load_url(f"{base_url}{route}")
+
+
 def _build_guide_menu(window, base_url: str):
     from webview.menu import Menu, MenuAction
     import yaml
 
     items = [
-        MenuAction("Cerca nella guida…", lambda: window.load_url(f"{base_url}/guida?cerca=1"))
+        MenuAction("Cerca nella guida…", lambda: _open_guide(window, base_url, "/guida?cerca=1"))
     ]
 
     guide_dir = os.path.join(paths.project_root(), "docs", "guida")
@@ -922,15 +933,15 @@ def _build_guide_menu(window, base_url: str):
         page_actions = []
         for sec_title, anchor in sections:
             route = f"/guida/{slug}#{anchor}" if slug != "index" else f"/guida#{anchor}"
-            def make_handler(target_url):
-                return lambda: window.load_url(target_url)
-            page_actions.append(MenuAction(sec_title, make_handler(f"{base_url}{route}")))
+            def make_handler(target_route):
+                return lambda: _open_guide(window, base_url, target_route)
+            page_actions.append(MenuAction(sec_title, make_handler(route)))
 
         if page_actions:
             items.append(Menu(page_title, page_actions))
         else:
             route = f"/guida/{slug}" if slug != "index" else "/guida"
-            items.append(MenuAction(page_title, lambda u=f"{base_url}{route}": window.load_url(u)))
+            items.append(MenuAction(page_title, lambda r=route: _open_guide(window, base_url, r)))
 
     return Menu("Aiuto", items)
 

@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { slugify } from '@/lib/guideDocs'
+import { cn } from '@/lib/utils'
 
 const imageModules = import.meta.glob('../../../../docs/guida/immagini/*', {
   eager: true,
@@ -92,9 +93,21 @@ function renderInline(text: string): ReactNode[] {
   return parts
 }
 
+interface GuideSectionBlock {
+  title: string
+  anchor: string
+  body: ReactNode[]
+}
+
+/** Pagina della guida nello stile delle Impostazioni: titolo e introduzione in testa,
+ * poi ogni sezione «##» come gruppo con etichetta sopra una card. */
 export function GuideMarkdown({ markdown }: { markdown: string }) {
   const lines = markdown.split(/\r?\n/)
-  const elements: ReactNode[] = []
+  const intro: ReactNode[] = []
+  const sections: GuideSectionBlock[] = []
+  let pageTitle: ReactNode = null
+  // Dove finiscono i blocchi: introduzione o corpo della sezione corrente.
+  let elements: ReactNode[] = intro
 
   let inCodeBlock = false
   let codeBlockLines: string[] = []
@@ -222,36 +235,16 @@ export function GuideMarkdown({ markdown }: { markdown: string }) {
     // Headings
     if (trimmed.startsWith('# ')) {
       flushList()
-      elements.push(
-        <h1 key={key++} className="mb-4 text-2xl font-bold tracking-tight">
-          {renderInline(trimmed.slice(2).trim())}
-        </h1>,
-      )
+      pageTitle = renderInline(trimmed.slice(2).trim())
       continue
     }
 
     if (trimmed.startsWith('## ')) {
       flushList()
       const title = trimmed.slice(3).trim()
-      const anchor = slugify(title)
-      elements.push(
-        <h2
-          key={key++}
-          id={anchor}
-          className="group mt-8 mb-3 flex scroll-mt-20 items-center gap-2 border-b pb-1 text-xl font-semibold tracking-tight"
-        >
-          <a href={`#${anchor}`} className="hover:underline">
-            {renderInline(title)}
-          </a>
-          <a
-            href={`#${anchor}`}
-            className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-            aria-label={`Link alla sezione ${title}`}
-          >
-            #
-          </a>
-        </h2>,
-      )
+      const section: GuideSectionBlock = { title, anchor: slugify(title), body: [] }
+      sections.push(section)
+      elements = section.body
       continue
     }
 
@@ -259,7 +252,7 @@ export function GuideMarkdown({ markdown }: { markdown: string }) {
       flushList()
       const title = trimmed.slice(4).trim()
       elements.push(
-        <h3 key={key++} className="mt-5 mb-2 text-lg font-semibold tracking-tight">
+        <h3 key={key++} className="mt-5 mb-2 text-body font-semibold text-foreground">
           {renderInline(title)}
         </h3>,
       )
@@ -299,5 +292,43 @@ export function GuideMarkdown({ markdown }: { markdown: string }) {
   flushList()
   flushBlockquote()
 
-  return <div className="rt-document rt-reading">{elements}</div>
+  // Margini interni: niente spazio sopra il primo blocco e sotto l'ultimo di ogni card.
+  const flow = '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0'
+  return (
+    <div className="flex max-w-3xl flex-col gap-8 text-body leading-relaxed text-foreground">
+      {(pageTitle || intro.length > 0) && (
+        <header className="flex flex-col gap-1">
+          {pageTitle && <h1 className="text-heading font-semibold tracking-tight">{pageTitle}</h1>}
+          {intro.length > 0 && <div className={cn('text-muted-foreground [&_p]:text-muted-foreground', flow)}>{intro}</div>}
+        </header>
+      )}
+      {sections.map((section, i) => {
+        const headingId = `${section.anchor || 'sezione'}-titolo-${i}`
+        return (
+          <section
+            key={i}
+            id={section.anchor}
+            aria-labelledby={headingId}
+            className="flex min-w-0 scroll-mt-20 flex-col gap-2"
+          >
+            <h2 id={headingId} className="group flex items-center gap-2 px-1 text-body font-semibold text-foreground">
+              <a href={`#${section.anchor}`} className="hover:underline">
+                {renderInline(section.title)}
+              </a>
+              <a
+                href={`#${section.anchor}`}
+                className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                aria-label={`Link alla sezione ${section.title}`}
+              >
+                #
+              </a>
+            </h2>
+            {section.body.length > 0 && (
+              <div className={cn('min-w-0 rounded-lg border bg-card px-4 py-3', flow)}>{section.body}</div>
+            )}
+          </section>
+        )
+      })}
+    </div>
+  )
 }

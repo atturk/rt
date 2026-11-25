@@ -522,6 +522,14 @@ def test_menu_has_aiuto_menu_with_search_and_pages(monkeypatch, webview):
     # Prima voce: "Cerca nella guida…"
     cerca_item = aiuto.items[0]
     assert cerca_item.title == "Cerca nella guida…"
+    # App pronta: naviga dentro l'app (niente ricarica, «Indietro» ricorda la pagina di partenza)
+    win.evaluate_js = Mock(return_value=True)
+    win.load_url.reset_mock()
+    cerca_item.function()
+    assert 'window.rtNavigate("/guida?cerca=1")' in win.evaluate_js.call_args[0][0]
+    win.load_url.assert_not_called()
+    # App non pronta: ripiega sul caricamento dell'indirizzo
+    win.evaluate_js = Mock(return_value=False)
     cerca_item.function()
     win.load_url.assert_called_with("http://127.0.0.1:8765/guida?cerca=1")
 
