@@ -68,6 +68,7 @@ def test_dynamic_openrouter_pricing_fetch_success():
     # Reset cache
     pr._OPENROUTER_DYNAMIC_CACHE.clear()
     pr._OPENROUTER_DYNAMIC_FETCHED = False
+    pr._OPENROUTER_RETRY_AT = 0.0
 
     fake_resp = MagicMock()
     fake_resp.status_code = 200
@@ -97,6 +98,7 @@ def test_dynamic_openrouter_pricing_fetch_failure_returns_none():
 
     pr._OPENROUTER_DYNAMIC_CACHE.clear()
     pr._OPENROUTER_DYNAMIC_FETCHED = False
+    pr._OPENROUTER_RETRY_AT = 0.0
 
     with patch("requests.get", side_effect=Exception("Connection timeout")):
         cost = pr.calculate_cost("openrouter", "some-brand-new/unknown-model-xyz", input_tokens=1000, output_tokens=1000)
@@ -247,6 +249,7 @@ def test_openrouter_batch_models_populates_on_first_call():
     pr._OPENROUTER_BATCH_MODELS.clear()
     pr._OPENROUTER_DYNAMIC_CACHE.clear()
     pr._OPENROUTER_DYNAMIC_FETCHED = False
+    pr._OPENROUTER_RETRY_AT = 0.0
 
     fake_resp = MagicMock()
     fake_resp.status_code = 200
@@ -269,3 +272,30 @@ def test_openrouter_batch_models_populates_on_first_call():
         pr._OPENROUTER_DYNAMIC_FETCHED = True
 
 
+
+
+def test_openrouter_models_retry_after_a_network_error():
+    """Un errore di rete al primo tentativo non lascia il menu senza voci ':batch' per sempre."""
+    import rt.llm.pricing as pr
+    from unittest.mock import MagicMock, patch
+
+    pr._OPENROUTER_BATCH_MODELS.clear()
+    pr._OPENROUTER_DYNAMIC_CACHE.clear()
+    pr._OPENROUTER_DYNAMIC_FETCHED = False
+    pr._OPENROUTER_RETRY_AT = 0.0
+    pr._OPENROUTER_RETRY_AT = 0.0
+    ok = MagicMock(status_code=200)
+    ok.json.return_value = {"data": [{"id": "openai/gpt-4o:batch", "pricing": {"prompt": "0.000001", "completion": "0.000004"}}]}
+    try:
+        with patch("requests.get", side_effect=OSError("rete")) as get_mock:
+            assert pr.openrouter_batch_models() == []
+            assert pr.openrouter_batch_models() == []  # niente nuovo tentativo subito
+            assert get_mock.call_count == 1
+        pr._OPENROUTER_RETRY_AT = 0.0  # passati i 5 minuti
+        with patch("requests.get", return_value=ok):
+            assert pr.openrouter_batch_models() == ["openai/gpt-4o"]
+    finally:
+        pr._OPENROUTER_BATCH_MODELS.clear()
+        pr._OPENROUTER_DYNAMIC_CACHE.clear()
+        pr._OPENROUTER_DYNAMIC_FETCHED = True
+        pr._OPENROUTER_RETRY_AT = 0.0

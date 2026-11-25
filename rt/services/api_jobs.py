@@ -65,7 +65,7 @@ def restore_version_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 def ingest_notes_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.notes_lesson_service import create_notes_lesson
     from rt.services.job_handlers import pipeline_options, outcome_from_pipeline
-    from rt.services.pipeline_service import run_pipeline
+    from rt.services.pipeline_service import build_notifiers, run_pipeline
     options = job.payload.get("options") or {}
     lesson = job.lesson_path if job.lesson_path and fs.isdir(job.lesson_path) else create_notes_lesson(
         job.payload["text"], **{name: options.get(name, "")
@@ -79,14 +79,14 @@ def ingest_notes_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     link_imported_lesson(lesson, job.payload.get("calendar_entry_id"), job.payload.get("calendar_date"),
                          job.payload.get("calendar_materia"), job.payload.get("calendar_start"))
     if job.payload.get("run"):
-        return finish_import(outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx)), job.payload)
+        return finish_import(outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx, build_notifiers())), job.payload)
     return finish_import(_done({"status": "setup_completato", "lesson_dir": lesson}, lesson_path=lesson), job.payload)
 
 
 def ingest_sources_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.materials_lesson_service import create_source_lesson, finish_import, link_imported_lesson
     from rt.services.job_handlers import pipeline_options, outcome_from_pipeline
-    from rt.services.pipeline_service import run_pipeline
+    from rt.services.pipeline_service import build_notifiers, run_pipeline
     from rt.pipeline.prepare import run_prepare
     options = job.payload.get("options") or {}
     lesson = job.lesson_path if job.lesson_path and fs.isdir(job.lesson_path) else create_source_lesson(
@@ -100,7 +100,7 @@ def ingest_sources_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     with ctx.activate():
         run_prepare(lesson, ctx=ctx)
         if job.payload.get("run"):
-            outcome = outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx))
+            outcome = outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx, build_notifiers()))
         else:
             outcome = _done({"status": "setup_completato", "lesson_dir": lesson}, lesson_path=lesson)
     return finish_import(outcome, job.payload)

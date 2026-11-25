@@ -1,5 +1,15 @@
 # Novità di RT
 
+## 4.3.9b10 — da pubblicare
+
+Beta di correzioni dopo le prove della b9.
+
+### Correzioni
+
+- **Telegram**: «Lezione pronta» arriva anche per le lezioni create da appunti o da più fonti, senza righe tecniche in fondo.
+- **Ripasso**: con più risposte alla stessa domanda si vede sempre l'ultima valutazione.
+- **Modalità batch**: le voci `:batch` compaiono nel menu dei modelli anche se il primo tentativo di scaricare l'elenco non riesce.
+
 ## 4.3.9b9 — 2026-11-24
 
 Beta su Impostazioni ridisegnate, scaletta automatica, notifiche Telegram e ripasso.

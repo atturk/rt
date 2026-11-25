@@ -408,7 +408,7 @@ export function LightweightSession({
     }
     const questionId = currentQuestion?.id
     const { data } = await history.refetch()
-    const saved = data?.answers.filter((a) => a.question_id === questionId).pop()
+    const saved = data?.answers.find((a) => a.question_id === questionId) // la cronologia arriva dalla più recente
     if (questionId && saved?.evaluation) await answerSeen.mutateAsync(questionId)
     setEvaluationJob(null)
     setEvaluatedResult({
@@ -491,7 +491,7 @@ export function LightweightSession({
         quizRes && 'parte_mancante' in quizRes ? quizRes.parte_mancante : undefined
       if (parteMancante === undefined) {
         const refetched = await history.refetch()
-        const saved = refetched?.data?.answers?.filter((a) => a.question_id === currentQuestion.id).pop()
+        const saved = refetched?.data?.answers?.find((a) => a.question_id === currentQuestion.id)
         parteMancante = saved?.parte_mancante ?? null
       }
       setEvaluatedResult((prev) => (prev ? { ...prev, domandaFollowup: null, parteMancante } : null))

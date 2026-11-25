@@ -72,6 +72,9 @@ _OPENROUTER_DYNAMIC_CACHE: Dict[str, Optional[ModelPricing]] = {}
 _OPENROUTER_CONTEXT_LENGTHS: Dict[str, int] = {}
 _OPENROUTER_BATCH_MODELS: set[str] = set()
 _OPENROUTER_DYNAMIC_FETCHED: bool = False
+# Dopo un errore di rete si riprova, ma non prima di 5 minuti (niente attese di 4 s a ogni chiamata).
+_OPENROUTER_RETRY_AT: float = 0.0
+_OPENROUTER_RETRY_SECONDS = 300.0
 
 
 def openrouter_batch_models() -> list[str]:
@@ -86,19 +89,22 @@ def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
     Recupera dinamicamente il pricing da https://openrouter.ai/api/v1/models con cache in-memory.
     Non solleva eccezioni con errore di rete / timeout, ma restituisce None.
     """
-    global _OPENROUTER_DYNAMIC_FETCHED
+    global _OPENROUTER_DYNAMIC_FETCHED, _OPENROUTER_RETRY_AT
+    import time
     mod_clean = model_name.lower().strip().lstrip("~")
 
     if mod_clean in _OPENROUTER_DYNAMIC_CACHE:
         return _OPENROUTER_DYNAMIC_CACHE[mod_clean]
 
-    if not _OPENROUTER_DYNAMIC_FETCHED:
+    if not _OPENROUTER_DYNAMIC_FETCHED and time.monotonic() >= _OPENROUTER_RETRY_AT:
         _OPENROUTER_DYNAMIC_FETCHED = True
+        ok = False
         try:
             import requests
             resp = requests.get("https://openrouter.ai/api/v1/models", timeout=4)
             if resp.status_code == 200:
                 data = resp.json().get("data", [])
+                ok = bool(data)
                 for item in data:
                     if isinstance(item, dict) and "id" in item:
                         raw_id = str(item["id"]).lower().strip()
@@ -124,6 +130,9 @@ def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
                                 pass
         except Exception:
             pass
+        if not ok:
+            _OPENROUTER_DYNAMIC_FETCHED = False
+            _OPENROUTER_RETRY_AT = time.monotonic() + _OPENROUTER_RETRY_SECONDS
 
     return _OPENROUTER_DYNAMIC_CACHE.get(mod_clean)
 

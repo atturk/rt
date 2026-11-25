@@ -171,9 +171,6 @@ def _lesson_lines(lesson_dir: Optional[str], lesson_title: Optional[str]) -> Lis
 def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson_title: str,
                            raise_errors: bool = False) -> bool:
     lines = ["✅ <b>Lezione pronta</b>"] + _lesson_lines(lesson_dir, lesson_title)
-    reason = str((build_result or {}).get("reason") or "").strip()
-    if reason:
-        lines.append(f"🔄 {html.escape(reason)}")
     return send_notification("lezione_pronta", "\n".join(lines), raise_errors=raise_errors)
 
 

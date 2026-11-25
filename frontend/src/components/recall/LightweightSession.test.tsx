@@ -206,6 +206,22 @@ describe('LightweightSession', () => {
     expect(mockSeenMutateAsync).toHaveBeenCalledWith('q200')
   })
 
+  it('risposta aperta: con più risposte alla stessa domanda mostra la più recente (la cronologia è dalla più recente)', async () => {
+    mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, id: 'q200', type: 'mirata', options: null, correct_index: null })
+    mockAnswerMutateAsync.mockResolvedValue({ job: { job_id: 'j1' } })
+    mockHistoryRefetch.mockResolvedValue({ data: { answers: [
+      { question_id: 'q200', outcome: 'corretta', evaluation: 'Ora è completa.' },
+      { question_id: 'q200', outcome: 'sbagliata', evaluation: 'Valutazione vecchia.' },
+    ] } })
+    renderSession()
+
+    fireEvent.change(await screen.findByLabelText('Risposta scritta'), { target: { value: 'Sotto 22' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Rispondi' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Valutazione della risposta' }))
+    expect(await screen.findByText('Ora è completa.')).toBeInTheDocument()
+    expect(screen.queryByText('Valutazione vecchia.')).not.toBeInTheDocument()
+  })
+
   it('quiz: il clic sull’alternativa è la risposta e l’esito è quello del server', async () => {
     // Il server rivela la risposta giusta e la spiegazione: /recall/next non le manda.
     mockAnswerMutateAsync.mockResolvedValue({ quiz: {

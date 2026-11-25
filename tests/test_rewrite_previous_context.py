@@ -140,6 +140,7 @@ def test_metadata_context_length_uses_same_model_fetch_as_prices(monkeypatch):
     monkeypatch.setattr(pricing, "_OPENROUTER_DYNAMIC_CACHE", {})
     monkeypatch.setattr(pricing, "_OPENROUTER_CONTEXT_LENGTHS", {})
     monkeypatch.setattr(pricing, "_OPENROUTER_DYNAMIC_FETCHED", False)
+    monkeypatch.setattr(pricing, "_OPENROUTER_RETRY_AT", 0.0)
     response = MagicMock(status_code=200)
     response.json.return_value = {"data": [{"id": "test/metadata", "context_length": 12345,
         "pricing": {"prompt": "0.00001", "completion": "0.00002"}}, {"id": "test/no-price", "context_length": 5678}]}
