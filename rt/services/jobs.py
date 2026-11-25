@@ -537,7 +537,14 @@ class DbJobQueue:
         """Rinnova il lease. lease_kept=False se il job non è più di questo worker."""
         with session_scope(self.db) as s:
             row = s.get(Job, job_id)
-            if row is None or row.state != JobState.RUNNING.value or row.worker_id != worker_id:
+            if row is not None and row.state == JobState.QUEUED.value and row.worker_id is None \
+                    and not row.cancel_requested:
+                # Mac in stop: il lease è scaduto e il job è tornato in coda, ma nessun altro
+                # worker l'ha ancora preso. Chi lo stava eseguendo lo riprende, senza rifarlo.
+                row.state, row.worker_id = JobState.RUNNING.value, worker_id
+                row.active_lesson = None if row.type in SHARED_LESSON_JOB_TYPES else row.lesson_path
+                s.add(JobEvent(job_id=job_id, type="job_resumed_by_owner", payload={"worker_id": worker_id}))
+            elif row is None or row.state != JobState.RUNNING.value or row.worker_id != worker_id:
                 return Heartbeat(lease_kept=False, cancel_requested=bool(row and row.cancel_requested))
             row.lease_until = utcnow() + timedelta(seconds=lease_seconds)
             return Heartbeat(lease_kept=True, cancel_requested=bool(row.cancel_requested))

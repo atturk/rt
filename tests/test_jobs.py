@@ -239,7 +239,9 @@ def test_database_rejects_two_running_jobs_on_same_lesson(queue, tmp_path):
             s.get(Job, ids[1]).active_lesson = s.get(Job, ids[1]).lesson_path
 
 
-def test_worker_releases_job_when_lesson_is_busy(queue, tmp_path):
+def test_worker_releases_job_when_lesson_is_busy(queue, tmp_path, monkeypatch):
+    sleeps = []
+    monkeypatch.setattr("rt.services.worker.time.sleep", sleeps.append)
     lesson_dir = make_lesson(tmp_path / "lezioni")
     job_id = queue.enqueue(RUN_PIPELINE, lesson_dir, _payload(lesson_dir))
     with lesson_work_lock(lesson_dir):  # come un 'rt run' in processo sulla stessa lezione
@@ -247,6 +249,7 @@ def test_worker_releases_job_when_lesson_is_busy(queue, tmp_path):
     job = queue.get(job_id)
     assert job.state == "queued" and job.attempts == 0
     assert any(e.type == "job_requeued" and e.payload["reason"] == "lesson_busy" for e in queue.events(job_id))
+    assert sleeps and sleeps[0] > 0  # pausa prima di riprovare: niente ciclo senza fine
     assert _worker(queue).run_once().state == "succeeded"
 
 
@@ -264,6 +267,24 @@ def test_lost_lease_does_not_record_result(queue):
     worker.run_once()
     job = queue.get(job_id)
     assert job.state == "running" and job.worker_id == "altro" and job.result is None
+
+
+def test_owner_resumes_its_job_after_sleep_if_nobody_took_it(queue):
+    """Mac in stop: il lease scade e il job torna in coda; al risveglio chi lo eseguiva lo
+    riprende e registra il risultato una volta sola (niente seconda esecuzione)."""
+    job_id = queue.enqueue("slow", None, {})
+
+    def handler(job, ctx):
+        queue.requeue_expired(now=utcnow() + timedelta(hours=1))
+        assert queue.heartbeat(job.id, worker.worker_id).lease_kept
+        ctx.check_cancelled()
+        return JobOutcome(state=JobState.SUCCEEDED, result={"x": 1})
+
+    worker = _worker(queue, handlers={"slow": handler}, lease_seconds=60)
+    worker.run_once()
+    job = queue.get(job_id)
+    assert job.state == "succeeded" and job.result == {"x": 1} and job.attempts == 1
+    assert queue.claim("altro", ["slow"]) is None
 
 
 def test_unknown_job_type_fails(queue):

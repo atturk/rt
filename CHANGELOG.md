@@ -1,5 +1,15 @@
 # Novità di RT
 
+## 4.3.9.1 — 2026-11-26
+
+Correzione dopo la 4.3.9.
+
+### Correzioni
+
+- **Mac in stop durante una lavorazione**: al risveglio RT riprende il lavoro da dove era, senza rifarlo una seconda volta e senza la doppia notifica «Lezione pronta».
+- **Lezione occupata**: un lavoro in attesa della stessa lezione riprova dopo qualche secondo invece di girare a vuoto.
+- **Guida**: la pagina del ripasso descrive come funziona davvero la valutazione delle risposte; le chiavi API sono nell'archivio cifrato di RT.
+
 ## 4.3.9 — 2026-11-25
 
 Raccoglie le beta da 4.3.9b1 a 4.3.9b10 e le ultime correzioni: Impostazioni ridisegnate, chat dello Studio, scaletta automatica, notifiche Telegram a scelta, modalità batch, pin delle lezioni e tante correzioni.
