@@ -5,8 +5,10 @@ export type Temml = typeof import('temml').default
  * (niente spazio dopo il $ di apertura e prima di quello di chiusura, niente cifra dopo),
  * così "costa 5$ e 10$" o "da $5 a $10" restano testo. Le stesse regole le applica l'API
  * (rt/core/markdown_render.py), che consegna le formule intatte in un solo nodo di testo.
+ * Una formula non attraversa mai una riga vuota: un `$$` rimasto spaiato resta testo invece di
+ * accoppiarsi con il `$$` di un paragrafo successivo e trasformare in formula tutto il resto.
  */
-export const DELIMITED = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|(?<![\\$\d])\$(?!\$)(?! )[^$\n]+?(?<![ \\])\$(?!\d))/g
+export const DELIMITED = /(\$\$(?:(?!\n[ \t]*\n)[\s\S])+?\$\$|\\\[(?:(?!\n[ \t]*\n)[\s\S])+?\\\]|\\\((?:(?!\n[ \t]*\n)[\s\S])+?\\\)|(?<![\\$\d])\$(?!\$)(?! )[^$\n]+?(?<![ \\])\$(?!\d))/g
 
 let loading: Promise<Temml> | null = null
 /** Temml una volta sola per sessione: pesa, e serve sia alla lettura sia all'editor. */
