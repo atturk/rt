@@ -176,6 +176,7 @@ def _sanitize(message: str) -> str:
 
 
 CANCEL_POLL_SECONDS = 2.0
+LESSON_BUSY_BACKOFF_SECONDS = 5.0
 
 
 class _Heartbeat(threading.Thread):
@@ -194,10 +195,12 @@ class _Heartbeat(threading.Thread):
 
     def run(self) -> None:
         poll = min(self.interval, CANCEL_POLL_SECONDS)
-        last_beat = time.monotonic()
+        # Orologio di parete: il monotonic su macOS si ferma durante lo stop, e al risveglio il
+        # lease scaduto va rinnovato subito, non dopo un altro intervallo.
+        last_beat = time.time()
         while not self._stop_event.wait(poll):
-            if time.monotonic() - last_beat >= self.interval:
-                last_beat = time.monotonic()
+            if abs(time.time() - last_beat) >= self.interval:
+                last_beat = time.time()
                 self.beat()
             elif not self.token.cancelled:
                 self.poll_cancel()
@@ -468,6 +471,8 @@ class Worker:
             except LessonBusy:
                 # la lezione è in lavorazione da un 'rt run' in processo: si riprova dopo
                 self.queue.release(job.id, self.worker_id, reason="lesson_busy")
+                # Pausa: senza, il worker lo riprende e lo rilascia migliaia di volte al secondo.
+                time.sleep(LESSON_BUSY_BACKOFF_SECONDS)
                 return
         token = CancelToken()
         ctx = RunContext(lesson_dir=job.lesson_path, reporter=JobEventReporter(self.queue, job.id, token), cancel_token=token)

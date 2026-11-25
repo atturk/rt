@@ -9,7 +9,7 @@ Per abilitare l'elaborazione delle lezioni:
 2. Inserisci la chiave API del fornitore scelto: OpenRouter, Google AI Studio (Gemini), DeepSeek oppure un fornitore compatibile con le API di OpenAI.
 3. Puoi anche usare modelli locali (per esempio con Ollama o LM Studio) come fornitore compatibile con OpenAI, a costo zero e senza inviare dati all'esterno.
 
-Le chiavi vengono salvate esclusivamente sul tuo computer locale nel file di configurazione protetto e non vengono mai condivise con sviluppatori terzi.
+Le chiavi vengono salvate esclusivamente sul tuo computer locale nell'archivio cifrato di RT e non vengono mai condivise con sviluppatori terzi.
 
 ## Quanto costa elaborare una lezione
 

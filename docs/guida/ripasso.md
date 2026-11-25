@@ -11,6 +11,6 @@ Per ogni unità elaborata puoi generare una batteria di domande di autovalutazio
 ## Sessioni di ripasso
 
 Durante la sessione:
-1. Leggi la domanda e prova a formulare mentalmente la risposta.
-2. Rivela la risposta per confrontarla con il testo ufficiale.
-3. Assegna una valutazione alla tua padronanza: le domande più ostiche ti verranno riproposte a intervalli più ravvicinati.
+1. Leggi la domanda e scrivi la risposta, oppure dettala a voce.
+2. RT la valuta con il modello e ti mostra un commento con i punteggi di correttezza, completezza e attinenza.
+3. Se la risposta è incompleta arriva una domanda di approfondimento; con «Non lo so» vedi cosa mancava.
