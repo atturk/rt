@@ -49,6 +49,7 @@ def _transcribe(path, mock=False, ctx=None, duration=None):
     from rt.pipeline.setup import (find_macparakeet_binary, DEFAULT_MODEL,
                                    generate_deterministic_mock_asr, _run_transcribe_with_spinner)
     from rt.core.archive import cached_transcript, store_transcript, transcript_engine
+    from rt.core.materials import _elapsed
     from rt.core.idempotency import compute_file_sha256
     sha, engine = compute_file_sha256(path), transcript_engine(mock)
     cached = cached_transcript(sha, engine)
