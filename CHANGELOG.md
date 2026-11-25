@@ -1,5 +1,36 @@
 # Novità di RT
 
+## 4.3.9 — 2026-11-25
+
+Raccoglie le beta da 4.3.9b1 a 4.3.9b10 e le ultime correzioni: Impostazioni ridisegnate, chat dello Studio, scaletta automatica, notifiche Telegram a scelta, modalità batch, pin delle lezioni e tante correzioni.
+
+### Novità
+
+- **Impostazioni ridisegnate**: gruppi più chiari, salvataggio automatico e spiegazioni nei suggerimenti; Materie e calendario in un'unica pagina.
+- **Chat dello Studio**: un'unica chat laterale (tasto C) al posto di Verifica e Chiedi, con immagini, dettatura e «Messaggi salvati» per unità.
+- **Scaletta automatica**: di base la lavorazione prosegue senza fermarsi sulla scaletta; puoi scegliere di attendere qualche secondo o di aspettare sempre te.
+- **Notifiche Telegram a scelta**: attivi o disattivi ogni tipo (lezione pronta, verifica completata, scaletta da approvare, issue da decidere, errore) e puoi svuotare l'elenco delle ultime notifiche in RT.
+- **Modalità batch**: le fasi non interattive possono usare la variante batch dei modelli OpenRouter (circa −50%, risposte entro 24 ore), anche con la finestra chiusa.
+- **Verifica manuale più veloce**: le unità verificate a mano vengono controllate in parallelo.
+- **Pin per categoria nelle Lezioni** ed **elenco lezioni più rapido all'avvio**.
+- **Dettagli della lezione**: «Copia argomenti e keywords» copia argomenti e keywords di tutta la lezione; Classificatore e Messaggi salvati su una riga.
+- **Chiusura con la X**: RT può continuare in background o chiudersi del tutto; uscendo con lavori in corso chiede conferma.
+- **Permessi**: una pagina con tutti i permessi su Mac e Windows e il pulsante per aprire l'impostazione di sistema.
+- **PDF**: QR del sito nel margine alto e interruttore per togliere logo e QR.
+- **Immagini dei materiali**: didascalie con il titolo della slide e collocazione più pulita.
+- **iPhone e Android**: icona di RT nella schermata Home e accesso via Tailscale Serve su porta dedicata.
+- **Supporta RT**: una pagina per sostenere RT con una donazione su Ko-fi.
+
+### Correzioni
+
+- **Formule**: un `$$` spaiato non rovina più il resto della lezione; le barre raddoppiate dal modello non rompono più il LaTeX.
+- **Lezione eliminata e ricreata**: non dà più l'errore «Esiste già una lezione».
+- **Telegram**: «Lezione pronta» arriva anche per le lezioni da appunti o da più fonti; gli errori indicano lezione, data e materia.
+- **Ripasso**: si vede sempre l'ultima valutazione; l'approfondimento non suggerisce la risposta; «Non lo so» mostra cosa mancava.
+- **Costo stimato**: i token di ragionamento non vengono più contati due volte.
+- **File .rt dal Finder**: il doppio clic non blocca più RT; dal Finder si scelgono di nuovo anche PDF, zip e documenti.
+- Tante piccole correzioni elencate nelle beta qui sotto.
+
 ## 4.3.9b10 — 2026-11-25
 
 Beta di correzioni dopo le prove della b9.
