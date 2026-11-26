@@ -24,6 +24,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
   const [rate, setRate] = usePreference('audio.rate', 1)
   const [playerFollowsUnit, setPlayerFollowsUnit] = usePreference('study.player-follows-unit', true)
   const [pdfQr, setPdfQr] = usePreference('pdf.qr-sito', true)
+  const [revealSaved, setRevealSaved] = usePreference('file.mostra-salvati', true)
   const [zoom, setZoomState] = useState(getZoom)
   const [textFont, setTextFont] = useStudyFont()
   const [textScale, setTextScale] = useStudyTextScale()
@@ -169,6 +170,16 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
         onChange={setPdfQr}
       />
     </SettingsGroup>
+    {isAppWindow() && (
+      <SettingsGroup id="file-salvati" title="File salvati">
+        <SettingsSwitch
+          id="file-mostra-salvati"
+          label={navigator.platform.includes('Win') ? 'Mostra in Esplora file i file appena salvati' : 'Mostra nel Finder i file appena salvati'}
+          checked={revealSaved}
+          onChange={setRevealSaved}
+        />
+      </SettingsGroup>
+    )}
     <SettingsGroup id="lettura-veloce" title="Lettura veloce">
       <SettingsRow
         label="Velocità (parole/min)"
