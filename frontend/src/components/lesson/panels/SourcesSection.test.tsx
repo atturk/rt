@@ -96,6 +96,7 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks()
+    window.localStorage.clear()
     vi.spyOn(api, 'GET').mockImplementation((path: string) => {
       if (path === '/api/v1/lessons/42/sources') {
         return Promise.resolve({
@@ -442,4 +443,130 @@ it('chiede conferma prima di togliere una fonte usata e permette di annullare', 
   fireEvent.click(screen.getByRole('button', { name: 'Togli Appunti' }))
   fireEvent.click(screen.getByRole('button', { name: 'Togli' }))
   await waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
+})
+
+describe('SourcesSection: Fonti comprimibili e foto raggruppate', () => {
+  const makePhoto = (i: number, overrides: Partial<SourcesView['sources'][number]> = {}) => ({
+    id: `s_photo_${i}`,
+    tipo: 'materiale' as const,
+    file: `sources/s_photo_${i}/photo_2026-11-26_14-${String(10 + i).padStart(2, '0')}-00.jpg`,
+    impronta: `imp_p_${i}`,
+    aggiunta_il: '2026-11-26',
+    ordine: i,
+    nome: `photo_2026-11-26_14-${String(10 + i).padStart(2, '0')}-00.jpg`,
+    pagine_totali: 1,
+    usata: i === 1,
+    ...overrides,
+  })
+
+  it('17 fonti foto mostrano una riga «Foto · 17» e 17 miniature dopo l’apertura con orario dal nome', async () => {
+    const photos = Array.from({ length: 17 }, (_, idx) => makePhoto(idx + 1))
+    const view: SourcesView = {
+      sources: photos,
+      has_unused_sources: true,
+      can_undo: false,
+      principale: 's_photo_1',
+      ordine_usato: [],
+      principale_usato: null,
+      solo_ricostruzione: false,
+    }
+    vi.spyOn(api, 'GET').mockImplementation((path: string) => {
+      if (path === '/api/v1/lessons/42/sources') {
+        return Promise.resolve({ data: view, error: undefined, response: new Response('{}', { status: 200 }) } as never)
+      }
+      return Promise.resolve({ data: [], error: undefined, response: new Response('[]', { status: 200 }) } as never)
+    })
+
+    renderComponent()
+    // Con > 8 fonti la sezione Fonti parte chiusa di default, poi si espande
+    const sourcesToggle = screen.getByTestId('sources-toggle')
+    await waitFor(() => expect(sourcesToggle).toHaveTextContent('Fonti · 17'))
+    expect(sourcesToggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('sources-photo-group')).toBeNull()
+
+    fireEvent.click(sourcesToggle)
+    expect(sourcesToggle).toHaveAttribute('aria-expanded', 'true')
+
+    const groupBtn = await screen.findByRole('button', { name: /Foto · 17/i })
+    expect(groupBtn).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('sources-photo-grid')).toBeNull()
+
+    fireEvent.click(groupBtn)
+    const grid = await screen.findByTestId('sources-photo-grid')
+    expect(grid.querySelectorAll('img')).toHaveLength(17)
+    expect(within(grid).getByText('14:11')).toBeInTheDocument()
+    expect(within(grid).getByText('14:27')).toBeInTheDocument()
+  })
+
+  it('con 2 foto non c’è raggruppamento', async () => {
+    const view: SourcesView = {
+      sources: [makePhoto(1), makePhoto(2)],
+      has_unused_sources: true,
+      can_undo: false,
+      principale: 's_photo_1',
+      ordine_usato: [],
+      principale_usato: null,
+      solo_ricostruzione: false,
+    }
+    vi.spyOn(api, 'GET').mockImplementation((path: string) => {
+      if (path === '/api/v1/lessons/42/sources') {
+        return Promise.resolve({ data: view, error: undefined, response: new Response('{}', { status: 200 }) } as never)
+      }
+      return Promise.resolve({ data: [], error: undefined, response: new Response('[]', { status: 200 }) } as never)
+    })
+
+    renderComponent()
+    expect(await screen.findByText('photo_2026-11-26_14-11-00.jpg')).toBeInTheDocument()
+    expect(screen.getByText('photo_2026-11-26_14-12-00.jpg')).toBeInTheDocument()
+    expect(screen.queryByTestId('sources-photo-group')).toBeNull()
+  })
+
+  it('comprimi/espandi Fonti con stato salvato in localStorage e menu ⋯ chiama Togli con conferma', async () => {
+    const photos = [makePhoto(1), makePhoto(2), makePhoto(3, { nome: 'lavagna.jpg', file: 'lavagna.jpg' })]
+    const view: SourcesView = {
+      sources: photos,
+      has_unused_sources: true,
+      can_undo: false,
+      principale: 's_photo_1',
+      ordine_usato: [],
+      principale_usato: null,
+      solo_ricostruzione: false,
+    }
+    vi.spyOn(api, 'GET').mockImplementation((path: string) => {
+      if (path === '/api/v1/lessons/42/sources') {
+        return Promise.resolve({ data: view, error: undefined, response: new Response('{}', { status: 200 }) } as never)
+      }
+      return Promise.resolve({ data: [], error: undefined, response: new Response('[]', { status: 200 }) } as never)
+    })
+    const deleteSpy = vi.spyOn(api, 'DELETE').mockResolvedValue({ data: undefined, response: new Response(null, { status: 204 }) } as never)
+
+    renderComponent(42)
+    const toggle = screen.getByTestId('sources-toggle')
+    await waitFor(() => expect(toggle).toHaveTextContent('Fonti · 3'))
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByTestId('plus-sources')).toBeInTheDocument()
+
+    // Comprimi ed espandi
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(window.localStorage.getItem('rt.sources.open.42')).toBe('false')
+    expect(screen.getByTestId('plus-sources')).toBeInTheDocument()
+    expect(screen.queryByTestId('sources-list')).toBeNull()
+
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(window.localStorage.getItem('rt.sources.open.42')).toBe('true')
+
+    // Apri Foto · 3 e usa il menu ⋯ -> Togli con conferma
+    fireEvent.click(screen.getByRole('button', { name: /Foto · 3/i }))
+    expect(screen.getByText('lavagna')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Opzioni lavagna.jpg' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Togli' }))
+    expect(await screen.findByText('Togliere lavagna.jpg?')).toBeInTheDocument()
+    expect(deleteSpy).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Togli' }))
+    await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('/api/v1/lessons/42/sources/s_photo_3'))
+  })
 })

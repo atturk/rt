@@ -130,9 +130,18 @@ def page_image_path(sha, name):
     meta = find(sha)
     # Accetta anche i vecchi riferimenti materials/<sha>/page-N-K.png.
     base = os.path.basename(name)
-    if not re.fullmatch(r'page-\d+-\d+\.png', base):
+    if not re.fullmatch(r'page-\d+-\d+\.(?:png|jpg|webp)', base):
         raise ValueError('Nome di pagina non valido')
-    return os.path.join(entry_dir(meta['impronta'] if meta else sha), base)
+    folder = entry_dir(meta['impronta'] if meta else sha)
+    exact = os.path.join(folder, base)
+    if os.path.isfile(exact):
+        return exact
+    stem = os.path.splitext(base)[0]
+    for ext in ('.webp', '.png', '.jpg'):
+        alt = os.path.join(folder, stem + ext)
+        if os.path.isfile(alt):
+            return alt
+    return exact
 
 
 def import_material_cache(lesson_dir, source):
@@ -146,7 +155,7 @@ def import_material_cache(lesson_dir, source):
             return
         os.makedirs(folder, exist_ok=True)
         for name in fs.listdir(old):
-            if re.fullmatch(r'page-\d+(?:-\d+)?\.(?:png|json)|pages\.json', name):
+            if re.fullmatch(r'page-\d+(?:-\d+)?\.(?:png|jpg|webp|json)|pages\.json', name):
                 with fs.materialize(os.path.join(old, name)) as real:
                     shutil.copyfile(real, os.path.join(folder, name))
         data = read_json(target)
@@ -212,13 +221,17 @@ def register_image(path, description=None):
         with archive_lock(sha):
             write_json(os.path.join(entry_dir(sha), 'descrizione.json'), description)
             refresh_search(sha)
-    # Le immagini mantengono l'originale; la miniatura è una PNG indipendente.
-    target = page_image_path(sha, 'page-1-1.png')
-    if not os.path.exists(target):
-        from rt.core.materials import _png_image
+    # Le immagini mantengono l'originale; la miniatura è una copia leggera indipendente.
+    existing = page_image_path(sha, 'page-1-1.png')
+    if os.path.exists(existing):
+        img_name = os.path.basename(existing)
+    else:
+        from rt.core.materials import _page_image
         try:
             with fs.open(path, 'rb') as stream:
-                data = _png_image(stream.read())
+                data, ext = _page_image(stream.read())
+            img_name = f'page-1-1{ext}'
+            target = page_image_path(sha, img_name)
             with open(target, 'wb') as output:
                 output.write(data)
         except (OSError, ValueError):
@@ -229,7 +242,7 @@ def register_image(path, description=None):
         meaningful = description and any(description.get(k) for k in ('ocr_text', 'slide_title', 'visual_elements'))
         if data is None or (meaningful and not all('mapping_text' in p for p in data.get('pages', []))):
             text = '\n'.join(str(description.get(k) or '') for k in ('slide_title', 'ocr_text', 'visual_elements')) if meaningful else ''
-            page = {'numero': 1, 'testo': text, 'immagini': ['page-1-1.png']}
+            page = {'numero': 1, 'testo': text, 'immagini': [img_name]}
             if meaningful:
                 page.update(has_figures=True, mapping_text=text, mapping_skip=False)
                 current = load_meta(sha)

@@ -423,3 +423,81 @@ def test_material_pages_reports_original_failure_even_if_another_worker_is_cance
     monkeypatch.setattr('rt.core.materials.wait', cancelled_first)
     with pytest.raises(ValueError, match='errore originale'):
         material_pages(str(tmp_path), source)
+
+
+def test_webp_compression_photo_pdf_transparency_small_and_jpeg_fallback(tmp_path, monkeypatch):
+    import random
+    from types import SimpleNamespace
+    from rt.core.materials import _page_image, _describe, image_ext
+
+    # 1. Foto 4000x3000 -> WebP con lato max 2000 e < 600 KB
+    rng = random.Random(42)
+    photo = Image.new('RGB', (4000, 3000), (240, 240, 240))
+    from PIL import ImageDraw
+    draw = ImageDraw.Draw(photo)
+    for _ in range(300):
+        x0, y0 = rng.randint(0, 3800), rng.randint(0, 2800)
+        draw.rectangle((x0, y0, x0 + 180, y0 + 120), fill=(rng.randint(0, 255), rng.randint(0, 255), rng.randint(0, 255)))
+    raw_photo = io.BytesIO()
+    photo.save(raw_photo, format='JPEG', quality=95)
+    webp_photo, ext = _page_image(raw_photo.getvalue())
+    assert ext == '.webp'
+    assert image_ext(webp_photo) == '.webp'
+    assert len(webp_photo) < 600 * 1024
+    with Image.open(io.BytesIO(webp_photo)) as im:
+        assert max(im.size) == 2000
+        assert im.size == (2000, 1500)
+
+    # 2. Pagina PDF -> WebP almeno 3x più piccola del PNG
+    pdf_img = Image.new('RGB', (1600, 900))
+    px = pdf_img.load()
+    for y in range(900):
+        for x in range(1600):
+            px[x, y] = ((x * 255 // 1600 + (y % 7)) % 256, (y * 255 // 900 + (x % 5)) % 256, ((x + y) * 128 // 2500) % 256)
+    pdf_img_buf = io.BytesIO()
+    pdf_img.save(pdf_img_buf, format='PNG')
+    doc = fitz.open()
+    page = doc.new_page(width=800, height=450)
+    page.insert_image(page.rect, stream=pdf_img_buf.getvalue())
+    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+    old_png = pix.tobytes('png')
+    webp_pdf, pdf_ext = _page_image(pix)
+    doc.close()
+    assert pdf_ext == '.webp'
+    assert len(old_png) >= 3 * len(webp_pdf)
+
+    # 3. Trasparenza preservata in WebP; piccola (< 64 px) resta PNG
+    alpha_img = Image.new('RGBA', (120, 120), (255, 0, 0, 128))
+    alpha_buf = io.BytesIO()
+    alpha_img.save(alpha_buf, format='PNG')
+    alpha_webp, alpha_ext = _page_image(alpha_buf.getvalue())
+    assert alpha_ext == '.webp'
+    with Image.open(io.BytesIO(alpha_webp)) as im:
+        assert 'A' in im.getbands()
+
+    small_bytes, small_ext = _page_image(png_bytes(32, 32))
+    assert small_ext == '.png'
+    assert image_ext(small_bytes) == '.png'
+
+    # 4. Fallback JPEG se WebP non disponibile
+    monkeypatch.setattr('PIL.features.check', lambda feat: False if feat == 'webp' else True)
+    jpg_bytes, jpg_ext = _page_image(png_bytes(120, 120))
+    assert jpg_ext == '.jpg'
+    assert image_ext(jpg_bytes) == '.jpg'
+
+    # 5. _describe riceve data URL JPEG o PNG, mai WebP
+    captured_urls = []
+
+    class FakeClient:
+        def __init__(self, force_mock=False):
+            pass
+
+        def call_structured(self, **kwargs):
+            captured_urls.append(kwargs.get('image_data_url', ''))
+            return SimpleNamespace(slide_title='Titolo', ocr_text='Testo', visual_elements=[], alt_text='Alt')
+
+    monkeypatch.setattr('rt.llm.client.LLMClient', FakeClient)
+    _describe(webp_photo, str(tmp_path), mock=False)
+    assert len(captured_urls) == 1
+    assert captured_urls[0].startswith(('data:image/jpeg;base64,', 'data:image/png;base64,'))
+    assert not captured_urls[0].startswith('data:image/webp;')

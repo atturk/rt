@@ -44,28 +44,92 @@ def page_count(path):
         return 1
 
 
-def _png_image(data):
-    from PIL import Image, ImageOps
+def image_ext(data: bytes) -> str:
+    """Ricava l'estensione dell'immagine dai magic bytes."""
+    if len(data) >= 12 and data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return '.webp'
+    if data.startswith(b'\xff\xd8'):
+        return '.jpg'
+    return '.png'
+
+
+def image_mime(data: bytes) -> str:
+    """MIME type dai magic bytes dell'immagine."""
+    ext = image_ext(data)
+    if ext == '.webp':
+        return 'image/webp'
+    if ext == '.jpg':
+        return 'image/jpeg'
+    return 'image/png'
+
+
+def _page_image(data_or_pixmap) -> tuple[bytes, str]:
+    """Normalizza foto, immagini di documenti o pixmap PDF in WebP (o PNG/JPEG di ripiego)."""
+    from PIL import Image, ImageOps, features
     try:
         from pillow_heif import register_heif_opener
         register_heif_opener()
     except ImportError:
         pass
-    with Image.open(io.BytesIO(data)) as image:
-        out = io.BytesIO()
-        ImageOps.exif_transpose(image).convert('RGB').save(out, format='PNG')
-        return out.getvalue()
+
+    if hasattr(data_or_pixmap, 'samples') and hasattr(data_or_pixmap, 'width') and hasattr(data_or_pixmap, 'height'):
+        pixmap = data_or_pixmap
+        if getattr(pixmap, 'n', 0) not in (3, 4):
+            import pymupdf as fitz
+            pixmap = fitz.Pixmap(fitz.csRGB, pixmap)
+        mode = 'RGBA' if getattr(pixmap, 'alpha', False) else 'RGB'
+        image = Image.frombytes(mode, (pixmap.width, pixmap.height), pixmap.samples)
+    else:
+        with Image.open(io.BytesIO(data_or_pixmap)) as opened:
+            image = ImageOps.exif_transpose(opened)
+            image.load()
+
+    has_alpha = False
+    if image.mode in ('RGBA', 'LA', 'PA') or (image.mode == 'P' and 'transparency' in image.info):
+        rgba = image.convert('RGBA')
+        min_a, _max_a = rgba.getchannel('A').getextrema()
+        if min_a < 255:
+            has_alpha = True
+            image = rgba
+        else:
+            image = rgba.convert('RGB')
+    elif image.mode != 'RGB':
+        image = image.convert('RGB')
+
+    if max(image.size) > 2000:
+        image.thumbnail((2000, 2000), Image.Resampling.LANCZOS)
+
+    out = io.BytesIO()
+    if min(image.size) < 64:
+        image.save(out, format='PNG', optimize=True)
+        return out.getvalue(), '.png'
+
+    if features.check('webp'):
+        image.save(out, format='WEBP', quality=80, method=6)
+        return out.getvalue(), '.webp'
+
+    if has_alpha:
+        bg = Image.new('RGB', image.size, 'white')
+        bg.paste(image, mask=image.getchannel('A'))
+        image = bg
+    image.save(out, format='JPEG', quality=85, optimize=True)
+    return out.getvalue(), '.jpg'
 
 
 def _describe(data, lesson_dir, mock):
     from rt.llm.client import LLMClient
+    from rt.llm.decision_images import normalize_image
     from rt.llm.prompts import ImageDescription, IMAGE_DESCRIPTION_SYSTEM_PROMPT_NO_CONTEXT
     from rt.services.prompt_settings import effective_system
+    try:
+        encoded, mime = normalize_image(data)
+    except Exception:
+        encoded, mime = data, 'image/png'
     result = LLMClient(force_mock=mock).call_structured(
         prompt='Trascrivi tutto il testo leggibile e descrivi i contenuti della pagina per studiarli.',
         system_prompt=effective_system('image_description', IMAGE_DESCRIPTION_SYSTEM_PROMPT_NO_CONTEXT),
         response_model=ImageDescription, job_name='image_description', lesson_dir=lesson_dir,
-        image_data_url='data:image/png;base64,' + base64.b64encode(data).decode('ascii'))
+        image_data_url=f'data:{mime};base64,' + base64.b64encode(encoded).decode('ascii'))
     text = description_text(result.slide_title, result.ocr_text, result.visual_elements)
     return {
         'text': text,
@@ -352,7 +416,7 @@ def _filter_slide_images(slide, slide_width=None, slide_height=None):
     candidates.sort(key=lambda c: c[0], reverse=True)
     best_blob = candidates[0][1]
     try:
-        return [_png_image(best_blob)]
+        return [_page_image(best_blob)[0]]
     except Exception:
         return []
 
@@ -388,7 +452,7 @@ def _document_pages(real, images=False):
                     for blip in element.xpath('.//a:blip'):
                         rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
                         if rid and rid in document.part.related_parts:
-                            pictures.append(_png_image(document.part.related_parts[rid].blob))
+                            pictures.append(_page_image(document.part.related_parts[rid].blob)[0])
                 blocks.append((paragraph.text, paragraph.style.name.startswith('Heading'), pictures))
             elif element.tag.endswith('}tbl'):
                 table = Table(element, document)
@@ -397,7 +461,7 @@ def _document_pages(real, images=False):
                     for blip in element.xpath('.//a:blip'):
                         rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
                         if rid and rid in document.part.related_parts:
-                            pictures.append(_png_image(document.part.related_parts[rid].blob))
+                            pictures.append(_page_image(document.part.related_parts[rid].blob)[0])
                 blocks.append(('\n'.join(' | '.join(c.text for c in row.cells) for row in table.rows), False, pictures))
     texts, pictures, words, page_title = [], [], 0, None
     for text, heading, imgs in blocks:
@@ -426,7 +490,7 @@ def _extract(real):
         with fitz.open(real) as document:
             figures = pdf_pages_have_figures(document)
             for page, has_figures in zip(document, figures):
-                yield page.get_text().strip(), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')], has_figures, _pdf_page_title(page)
+                yield page.get_text().strip(), [_page_image(page.get_pixmap(matrix=fitz.Matrix(2, 2)))[0]], has_figures, _pdf_page_title(page)
     elif suffix == '.pptx':
         from pptx import Presentation
         presentation = Presentation(real)
@@ -436,13 +500,13 @@ def _extract(real):
             for i, slide in enumerate(presentation.slides):
                 text, _ = _slide_content(slide)
                 if render:
-                    pictures = [render(i)]
+                    pictures = [_page_image(render(i))[0]]
                 else:
                     pictures = _filter_slide_images(slide, sw, sh)
                 yield text, pictures, bool(pictures), _slide_title(slide)
     else:
         with open(real, 'rb') as stream:
-            yield '', [_png_image(stream.read())], True, None
+            yield '', [_page_image(stream.read())[0]], True, None
 
 
 def _extract_text(real):
@@ -471,7 +535,7 @@ def _extract_images(real, previous):
             figures = pdf_pages_have_figures(document)
             for i, page in enumerate(document):
                 old = previous[i] if i < len(previous) else {}
-                yield old.get('testo', ''), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')], figures[i], old.get('titolo') or _pdf_page_title(page)
+                yield old.get('testo', ''), [_page_image(page.get_pixmap(matrix=fitz.Matrix(2, 2)))[0]], figures[i], old.get('titolo') or _pdf_page_title(page)
     else:
         yield from _extract(real)
 
@@ -578,8 +642,16 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
             filenames = []
             with lesson_lock(lesson_dir):
                 for index, data in enumerate(images, 1):
-                    relative = f'page-{number}-{index}.png'
-                    if str(number) not in crops or not fs.isfile(os.path.join(folder, relative)):
+                    ext = image_ext(data)
+                    relative = f'page-{number}-{index}{ext}'
+                    existing_crop = next(
+                        (f'page-{number}-{index}{cand}' for cand in ('.webp', '.png', '.jpg')
+                         if fs.isfile(os.path.join(folder, f'page-{number}-{index}{cand}'))),
+                        None,
+                    ) if str(number) in crops else None
+                    if existing_crop:
+                        relative = existing_crop
+                    else:
                         with fs.open(os.path.join(folder, relative) + '.tmp', 'wb') as stream:
                             stream.write(data)
                         fs.replace(os.path.join(folder, relative) + '.tmp', os.path.join(folder, relative))

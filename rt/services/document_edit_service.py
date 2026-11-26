@@ -363,6 +363,19 @@ def save_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
     edits_changed = save_document_edits(lesson_dir, plan["edits"]) if plan["edits_changed"] else False
     if plan["placement_changed"]:
         save_image_placement(lesson_dir, plan["placement"], plan["carousel"], units=plan.get("unit_placement"))
+    if plan["placement_changed"] or plan["content_changes"]:
+        from rt.pipeline.add_images import load_image_descriptions
+        from rt.services.editor_media_service import _clear_unplaced_for_hashes
+        descriptions = load_image_descriptions(lesson_dir)
+        hash_by_file = {d.get("filename"): h for h, d in descriptions.items() if d.get("filename")}
+        placed_hashes = {h for hs in plan["placement"].values() for h in hs}
+        placed_hashes.update(h for hs in plan.get("unit_placement", {}).values() for h in hs)
+        for text in plan["content_changes"].values():
+            for target in IMAGE_REF_RE.findall(text):
+                base_target = target.split("#")[0]
+                if base_target in hash_by_file:
+                    placed_hashes.add(hash_by_file[base_target])
+        _clear_unplaced_for_hashes(lesson_dir, placed_hashes)
     changed = bool(changed_units or edits_changed or plan["placement_changed"])
     if changed:
         from rt.services.documents_service import request_documents

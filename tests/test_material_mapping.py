@@ -558,7 +558,7 @@ def test_assign_material_pages_off_topic_and_unplaced_text_saved(tmp_path, monke
     assert only_desc.get("source") == "material:src1:2"
 
     placement = load_image_placement(str(lesson))
-    assert len(placement["macros"].get("1", [])) == 1
+    assert placement["macros"] == {}
     assert placement["units"] == {}
 
 
@@ -630,7 +630,7 @@ def test_duplicate_pages_share_highest_probability_placement(tmp_path, monkeypat
     assert [p["page"] for p in state["unplaced"]] == [3]
     assert state["off_topic"] == []
     assert len(state["units"]["3.1"]) == 2
-    assert len(state["macros"].get("3", [])) == 1
+    assert state["macros"] == {}
 
 
 def test_duplicate_pages_different_titles_do_not_merge_and_didactic_beats_intro(tmp_path, monkeypatch):

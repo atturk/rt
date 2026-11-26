@@ -93,8 +93,9 @@ def attach_material_pages(lesson_dir, outline, *, mock=False, ctx=None):
                 for image in page['immagini']:
                     with fs.open(page_image_path(source.impronta, image), 'rb') as stream:
                         data = stream.read()
+                    from rt.core.materials import image_ext
                     image_hash = compute_image_hash(data)
-                    filename = save_raw_image(lesson_dir, data, image_hash)
+                    filename = save_raw_image(lesson_dir, data, image_hash, ext=image_ext(data))
                     # Il documento usa soltanto filename e alt_text, mai il testo OCR.
                     descriptions.setdefault(image_hash, {'filename': filename, 'source': f'material:{pid}',
                         'alt_text': page_alt(source.file, page['numero'], page.get('titolo'), single_page=file_type(source.file) == 'immagine')})
