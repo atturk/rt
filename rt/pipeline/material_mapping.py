@@ -847,11 +847,14 @@ def assign_material_pages(
                                 data = stream.read()
                             h = compute_image_hash(data)
                             fn = save_raw_image(lesson_dir, data, h)
-                            descriptions.setdefault(h, {
+                            desc = descriptions.setdefault(h, {
                                 "filename": fn,
                                 "source": f"material:{source.id}:{page['numero']}",
                                 "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                             })
+                            page_text = page.get("testo") or page.get("mapping_text") or ""
+                            if page_text.strip() and not desc.get("ocr_text"):
+                                desc["ocr_text"] = page_text
                             if h not in units_placement.setdefault(target_unit_id, []):
                                 units_placement[target_unit_id].append(h)
         else:
@@ -1004,6 +1007,9 @@ def assign_material_pages(
                         "source": f"material:{source.id}:{page['numero']}",
                         "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                     })
+                    if page_text.strip() and not (desc.get("ocr_text") or desc.get("summary_keywords")
+                                                  or desc.get("visual_elements")):
+                        desc["ocr_text"] = page_text  # già letta: non è «Da descrivere»
                     if page.get("unplaced"):
                         desc["unplaced"] = True
                         desc["alt_text"] = "Materiale non collocato"

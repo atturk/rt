@@ -10,6 +10,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router'
 
 import { api, ApiError, CSRF_COOKIE, CSRF_HEADER, errorMessage, readCookie, unwrap, type Schemas } from '@/api/client'
 import { imageKeys, uploadEditorImage } from '@/api/images'
+import { registerEditorFlush } from '@/lib/editorSession'
 import { Alert } from '@/components/ui/alert'
 import { saveFile } from '@/lib/fileExport'
 import { lessonImageUploads } from './lessonImages'
@@ -291,6 +292,7 @@ export function LessonEditor({
       navigate: openStudy,
     }) })
   }, [shortcutUnits, lessonId, openStudy, source.key])
+  useEffect(() => registerEditorFlush(lessonId, flush), [lessonId, flush])
   useEffect(() => {
     if (!actionsRef) return
     actionsRef.current = { flush }

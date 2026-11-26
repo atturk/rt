@@ -97,7 +97,8 @@ def _identity(info: dict) -> dict:
     from rt.services.calendar_service import normalize_subject, normalize_time
     return {"data": _iso_day(info.get("data")), "materia": normalize_subject(info.get("materia")),
             "ora": normalize_time(str(info.get("ora") or "")),
-            "titolo": str(info.get("titolo") or ""), "argomenti": str(info.get("argomenti") or "")}
+            "titolo": str(info.get("titolo") or ""), "argomenti": str(info.get("argomenti") or ""),
+            "docente": " ".join(str(info.get("docente") or "").casefold().split())}
 
 
 def _archive_info(zipped: zipfile.ZipFile, name: str) -> dict:
@@ -128,9 +129,13 @@ def _same_lesson(session, target: str, incoming: dict) -> Optional[dict]:
             info = {}
         have = _identity({"data": info.get("data") or row.data, "materia": info.get("materia") or row.materia,
                           "ora": info.get("ora"), "titolo": info.get("titolo") or row.titolo,
-                          "argomenti": info.get("argomenti") or row.argomenti})
+                          "argomenti": info.get("argomenti") or row.argomenti, "docente": info.get("docente")})
         if row is not same_folder and (have["data"] != incoming["data"] or have["materia"] != incoming["materia"]
                                        or (have["ora"] and incoming["ora"] and have["ora"] != incoming["ora"])):
+            continue
+        if (row is not same_folder and not (have["ora"] and incoming["ora"])
+                and have["docente"] and incoming["docente"] and have["docente"] != incoming["docente"]):
+            # Senza l'ora su un lato, due docenti diversi nello stesso giorno sono due lezioni diverse.
             continue
         return {**have, "lesson_id": row.id, "folder_name": row.folder_name,
                 "titolo": have["titolo"] or row.folder_name}
@@ -270,6 +275,10 @@ def import_archive(archive: Union[str, BinaryIO], on_existing: str = "ask",
                 for name in declared:
                     rel = name[len(folder) + 1:]
                     fs.copy2(os.path.join(staging, *rel.split("/")), lesson_path(target, rel))
+                from rt.db.sync import dual_write_lesson
+                # Data, materia, titolo e stato dall'info.yaml importato; sessione propria, come
+                # ogni dual-write: dentro un'altra transazione si bloccherebbe su SQLite.
+                dual_write_lesson(target)
                 with session_scope(db) as session:
                     from rt.services.study_progress_service import restore_units
                     restore_units(session, created_id, manifest.get("study"))

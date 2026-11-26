@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, unwrap, type Schemas } from './client'
 import { lessonKeys } from './hooks'
 import { formData } from './jobStatus'
+import { releaseEditor } from '@/lib/editorSession'
 
 export type LessonImage = Schemas['LessonImage'] & {
   interactive?: boolean
@@ -31,7 +32,7 @@ export function useAddImages(id: number) {
       selected_images?: string[] | null
       pages_only?: boolean
     }) =>
-      unwrap(
+      releaseEditor(id).then(() => unwrap(
         api.POST('/api/v1/lessons/{lesson_id}/images', {
           params: path(id),
           body: { mock: false, pages_only: !!vars.pages_only },
@@ -44,7 +45,7 @@ export function useAddImages(id: number) {
               pages_only: vars.pages_only ? true : null,
             }),
         }),
-      ),
+      )),
   })
 }
 
@@ -97,7 +98,8 @@ export function deleteMedia(id: number, imageNames: string[], updateDocument = t
 }
 
 /** Descrive con vision le immagini indicate (se non ancora descritte). */
-export function describeMedia(id: number, names: string[], mock = false) {
+export async function describeMedia(id: number, names: string[], mock = false) {
+  await releaseEditor(id)
   return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/describe', {
     params: path(id),
     body: { names, mock },
