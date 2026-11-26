@@ -94,7 +94,7 @@ def _is_described(desc: Optional[dict]) -> bool:
 @router.get("/lessons/{lesson_id}/images", response_model=LessonImages,
             summary="Immagini della lezione con descrizione e presenza nel documento")
 def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
-    from rt.pipeline.add_images import load_image_descriptions
+    from rt.pipeline.add_images import fill_material_texts, load_image_descriptions
     from rt.services.lesson_service import load_markdown_preview
     from rt.pipeline.image_placement import load_image_placement
     from rt.core.sources import load_sources
@@ -103,6 +103,7 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     placement = load_image_placement(lesson_dir) or {}
     document = load_markdown_preview(lesson_dir) or ""
     descriptions = load_image_descriptions(lesson_dir)
+    fill_material_texts(lesson_dir, descriptions)  # solo in memoria: la GET non scrive
 
     def find_units_for_image(img_name: str) -> list[str]:
         if not document or not img_name:

@@ -699,3 +699,52 @@ def test_delete_media_removes_entry_leaves_shared_file_and_archive(api_client, w
     # L'archivio è intatto
     assert os.path.exists(os.path.join(archive_dir, "descrizione.json"))
 
+
+
+def test_material_page_already_read_is_not_undescribed_and_describe_does_not_pay(api_client, ws, rt_db, monkeypatch):
+    """Foto e pagine dei materiali: Vision le legge in preparazione, il testo sta in
+    material_attachments.json. Non devono risultare «Da descrivere» né essere riconvertite."""
+    import json as _json
+    from rt.pipeline import add_images
+    from rt.pipeline.add_images import load_image_descriptions, save_image_descriptions
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+    img_dir = os.path.join(lesson, "assets", "images")
+    os.makedirs(img_dir, exist_ok=True)
+    _png(os.path.join(img_dir, "foto.png"))
+    _png(os.path.join(img_dir, "muta.png"))
+    save_image_descriptions(lesson, {
+        "h_foto": {"filename": "assets/images/foto.png", "source": "material:src_x:1",
+                   "alt_text": "Materiale non collocato", "unplaced": True},
+        "h_muta": {"filename": "assets/images/muta.png", "source": "material:src_y:1", "alt_text": "Foto"},
+    })
+    with open(os.path.join(lesson, "material_attachments.json"), "w", encoding="utf-8") as f:
+        _json.dump({"pages_by_unit": {}, "pages_by_macro": {},
+                    "unplaced": [{"source_id": "src_x", "page": 1, "text": "PTEN e PI3K-AKT"}],
+                    "off_topic": []}, f)
+
+    by_name = {img["name"]: img for img in api_client.get(f"/api/v1/lessons/{lid}/images").json()["images"]}
+    assert by_name["foto.png"]["descritta"] is True
+    assert by_name["muta.png"]["descritta"] is False
+    # La GET non scrive su disco
+    assert not load_image_descriptions(lesson)["h_foto"].get("ocr_text")
+
+    called = []
+    monkeypatch.setattr(add_images, "describe_new_images", lambda *a, **k: called.append(a[1]))
+    from rt.services import job_handlers
+    monkeypatch.setattr(job_handlers, "_lesson_dir", lambda job: lesson)
+
+    class _Ctx:
+        def activate(self):
+            import contextlib
+            return contextlib.nullcontext()
+
+        def progress(self, *a, **k):
+            pass
+
+    job = type("J", (), {"payload": {"names": ["foto.png"], "mock": True}})()
+    out = job_handlers.describe_images_job(job, _Ctx())
+    assert called == []
+    assert out.result == {"described": []}
+    assert load_image_descriptions(lesson)["h_foto"]["ocr_text"] == "PTEN e PI3K-AKT"

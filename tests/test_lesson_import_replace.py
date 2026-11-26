@@ -41,11 +41,11 @@ def _lesson_id(api_client, folder):
     return next(item["id"] for item in api_client.get("/api/v1/lessons").json() if item["folder_name"] == folder)
 
 
-def _archive_from_b(api_client, workspace, ora="09:00", argomenti="Membrane"):
+def _archive_from_b(api_client, workspace, ora="09:00", argomenti="Membrane", **extra):
     """La lezione di B, esportata e poi tolta da questo RT: resta solo il suo ZIP."""
     folder = f"[{DAY}] BIOCHIMICA - {argomenti}"
     lesson = make_lesson(workspace, name=folder)
-    _set_info(lesson, argomenti=argomenti, ora=ora, cartella=folder)
+    _set_info(lesson, argomenti=argomenti, ora=ora, cartella=folder, **extra)
     with open(os.path.join(lesson, "slide del professore.md"), "w", encoding="utf-8") as f:
         f.write("# Slide\n")
     payload = export_zip(lesson, scope="all")
@@ -115,11 +115,30 @@ def test_keep_both_imports_next_to_the_existing_lesson(api_client, workspace, wo
     result = _import(api_client, worker, payload, [{"file": "lezione-di-b.zip", "action": "keep"}])
     assert result["results"][0]["status"] == "imported"
     assert len(api_client.get("/api/v1/lessons").json()) == 2
+    from rt.db.models import Lesson
+    from rt.db.session import session_scope
+    from rt.db.engine import get_database
+    with session_scope(get_database()) as session:
+        rows = [r for r in session.query(Lesson).all() if "Membrane" in (r.folder_name or "")]
+        assert rows and rows[0].materia and rows[0].data, "le colonne della lezione importata restano vuote"
 
 
 def test_other_hour_is_another_lesson(api_client, workspace, worker, lesson_a):
     result = _import(api_client, worker, _archive_from_b(api_client, workspace, ora="11:00"))
     assert result["results"][0]["status"] == "imported"
+
+
+def test_without_hour_another_teacher_is_another_lesson(api_client, workspace, worker, lesson_a):
+    """Lezione del 26/11: l'amico non aveva messo l'ora e il docente era un altro. Non è un doppione."""
+    _set_info(lesson_a[0], docente="Polimeni")
+    result = _import(api_client, worker, _archive_from_b(api_client, workspace, ora="", docente="Capalbo"))
+    assert result["results"][0]["status"] == "imported"
+
+
+def test_without_hour_same_teacher_is_still_a_conflict(api_client, workspace, worker, lesson_a):
+    _set_info(lesson_a[0], docente="Polimeni")
+    result = _import(api_client, worker, _archive_from_b(api_client, workspace, ora="", docente="polimeni"))
+    assert result["results"][0]["status"] == "conflict"
 
 
 def test_replace_of_a_different_lesson_asks_again(api_client, workspace, worker, lesson_a):

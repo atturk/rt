@@ -61,6 +61,37 @@ def load_image_descriptions(lesson_dir: str) -> Dict[str, Any]:
         return json.load(f)
 
 
+def fill_material_texts(lesson_dir: str, descriptions: Dict[str, Any]) -> bool:
+    """Le pagine dei materiali (anche le foto) sono già lette quando RT prepara la fonte:
+    il loro testo sta in material_attachments.json. Lo copia come ocr_text nelle voci che non
+    hanno descrizione, così non risultano «Da descrivere» e «Descrivi» non le ripaga."""
+    path = lesson_path(lesson_dir, "material_attachments.json")
+    if not fs.isfile(path):
+        return False
+    try:
+        with fs.open(path, "r", encoding="utf-8") as f:
+            state = json.load(f)
+    except Exception:
+        return False
+    texts: Dict[str, str] = {}
+    for key in ("pages_by_unit", "pages_by_macro"):
+        for pages in (state.get(key) or {}).values():
+            for page in pages or []:
+                texts.setdefault(f"material:{page.get('source_id')}:{page.get('page')}", str(page.get("text") or ""))
+    for key in ("unplaced", "off_topic"):
+        for page in state.get(key) or []:
+            texts.setdefault(f"material:{page.get('source_id')}:{page.get('page')}", str(page.get("text") or ""))
+    changed = False
+    for desc in descriptions.values():
+        if desc.get("summary_keywords") or desc.get("ocr_text") or desc.get("visual_elements"):
+            continue
+        text = texts.get(str(desc.get("source") or ""), "").strip()
+        if text:
+            desc["ocr_text"] = text
+            changed = True
+    return changed
+
+
 def is_standalone_image(description: Optional[Dict[str, Any]]) -> bool:
     """Nell'archivio va come file 'immagine' solo un'immagine aggiunta come immagine dall'utente:
     editor:<nome>, folder:<nome>, websearch:...; non le pagine di pdf, materiali o ritagli."""
