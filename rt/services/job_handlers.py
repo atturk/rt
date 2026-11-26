@@ -226,8 +226,10 @@ def describe_images_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.pipeline.add_images import (
         compute_image_hash,
         describe_new_images,
+        fill_material_texts,
         get_images_dir,
         load_image_descriptions,
+        save_image_descriptions,
     )
     from rt.services.editor_media_service import _hashes_for_names
     from rt.storage import fs
@@ -237,6 +239,9 @@ def describe_images_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     force_mock = bool(job.payload.get("mock"))
 
     descriptions = load_image_descriptions(lesson_dir)
+    if fill_material_texts(lesson_dir, descriptions):
+        # Pagine e foto dei materiali già lette in preparazione: nessuna nuova chiamata Vision.
+        save_image_descriptions(lesson_dir, descriptions)
 
     def _is_described(desc: dict | None) -> bool:
         if not desc:
