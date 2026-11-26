@@ -138,9 +138,12 @@ def detail(sha: str, _actor: Actor):
     return archive_service.detail(sha)
 
 
-@router.get('/archive/{sha}/pages/{n}.png', response_class=Response, responses={200: {'content': {'image/png': {}}}})
+@router.get('/archive/{sha}/pages/{n}.png', response_class=Response,
+            responses={200: {'content': {'image/png': {}, 'image/webp': {}, 'image/jpeg': {}}}})
 def page_image(sha: str, n: int, _actor: Actor):
-    return Response(archive_service.page_bytes(sha, n), media_type='image/png',
+    from rt.core.materials import image_mime
+    data = archive_service.page_bytes(sha, n)
+    return Response(data, media_type=image_mime(data),
         headers={'Cache-Control': 'private, no-cache', 'X-Content-Type-Options': 'nosniff'})
 
 

@@ -110,7 +110,63 @@ def test_reuse_as_source_and_media_without_models(api_client, archive_lesson, mo
     media = api_client.post(url + '/add-to-media', json={'lesson_id': lid, 'pagine': [1, 3]})
     assert media.status_code == 201, media.text
     assert len(media.json()) == 2
-    assert len(list((Path(second) / 'assets/images').glob('*.png'))) == 2
+    assert len(list((Path(second) / 'assets/images').glob('*.webp'))) == 2
+
+
+def test_archive_page_route_serves_png_jpg_webp_and_legacy_png_cache_copies(api_client, archive_lesson):
+    from rt.pipeline.add_images import save_image_descriptions
+    lid, directory, _source, root = archive_lesson
+    # 1. Cache esistente con page-1-1.png
+    legacy_pdf = pdf(1)
+    legacy_src = add_source(directory, 'materiale', 'Legacy.pdf', legacy_pdf, estrai='immagini')
+    folder = Path(archive.entry_dir(legacy_src.impronta))
+    folder.mkdir(parents=True, exist_ok=True)
+    png_buf = io.BytesIO()
+    Image.new('RGB', (40, 40), 'blue').save(png_buf, format='PNG')
+    png_data = png_buf.getvalue()
+    (folder / 'page-1-1.png').write_bytes(png_data)
+    archive.write_json(str(folder / 'pages.json'), {
+        'impronta': legacy_src.impronta,
+        'pages': [{'numero': 1, 'testo': 'Pagina legacy', 'immagini': ['page-1-1.png'], 'has_figures': True}],
+    })
+    assert archive.page_image_path(legacy_src.impronta, 'page-1-1.png') == str(folder / 'page-1-1.png')
+    res_png = api_client.get(f'/api/v1/archive/{legacy_src.impronta}/pages/1.png')
+    assert res_png.status_code == 200
+    assert res_png.headers['content-type'] == 'image/png'
+    assert res_png.content == png_data
+
+    second = make_lesson(root, name='Lezione Legacy Copia')
+    lid2 = next(l['id'] for l in api_client.get('/api/v1/lessons').json() if l['path'] == second)
+    copied = api_client.post(f'/api/v1/archive/{legacy_src.impronta}/add-to-media', json={'lesson_id': lid2, 'pagine': [1]})
+    assert copied.status_code == 201
+    assert copied.json()[0]['path'].endswith('.png')
+
+    # 2. jpg e webp con media type giusto
+    jpg_buf = io.BytesIO()
+    Image.new('RGB', (80, 80), 'green').save(jpg_buf, format='JPEG')
+    jpg_data = jpg_buf.getvalue()
+    (folder / 'page-1-1.png').unlink()
+    (folder / 'page-1-1.jpg').write_bytes(jpg_data)
+    archive.write_json(str(folder / 'pages.json'), {
+        'impronta': legacy_src.impronta,
+        'pages': [{'numero': 1, 'testo': 'Pagina jpg', 'immagini': ['page-1-1.jpg'], 'has_figures': True}],
+    })
+    res_jpg = api_client.get(f'/api/v1/archive/{legacy_src.impronta}/pages/1.png')
+    assert res_jpg.status_code == 200
+    assert res_jpg.headers['content-type'] == 'image/jpeg'
+
+    webp_buf = io.BytesIO()
+    Image.new('RGB', (80, 80), 'yellow').save(webp_buf, format='WEBP')
+    webp_data = webp_buf.getvalue()
+    (folder / 'page-1-1.jpg').unlink()
+    (folder / 'page-1-1.webp').write_bytes(webp_data)
+    archive.write_json(str(folder / 'pages.json'), {
+        'impronta': legacy_src.impronta,
+        'pages': [{'numero': 1, 'testo': 'Pagina webp', 'immagini': ['page-1-1.webp'], 'has_figures': True}],
+    })
+    res_webp = api_client.get(f'/api/v1/archive/{legacy_src.impronta}/pages/1.png')
+    assert res_webp.status_code == 200
+    assert res_webp.headers['content-type'] == 'image/webp'
 
 
 def test_media_image_is_counted_as_in_use(api_client, archive_lesson):

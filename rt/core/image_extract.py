@@ -50,7 +50,7 @@ def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional
     results = []
     mat = fitz.Matrix(zoom, zoom)
     from rt.core.material_page_filter import cleaned_page_texts, few_words, pdf_pages_have_figures
-    from rt.core.materials import _pdf_page_title
+    from rt.core.materials import _pdf_page_title, _page_image
     texts = cleaned_page_texts([page.get_text().strip() for page in doc])
     figures = pdf_pages_have_figures(doc)
     for i in range(doc.page_count):
@@ -58,8 +58,9 @@ def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional
         has_figures = figures[i]
         sparse = few_words(texts[i])
         pix = page.get_pixmap(matrix=mat)
+        page_bytes, _ext = _page_image(pix)
         results.append(ExtractedImage(
-            image_bytes=pix.tobytes("png"),
+            image_bytes=page_bytes,
             source_label=f"pdf:{basename}#{i + 1}",
             text='' if sparse and has_figures else texts[i],
             page_number=i + 1,
@@ -109,9 +110,10 @@ def _archive_pages(pdf_path, sha, results, texts):
         with archive_lock(sha + '-extract'):
             if read_json(os.path.join(folder, 'pages.json')):
                 return
+            from rt.core.materials import image_ext
             pages = []
             for image, text in zip(results, texts):
-                name = f'page-{image.page_number}-1.png'
+                name = f'page-{image.page_number}-1{image_ext(image.image_bytes)}'
                 with open(os.path.join(folder, name), 'wb') as stream:
                     stream.write(image.image_bytes)
                 pages.append({'numero': image.page_number, 'testo': text, 'immagini': [name],
@@ -226,8 +228,8 @@ def _extract_photo(path: str) -> ExtractedImage:
         data = stream.read()
     fingerprint = hashlib.sha256(data).hexdigest()
     if path.lower().endswith(('.heic', '.gif')):
-        from rt.core.materials import _png_image
-        data = _png_image(data)
+        from rt.core.materials import _page_image
+        data, _ext = _page_image(data)
     return ExtractedImage(data, f"folder:{os.path.basename(path)}", file_fingerprint=fingerprint)
 
 

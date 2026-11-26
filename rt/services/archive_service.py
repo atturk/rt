@@ -309,8 +309,9 @@ def crop(sha, n, rect, replace=False):
     if width <= 0 or height <= 0 or left + width > 1.000001 or top + height > 1.000001:
         raise Invalid('crop_invalid', 'Ritaglio non valido.')
     with archive.archive_lock(sha + '-extract'), archive.archive_lock(sha):
+        from rt.core.materials import _page_image
         data = page_bytes(sha, n)
-        path = archive.page_image_path(sha, f'page-{n}-1.png')
+        old_path = archive.page_image_path(sha, f'page-{n}-1.png')
         with Image.open(io.BytesIO(data)) as image:
             w, h = image.size
             box = (int(left * w), int(top * h), max(int(left * w) + 1, round((left + width) * w)),
@@ -318,16 +319,20 @@ def crop(sha, n, rect, replace=False):
             output = io.BytesIO()
             image.crop(box).save(output, 'PNG')
         if replace:
+            cropped_bytes, ext = _page_image(output.getvalue())
+            target = os.path.join(archive.entry_dir(sha), f'page-{n}-1{ext}')
             # os.replace evita di modificare un eventuale hardlink all'originale.
-            fd, temp = tempfile.mkstemp(dir=archive.entry_dir(sha), suffix='.png.tmp')
+            fd, temp = tempfile.mkstemp(dir=archive.entry_dir(sha), suffix=f'{ext}.tmp')
             with os.fdopen(fd, 'wb') as stream:
-                stream.write(output.getvalue())
-            os.replace(temp, path)
+                stream.write(cropped_bytes)
+            os.replace(temp, target)
+            if old_path != target and os.path.isfile(old_path):
+                os.unlink(old_path)
             pages_path = os.path.join(archive.entry_dir(sha), 'pages.json')
             pages_data = archive.read_json(pages_path)
             for page in pages_data['pages']:
                 if page['numero'] == n:
-                    page['immagini'] = [os.path.basename(path)]
+                    page['immagini'] = [os.path.basename(target)]
             archive.write_json(pages_path, pages_data)
             meta['ritagli'] = {**meta.get('ritagli', {}), str(n): rect}
             archive.write_json(os.path.join(archive.entry_dir(sha), 'meta.json'), meta)
@@ -394,8 +399,9 @@ def add_to_media(sha, lesson_id, pages):
             descriptions = load_image_descriptions(directory)
             for n, data in contents:
                 from rt.core.captions import caption_from_description, clean_caption, page_alt
+                from rt.core.materials import image_ext
                 image_hash = compute_image_hash(data)
-                relative = save_raw_image(directory, data, image_hash)
+                relative = save_raw_image(directory, data, image_hash, ext=image_ext(data))
                 description = archive.read_json(os.path.join(archive.entry_dir(image_hash), 'descrizione.json'), {})
                 page = next((p for p in archive.read_json(os.path.join(archive.entry_dir(meta['impronta']), 'pages.json'), {}).get('pages', []) if p['numero'] == n), {})
                 single_page = archive.file_type(meta['nome']) == 'immagine'

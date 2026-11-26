@@ -348,7 +348,8 @@ def get_image(lesson_id: int, name: str, lesson_dir: LessonDir, _actor: Actor, m
         os.replace(tmp_path, cache_path)
         return Response(content=final_bytes, media_type=media_type, headers=headers)
 
-    media_type: Optional[str] = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    ext_map = {'.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif'}
+    media_type: Optional[str] = ext_map.get(os.path.splitext(name)[1].lower()) or mimetypes.guess_type(name)[0] or "application/octet-stream"
     real = fs.real_path(path)
     if real:
         return FileResponse(real, media_type=media_type, headers=headers)
@@ -356,12 +357,12 @@ def get_image(lesson_id: int, name: str, lesson_dir: LessonDir, _actor: Actor, m
         return Response(content=f.read(), media_type=media_type, headers=headers)
 
 
-_MATERIAL_IMG_NAME = re.compile(r"^[A-Za-z0-9_-]+\.png$", re.IGNORECASE)
+_MATERIAL_IMG_NAME = re.compile(r"^[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$", re.IGNORECASE)
 _IMPRONTA_RE = re.compile(r"^[a-fA-F0-9]{16,64}$")
 
 
 @router.get("/lessons/{lesson_id}/materials/{impronta}/{name}", summary="File di una pagina dei materiali",
-            response_class=Response, responses={200: {"content": {"image/png": {}}}})
+            response_class=Response, responses={200: {"content": {"image/png": {}, "image/webp": {}, "image/jpeg": {}}}})
 def get_material_image(lesson_id: int, impronta: str, name: str, lesson_dir: LessonDir, _actor: Actor):
     if not _IMPRONTA_RE.match(impronta) or not _MATERIAL_IMG_NAME.match(name):
         raise ApiError(404, "image_not_found", "Immagine inesistente.")
@@ -373,12 +374,14 @@ def get_material_image(lesson_id: int, impronta: str, name: str, lesson_dir: Les
     path = page_image_path(impronta, name)
     if not fs.isfile(path):
         raise ApiError(404, "image_not_found", "Immagine inesistente.")
+    ext = os.path.splitext(path)[1].lower()
+    media_type = "image/webp" if ext == ".webp" else "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
     headers = {"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"}
     real = fs.real_path(path)
     if real:
-        return FileResponse(real, media_type="image/png", headers=headers)
+        return FileResponse(real, media_type=media_type, headers=headers)
     with fs.open(path, "rb") as f:
-        return Response(content=f.read(), media_type="image/png", headers=headers)
+        return Response(content=f.read(), media_type=media_type, headers=headers)
 
 
 class RemoveFromTextRequest(BaseModel):

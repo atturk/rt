@@ -13,7 +13,10 @@ import json
 import math
 import os
 import re
+import shutil
+import subprocess
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from rt.llm.cancel import RunCancelled
@@ -730,6 +733,219 @@ def resolve_duplicate_pages(records: List[Dict[str, Any]]) -> None:
                     )
 
 
+_NAME_DT_DASHED = re.compile(
+    r"(?:^|[^0-9])(\d{4})-(\d{2})-(\d{2})[_ T](\d{2})[-:](\d{2})[-:](\d{2})(?:$|[^0-9])"
+)
+_NAME_DT_COMPACT = re.compile(
+    r"(?:^|[^0-9])(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:\d{3})?(?:$|[^0-9])"
+)
+
+
+def _parse_datetime_from_name(filename: str) -> Optional[datetime]:
+    """Estrae data e ora da nomi tipo photo_YYYY-MM-DD_HH-MM-SS, IMG_YYYYMMDD_HHMMSS, PXL_YYYYMMDD_HHMMSSmmm."""
+    base = os.path.basename(filename or "")
+    for pat in (_NAME_DT_DASHED, _NAME_DT_COMPACT):
+        m = pat.search(base)
+        if not m:
+            continue
+        try:
+            year, month, day, hour, minute, second = (int(g) for g in m.groups())
+            return datetime(year, month, day, hour, minute, second)
+        except ValueError:
+            return None
+    return None
+
+
+def _read_exif_datetime_original(path: str) -> Optional[datetime]:
+    """Legge EXIF DateTimeOriginal (tag 36867) da un'immagine locale/DB."""
+    if not path or not fs.isfile(path):
+        return None
+    try:
+        from PIL import Image
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+        except ImportError:
+            pass
+        with fs.open(path, "rb") as stream:
+            data = stream.read()
+        with Image.open(__import__("io").BytesIO(data)) as image:
+            exif = image.getexif()
+            if not exif:
+                return None
+            raw = exif.get(36867)
+            if not raw and hasattr(exif, "get_ifd"):
+                ifd = exif.get_ifd(0x8769)
+                if ifd:
+                    raw = ifd.get(36867)
+            if not raw:
+                return None
+            text = str(raw).strip().rstrip("\x00")
+            return datetime.strptime(text[:19], "%Y:%m:%d %H:%M:%S")
+    except Exception:
+        return None
+
+
+def _photo_shot_datetime(lesson_dir: str, source: Any) -> Optional[datetime]:
+    """Ora dello scatto: EXIF DateTimeOriginal, altrimenti dal nome del file."""
+    path = os.path.join(lesson_dir, source.file) if getattr(source, "file", None) else ""
+    dt = _read_exif_datetime_original(path)
+    if dt is None and getattr(source, "impronta", None):
+        try:
+            from rt.core.archive import original_path
+            orig = original_path(source.impronta)
+            if os.path.isfile(orig):
+                dt = _read_exif_datetime_original(orig)
+        except Exception:
+            pass
+    if dt is not None:
+        return dt
+    return _parse_datetime_from_name(getattr(source, "file", "") or "")
+
+
+def _audio_creation_time(path: str) -> Optional[datetime]:
+    """Tag creation_time dal file audio tramite ffprobe, se disponibile."""
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe or not path or not fs.isfile(path):
+        return None
+    try:
+        with fs.materialize(path) as real:
+            res = subprocess.run(
+                [ffprobe, "-v", "error", "-show_entries", "format_tags=creation_time",
+                 "-of", "default=noprint_wrappers=1:nokey=1", real],
+                capture_output=True, text=True, timeout=15,
+            )
+        if res.returncode != 0:
+            return None
+        raw = (res.stdout or "").strip()
+        if not raw:
+            return None
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
+        return dt
+    except Exception:
+        return None
+
+
+def _audio_timeline_parts(
+    lesson_dir: str,
+    all_sources: List[Any],
+    segments_data: SegmentsData,
+) -> List[Dict[str, Any]]:
+    """Parti audio della lezione con inizio reale (se noto), offset cumulativo e durata."""
+    from rt.pipeline.source_update import _read_state, _duration
+    state = _read_state(lesson_dir)
+    cache = state.get("sources", {})
+    audio_sources = [s for s in all_sources if getattr(s, "tipo", None) == "audio"]
+    parts: List[Dict[str, Any]] = []
+    cumulative = 0.0
+    for src in audio_sources:
+        src_dur = cache.get(src.id, {}).get("duration")
+        full_path = os.path.join(lesson_dir, src.file) if getattr(src, "file", None) else ""
+        if src_dur is None and full_path and fs.isfile(full_path):
+            try:
+                src_dur = float(_duration(full_path))
+            except Exception:
+                src_dur = None
+        if src_dur is None and len(audio_sources) == 1:
+            src_dur = segments_data.audio_duration_seconds or max(
+                (s.end_seconds for s in segments_data.segments), default=0.0
+            )
+        src_parts = getattr(src, "parti", None) or []
+        if len(src_parts) > 1 and all(getattr(p, "durata_s", None) is not None for p in src_parts):
+            for p in src_parts:
+                p_dur = float(p.durata_s)
+                parts.append({
+                    "name": p.nome,
+                    "start_dt": _parse_datetime_from_name(p.nome),
+                    "timeline_offset": cumulative,
+                    "duration": p_dur,
+                })
+                cumulative += p_dur
+        else:
+            part_name = src_parts[0].nome if src_parts else os.path.basename(src.file or "")
+            start_dt = _parse_datetime_from_name(part_name) or _audio_creation_time(full_path)
+            parts.append({
+                "name": part_name,
+                "start_dt": start_dt,
+                "timeline_offset": cumulative,
+                "duration": src_dur,
+            })
+            cumulative += float(src_dur or 0.0)
+    return parts
+
+
+def _unit_time_intervals(outline: Outline, segments_data: SegmentsData) -> List[Tuple[str, float, float]]:
+    """Intervalli [start_seconds, end_seconds] per ogni unità dell'outline."""
+    seg_by_id = {s.id: s for s in segments_data.segments}
+    intervals: List[Tuple[str, float, float]] = []
+    for macro in outline.macro_sections:
+        for unit in macro.units:
+            start_seg = seg_by_id.get(unit.start_segment_id)
+            end_seg = seg_by_id.get(unit.end_segment_id)
+            if start_seg and end_seg:
+                intervals.append((unit.id, float(start_seg.start_seconds), float(end_seg.end_seconds)))
+    return intervals
+
+
+def _pick_unit_for_offset(unit_intervals: List[Tuple[str, float, float]], offset: float) -> Optional[str]:
+    """Unità i cui segmenti contengono `offset`; se cade tra due unità, quella che inizia prima."""
+    if not unit_intervals:
+        return None
+    for uid, start_s, end_s in unit_intervals:
+        if start_s <= offset <= end_s:
+            return uid
+    preceding = [(start_s, idx, uid) for idx, (uid, start_s, _end_s) in enumerate(unit_intervals) if start_s <= offset]
+    if preceding:
+        return max(preceding)[2]
+    return min((start_s, idx, uid) for idx, (uid, start_s, _end_s) in enumerate(unit_intervals))[2]
+
+
+def _format_offset_mm_ss(offset_seconds: float) -> str:
+    sign = "-" if offset_seconds < 0 else ""
+    total = int(round(abs(offset_seconds)))
+    minutes, seconds = divmod(total, 60)
+    return f"{sign}{minutes:02d}:{seconds:02d}"
+
+
+def _place_photo_by_time(
+    lesson_dir: str,
+    source: Any,
+    segments_data: SegmentsData,
+    audio_parts: List[Dict[str, Any]],
+    unit_intervals: List[Tuple[str, float, float]],
+) -> Optional[str]:
+    """Colloca una foto singola nell'unità corrispondente all'orario dello scatto, se possibile."""
+    if not audio_parts or not unit_intervals:
+        return None
+    photo_dt = _photo_shot_datetime(lesson_dir, source)
+    if photo_dt is None:
+        return None
+    fallback_dur = segments_data.audio_duration_seconds or max(
+        (s.end_seconds for s in segments_data.segments), default=0.0
+    )
+    for part in audio_parts:
+        start_dt = part.get("start_dt")
+        if start_dt is None:
+            continue
+        local_offset = (photo_dt - start_dt).total_seconds()
+        part_dur = part.get("duration")
+        if part_dur is None:
+            part_dur = fallback_dur
+        if -60.0 <= local_offset <= float(part_dur) + 120.0:
+            timeline_offset = float(part["timeline_offset"]) + local_offset
+            unit_id = _pick_unit_for_offset(unit_intervals, timeline_offset)
+            if unit_id is not None:
+                print(
+                    f"foto {_source_label(source)} scattata {photo_dt.strftime('%H:%M:%S')} "
+                    f"→ offset {_format_offset_mm_ss(timeline_offset)} → unità {unit_id} (per orario)",
+                    flush=True,
+                )
+                return unit_id
+    return None
+
+
 def assign_material_pages(
     lesson_dir: str,
     outline: Outline,
@@ -757,7 +973,8 @@ def assign_material_pages(
         save_image_placement,
     )
 
-    sources = [s for s in load_sources(lesson_dir) if s.tipo == "materiale"]
+    all_sources = load_sources(lesson_dir)
+    sources = [s for s in all_sources if s.tipo == "materiale"]
     previous_state = _read_json(lesson_dir, STATE_FILE)
     if not sources and not previous_state:
         return {}
@@ -768,6 +985,9 @@ def assign_material_pages(
     primary_id = selection(lesson_dir).get("principale")
     segment_path = lesson_path(lesson_dir, "segments.json")
     segments_data = load_segments_json(segment_path) if fs.isfile(segment_path) else SegmentsData()
+
+    audio_parts = _audio_timeline_parts(lesson_dir, all_sources, segments_data)
+    unit_intervals = _unit_time_intervals(outline, segments_data)
 
     corpus, idf = build_subunit_corpus(outline, segments_data)
     cached_decisions = _read_json(lesson_dir, CACHE_FILE)
@@ -782,12 +1002,48 @@ def assign_material_pages(
 
     descriptions = load_image_descriptions(lesson_dir)
 
+    from rt.core.materials import image_ext
     image_cache = None
     from rt.pipeline.image_decision import uses_image_for_material_pages
     read_page_images = uses_image_for_material_pages()
     for source in sources:
         is_primary = (source.id == primary_id)
         pages = material_pages(lesson_dir, source, mock=mock, ctx=ctx)
+
+        if file_type(source.file) == "immagine" and not (is_primary or source.uso == "integra") and pages:
+            time_unit_id = _place_photo_by_time(lesson_dir, source, segments_data, audio_parts, unit_intervals)
+            if time_unit_id is not None:
+                if source.estrai == "solo_immagini":
+                    if enabled:
+                        for page in pages:
+                            for img_rel in page.get("immagini") or []:
+                                img_path = page_image_path(source.impronta, img_rel)
+                                if not fs.isfile(img_path):
+                                    continue
+                                with fs.open(img_path, "rb") as stream:
+                                    data = stream.read()
+                                h = compute_image_hash(data)
+                                desc = descriptions.setdefault(h, {
+                                    "filename": save_raw_image(lesson_dir, data, h, ext=image_ext(data)),
+                                    "source": f"material:{source.id}:{page['numero']}",
+                                    "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=True),
+                                })
+                                desc.pop("unplaced", None)
+                                if (page.get("testo") or "").strip() and not desc.get("ocr_text"):
+                                    desc["ocr_text"] = page["testo"]
+                                append_page_placements(units_placement, macros_placement, h, [time_unit_id], [])
+                else:
+                    for page in pages:
+                        page["unplaced"] = False
+                        page["off_topic"] = False
+                        classified_records.append({
+                            "source": source,
+                            "page": page,
+                            "assigned_units": [time_unit_id],
+                            "assigned_macros": [],
+                            "used_image_decision": True,
+                        })
+                continue
 
         if source.estrai == "solo_immagini":
             # Solo immagini: niente testo né contesto; il modello decisionale guarda ogni pagina.
@@ -812,7 +1068,7 @@ def assign_material_pages(
                         # Come il classificatore sul testo: la lezione si fa lo stesso.
                         continue
                     descriptions.setdefault(h, {
-                        "filename": save_raw_image(lesson_dir, data, h),
+                        "filename": save_raw_image(lesson_dir, data, h, ext=image_ext(data)),
                         "source": f"material:{source.id}:{page['numero']}",
                         "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                     })["ruolo"] = role
@@ -846,7 +1102,7 @@ def assign_material_pages(
                             with fs.open(img_path, "rb") as stream:
                                 data = stream.read()
                             h = compute_image_hash(data)
-                            fn = save_raw_image(lesson_dir, data, h)
+                            fn = save_raw_image(lesson_dir, data, h, ext=image_ext(data))
                             desc = descriptions.setdefault(h, {
                                 "filename": fn,
                                 "source": f"material:{source.id}:{page['numero']}",
@@ -930,7 +1186,7 @@ def assign_material_pages(
                             pass
                         else:
                             descriptions.setdefault(h, {
-                                "filename": save_raw_image(lesson_dir, data, h),
+                                "filename": save_raw_image(lesson_dir, data, h, ext=image_ext(data)),
                                 "source": f"material:{source.id}:{page['numero']}",
                                 "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                             })["ruolo"] = role
@@ -1001,7 +1257,7 @@ def assign_material_pages(
                     with fs.open(img_path, "rb") as stream:
                         data = stream.read()
                     h = compute_image_hash(data)
-                    fn = save_raw_image(lesson_dir, data, h)
+                    fn = save_raw_image(lesson_dir, data, h, ext=image_ext(data))
                     desc = descriptions.setdefault(h, {
                         "filename": fn,
                         "source": f"material:{source.id}:{page['numero']}",
@@ -1013,7 +1269,8 @@ def assign_material_pages(
                     if page.get("unplaced"):
                         desc["unplaced"] = True
                         desc["alt_text"] = "Materiale non collocato"
-                    if assigned_units or assigned_macros:
+                    elif assigned_units or assigned_macros:
+                        desc.pop("unplaced", None)
                         append_page_placements(units_placement, macros_placement, h,
                                                assigned_units, assigned_macros)
 

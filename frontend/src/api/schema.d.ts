@@ -10700,7 +10700,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "image/jpeg": unknown;
                     "image/png": unknown;
+                    "image/webp": unknown;
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -17124,7 +17126,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "image/jpeg": unknown;
                     "image/png": unknown;
+                    "image/webp": unknown;
                 };
             };
             /** @description Autenticazione mancante o non valida */

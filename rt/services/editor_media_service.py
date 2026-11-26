@@ -103,10 +103,56 @@ def _material_source(lesson_dir: str, source_id: str):
     return source
 
 
+def _clear_unplaced_for_hashes(lesson_dir: str, hashes: set[str]) -> None:
+    """Se l'utente colloca a mano una pagina non collocata, toglie `unplaced` dalla voce e dall'elenco."""
+    if not hashes:
+        return
+    descriptions = load_image_descriptions(lesson_dir)
+    changed = False
+    cleared_sources: set[tuple[str, int]] = set()
+    for h in hashes:
+        entry = descriptions.get(h)
+        if not entry:
+            continue
+        m = _MATERIAL_TAG.match(str(entry.get('source') or ''))
+        if m:
+            cleared_sources.add((m.group(1), int(m.group(2))))
+        if entry.get('unplaced'):
+            entry.pop('unplaced', None)
+            if entry.get('alt_text') == 'Materiale non collocato' and m:
+                try:
+                    src = _material_source(lesson_dir, m.group(1))
+                    from rt.core.archive import file_type
+                    from rt.core.captions import page_alt
+                    entry['alt_text'] = page_alt(src.file, int(m.group(2)), single_page=file_type(src.file) == 'immagine')
+                except Exception:
+                    pass
+            changed = True
+    if changed:
+        save_image_descriptions(lesson_dir, descriptions)
+    if cleared_sources:
+        from rt.core.lesson_paths import lesson_path
+        import json
+        mat_path = lesson_path(lesson_dir, 'material_attachments.json')
+        if fs.isfile(mat_path):
+            try:
+                with fs.open(mat_path, 'r', encoding='utf-8') as stream:
+                    state = json.load(stream)
+                unplaced = state.get('unplaced') or []
+                filtered = [u for u in unplaced if (str(u.get('source_id')), int(u.get('page', 0))) not in cleared_sources]
+                if len(filtered) != len(unplaced):
+                    state['unplaced'] = filtered
+                    with fs.open(mat_path + '.tmp', 'w', encoding='utf-8') as stream:
+                        json.dump(state, stream, ensure_ascii=False, indent=2)
+                    fs.replace(mat_path + '.tmp', mat_path)
+            except Exception:
+                pass
+
+
 def _copy_material_page(lesson_dir: str, source_id: str, page_number: int) -> tuple[str, dict]:
     """Copia la pagina in assets e la registra; va chiamata con il lock della lezione già preso.
     Usa solo le pagine già lette all'import: mai estrazioni o modelli dentro una richiesta."""
-    from rt.core.materials import cached_pages
+    from rt.core.materials import cached_pages, image_ext
     source = _material_source(lesson_dir, source_id)
     page = next((p for p in cached_pages(lesson_dir, source) or [] if int(p.get('numero', 0)) == page_number), None)
     images = (page or {}).get('immagini') or []
@@ -117,18 +163,26 @@ def _copy_material_page(lesson_dir: str, source_id: str, page_number: int) -> tu
         content = f.read()
     image_hash = compute_image_hash(content)
     descriptions = load_image_descriptions(lesson_dir)
+    from rt.core.archive import file_type
+    from rt.core.captions import page_alt
+    titolo = page.get('titolo')
+    default_alt = page_alt(source.file, page_number, titolo, single_page=file_type(source.file) == 'immagine')
     if image_hash not in descriptions:
-        from rt.core.archive import file_type
-        from rt.core.captions import page_alt
-        relative = save_raw_image(lesson_dir, content, image_hash, ext='.png')
-        titolo = page.get('titolo')
+        ext = os.path.splitext(img_rel)[1] or image_ext(content)
+        relative = save_raw_image(lesson_dir, content, image_hash, ext=ext)
         descriptions[image_hash] = {
             'filename': relative, 'source': f'material:{source.id}:{page_number}',
             'slide_title': titolo or '', 'ocr_text': page.get('testo', '') or '', 'visual_elements': [],
             'summary_keywords': [],
-            'alt_text': page_alt(source.file, page_number, titolo, single_page=file_type(source.file) == 'immagine'),
+            'alt_text': default_alt,
         }
         save_image_descriptions(lesson_dir, descriptions)
+    elif descriptions[image_hash].get('unplaced'):
+        descriptions[image_hash].pop('unplaced', None)
+        if descriptions[image_hash].get('alt_text') == 'Materiale non collocato':
+            descriptions[image_hash]['alt_text'] = default_alt
+        save_image_descriptions(lesson_dir, descriptions)
+    _clear_unplaced_for_hashes(lesson_dir, {image_hash})
     return image_hash, descriptions[image_hash]
 
 

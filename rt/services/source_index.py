@@ -308,10 +308,8 @@ class SourceIndex:
             return None
 
         # Controlla prima se c'è un'immagine già renderizzata nell'archivio
-        from rt.core.archive import entry_dir
-        folder = entry_dir(target_source.impronta)
-        candidate_rel = f"page-{page_number}-1.png"
-        arch_path = os.path.join(folder, candidate_rel)
+        from rt.core.archive import page_image_path
+        arch_path = page_image_path(target_source.impronta, f"page-{page_number}-1.png")
         if fs.isfile(arch_path):
             with fs.open(arch_path, "rb") as f:
                 return f.read()

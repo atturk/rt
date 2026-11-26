@@ -525,8 +525,13 @@ def _apply_second_pass_review(
                 png = source_index.render_page_png(m.fonte, m.pagina)
                 if png:
                     import base64
-                    b64 = base64.b64encode(png).decode("ascii")
-                    images_data_urls.append(f"data:image/png;base64,{b64}")
+                    from rt.llm.decision_images import normalize_image
+                    try:
+                        encoded, mime = normalize_image(png)
+                    except Exception:
+                        encoded, mime = png, "image/png"
+                    b64 = base64.b64encode(encoded).decode("ascii")
+                    images_data_urls.append(f"data:{mime};base64,{b64}")
 
         def _match_label(m) -> str:
             rel = getattr(m, "affidabilita", "normale") or "normale"

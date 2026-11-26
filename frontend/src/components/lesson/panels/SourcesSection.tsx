@@ -1,12 +1,16 @@
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
 import { compressPages, type SourceOptions } from '@/api/archive'
+import { ImageInfoModal, type ImageInfoTarget } from '@/components/images/ImageInfoModal'
+import { RT_MEDIA_DRAG_TYPE } from '../lessonImages'
 import { useState, useRef, type DragEvent, type KeyboardEvent } from 'react'
 import {
+  ChevronDown,
   FileText,
   Pencil,
   MoreHorizontal,
   GitMerge,
   GripVertical,
+  Image as ImageIcon,
   Mic,
   Paperclip,
   Plus,
@@ -44,10 +48,50 @@ import { useIsPhone } from '@/lib/phone'
 import { usePptxConverterGuard } from '@/components/shell/PptxConverterWarning'
 import { SourceAudioParts } from './SourceAudioParts'
 
+function readSavedSourcesOpen(lessonId: number): boolean | null {
+  try {
+    const val = window.localStorage.getItem(`rt.sources.open.${lessonId}`)
+    if (val === 'true') return true
+    if (val === 'false') return false
+  } catch {
+    // localStorage non disponibile
+  }
+  return null
+}
+
+function writeSavedSourcesOpen(lessonId: number, open: boolean): void {
+  try {
+    window.localStorage.setItem(`rt.sources.open.${lessonId}`, String(open))
+  } catch {
+    // localStorage non disponibile
+  }
+}
+
+const PHOTO_EXT_RE = /\.(jpe?g|png|heic)$/i
+
+function isSinglePhotoSource(s: SourceItem): boolean {
+  return s.tipo === 'materiale' && PHOTO_EXT_RE.test(s.file || s.nome)
+}
+
+function photoCaption(nome: string): string {
+  const dashed = /photo_\d{4}-\d{2}-\d{2}_(\d{2})-(\d{2})-\d{2}/i.exec(nome)
+  if (dashed) return `${dashed[1]}:${dashed[2]}`
+  const compact = /(?:IMG|PXL)_\d{8}_(\d{2})(\d{2})\d{2}/i.exec(nome)
+  if (compact) return `${compact[1]}:${compact[2]}`
+  const stem = nome.replace(/\.[^.]+$/, '')
+  return stem.length > 12 ? `${stem.slice(0, 11)}…` : stem
+}
+
 export function SourcesSection({ lessonId }: { lessonId: number }) {
   const phone = useIsPhone()
   const [pendingMaterials, setPendingMaterials] = useState<File[]>([])
   const [editingSource, setEditingSource] = useState<SourceItem | null>(null)
+  const [infoTarget, setInfoTarget] = useState<ImageInfoTarget | null>(null)
+  const [openState, setOpenState] = useState<{ lessonId: number; override: boolean | null }>(() => ({
+    lessonId,
+    override: readSavedSourcesOpen(lessonId),
+  }))
+  const [photosOpen, setPhotosOpen] = useState(false)
   const sourcesQuery = useSources(lessonId)
   const versionsQuery = useVersions(lessonId)
   const reorderMutation = useReorderSources(lessonId)
@@ -87,6 +131,15 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
   const sources = sourcesView?.sources ?? []
   const audioSources = sources.filter((s) => s.tipo === 'audio')
   const audioIsPrimary = audioSources.some((s) => s.id === sourcesView?.principale)
+  const photoSources = sources.filter(isSinglePhotoSource)
+  const groupPhotos = photoSources.length >= 3
+  const openOverride = openState.lessonId === lessonId ? openState.override : readSavedSourcesOpen(lessonId)
+  const sourcesOpen = openOverride ?? sources.length <= 8
+  const toggleSourcesOpen = () => {
+    const next = !sourcesOpen
+    setOpenState({ lessonId, override: next })
+    writeSavedSourcesOpen(lessonId, next)
+  }
 
   // Upload handlers
   const handleAudioSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -275,6 +328,21 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
     })
   }
 
+  const handleDeleteSource = (s: SourceItem) => {
+    setConfirmDialog({
+      open: true,
+      title: `Togliere ${s.nome}?`,
+      description: s.usata
+        ? 'Il testo della lezione contiene ancora questa parte: per toglierla serve Ricostruisci.'
+        : 'Vuoi togliere questa fonte dalla lezione?',
+      confirmLabel: 'Togli',
+      onConfirm: () => {
+        setConfirmDialog(null)
+        deleteMutation.mutate(s.id, { onError: (err) => setActionError(errorMessage(err)) })
+      },
+    })
+  }
+
   let audioCounter = 0
 
   return (
@@ -293,9 +361,20 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
         onClose={() => { setPendingMaterials([]); setEditingSource(null) }} onSubmit={saveMaterial} />}
       {/* Intestazione Fonti */}
       <div className="relative flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-meta font-semibold uppercase tracking-wider text-muted-foreground">
+        <button
+          type="button"
+          aria-expanded={sourcesOpen}
+          data-testid="sources-toggle"
+          onClick={toggleSourcesOpen}
+          className="flex cursor-pointer items-center gap-1.5 text-meta font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+        >
+          <ChevronDown
+            className={cn('size-3.5 shrink-0 transition-transform duration-150', !sourcesOpen && '-rotate-90')}
+            aria-hidden
+          />
           <span>Fonti</span>
-        </span>
+          {sources.length > 0 && <span className="tabular-nums">· {sources.length}</span>}
+        </button>
         {/* Menu in un portale: non resta tagliato dal pannello che scorre. */}
         <LinkMenuButton
           testId="plus-sources"
@@ -384,155 +463,233 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
       )}
 
       {/* Elenco fonti */}
-      {sourcesQuery.isPending && (
-        <p className="text-meta text-muted-foreground">Carico le fonti…</p>
-      )}
+      {sourcesOpen && (
+        <>
+          {sourcesQuery.isPending && (
+            <p className="text-meta text-muted-foreground">Carico le fonti…</p>
+          )}
 
-      {sources.length === 0 && !sourcesQuery.isPending && (
-        <p className="text-meta text-muted-foreground">Nessuna fonte presente.</p>
-      )}
+          {sources.length === 0 && !sourcesQuery.isPending && (
+            <p className="text-meta text-muted-foreground">Nessuna fonte presente.</p>
+          )}
 
-      <div className="flex flex-col gap-1">
-        {sources.map((s) => {
-          const isAudio = s.tipo === 'audio'
-          const audioIdx = isAudio ? audioCounter++ : -1
-          // Con l'audio principale il server indica la prima parte audio: basta il confronto.
-          const isPrimary = sourcesView?.principale === s.id
-          const sizeText = formatSourceSize(s)
-
-          return (
-            <div
-              key={s.id}
-              data-testid={`source-row-${s.id}`}
-              onDragOver={isAudio ? (e) => handleDragOver(e, audioIdx) : undefined}
-              onDrop={isAudio ? (e) => handleDrop(e, audioIdx) : undefined}
-              className={cn(
-                'group relative flex w-full min-w-0 flex-col gap-2 rounded-lg px-2 py-1.5 text-body transition-colors hover:bg-muted/60',
-                isAudio && dragOverIndex === audioIdx && 'border-2 border-accent',
-              )}
-            >
-              <div className="flex min-w-0 items-center gap-2">
-              {/* Icona tipo */}
-              {s.tipo === 'audio' && <Mic className="size-4 shrink-0 text-muted-foreground" />}
-              {s.tipo === 'appunti' && <FileText className="size-4 shrink-0 text-muted-foreground" />}
-              {s.tipo === 'materiale' && <Paperclip className="size-4 shrink-0 text-muted-foreground" />}
-
-              {/* Se audio: maniglia e numero */}
-              {isAudio && (
-                <>
-                  <span
-                    className="grip flex size-5 cursor-grab items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                    draggable="true"
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`Riordina ${s.nome}`}
-                    data-testid={`grip-${s.id}`}
-                    onDragStart={(e) => handleDragStart(e, audioIdx)}
-                    onKeyDown={(e) => handleGripKeyDown(e, audioIdx)}
-                  >
-                    <GripVertical className="size-3.5 text-muted-foreground" />
-                  </span>
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold tabular-nums">
-                    {audioIdx + 1}
-                  </span>
-                </>
-              )}
-
-              {/* Stellina principale */}
-              {isPrimary ? (
-                <span
-                  className="flex size-4 shrink-0 items-center justify-center text-amber-500"
-                  title={isAudio ? 'Principale: la registrazione' : 'Fonte principale'}
-                  data-testid="star-primary"
-                >
-                  <Star className="size-3.5 fill-current" />
-                </span>
-              ) : !(isAudio && audioIsPrimary) ? (
-                <button
-                  type="button"
-                  className="flex size-4 shrink-0 cursor-pointer items-center justify-center text-muted-foreground opacity-0 hover:text-amber-500 group-hover:opacity-100 group-focus-within:opacity-100"
-                  aria-label={`Usa ${s.nome} come principale`}
-                  data-testid={`star-choose-${s.id}`}
-                  onClick={() => handleSelectPrimary(s)}
-                >
-                  <Star className="size-3.5" />
-                </button>
-              ) : (
-                <span className="size-4 shrink-0" aria-hidden />
-              )}
-
-              {/* Nome ed eventuali parti */}
-              <div className="flex flex-col min-w-0 flex-1">
-                {phone ? (
-                  <>
-                    <div className="flex items-center gap-1 min-w-0">
-                      {s.uso === 'integra' && <GitMerge className="size-3 shrink-0 text-muted-foreground" aria-label="Integra" />}
-                      {s.affidabilita === 'alta' && <span title="Affidabilità alta" aria-label="Affidabilità alta"><Shield className="size-3 shrink-0 fill-current text-muted-foreground" /></span>}
-                      {s.affidabilita === 'bassa' && <span title="Affidabilità bassa" aria-label="Affidabilità bassa"><Shield className="size-3 shrink-0 text-muted-foreground" /></span>}
-                      <span className="min-w-0 flex-1 line-clamp-2 font-medium [overflow-wrap:anywhere]">
-                        {isAudio && (s.parti?.length ?? 0) > 1 ? `Registrazione unita da ${s.parti?.length} parti` : s.nome}
-                      </span>
-                    </div>
-                    {((s.tipo === 'materiale' && s.pagine?.length) || sizeText) ? (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        {s.tipo === 'materiale' && s.pagine?.length ? <span>pag. {compressPages(s.pagine)}</span> : null}
-                        {sizeText && <span className="tabular-nums">{sizeText}</span>}
+          <div className="flex flex-col gap-1" data-testid="sources-list">
+            {sources.map((s) => {
+              if (groupPhotos && isSinglePhotoSource(s)) {
+                if (s.id !== photoSources[0]?.id) return null
+                return (
+                  <div key="photo-group" className="flex flex-col gap-2 rounded-lg px-2 py-1.5" data-testid="sources-photo-group">
+                    <button
+                      type="button"
+                      aria-expanded={photosOpen}
+                      onClick={() => setPhotosOpen((v) => !v)}
+                      className="flex w-full cursor-pointer items-center gap-2 text-left text-body hover:text-primary"
+                    >
+                      <ImageIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                      <span className="flex-1 truncate font-medium">Foto · {photoSources.length}</span>
+                      <ChevronDown
+                        className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform duration-150', !photosOpen && '-rotate-90')}
+                        aria-hidden
+                      />
+                    </button>
+                    {photosOpen && (
+                      <div className="grid grid-cols-3 gap-2 pt-1 xl:grid-cols-4" data-testid="sources-photo-grid">
+                        {photoSources.map((photo) => {
+                          const photoPrimary = sourcesView?.principale === photo.id
+                          return (
+                            <div
+                              key={photo.id}
+                              className="group/photo relative flex min-w-0 flex-col gap-1"
+                              title={photo.nome}
+                              data-testid={`source-row-${photo.id}`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setInfoTarget({ sha: photo.impronta, page: 1 })}
+                                aria-label={`Anteprima ${photo.nome}`}
+                                className="relative aspect-square w-full cursor-pointer overflow-hidden rounded-md border bg-muted hover:border-foreground/40 focus-visible:outline-2 focus-visible:outline-ring"
+                              >
+                                <img
+                                  src={`/api/v1/archive/${photo.impronta}/pages/1.png`}
+                                  alt={photo.nome}
+                                  loading="lazy"
+                                  className="size-full object-cover"
+                                />
+                                {photoPrimary && (
+                                  <span
+                                    className="absolute left-1 top-1 flex size-4 items-center justify-center rounded-full bg-background/90 text-amber-500 shadow-xs"
+                                    title="Fonte principale"
+                                    data-testid="star-primary"
+                                  >
+                                    <Star className="size-3 fill-current" />
+                                  </span>
+                                )}
+                                {!photo.usata && (
+                                  <span
+                                    role="img"
+                                    className="absolute right-1 bottom-1 size-2 rounded-full bg-amber-500 ring-1 ring-background"
+                                    title="Non ancora usata"
+                                    aria-label="Non ancora usata"
+                                    data-testid="source-unused-dot"
+                                  />
+                                )}
+                              </button>
+                              <div className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/photo:opacity-100 group-focus-within/photo:opacity-100 focus-within:opacity-100">
+                                <LinkMenuButton
+                                  icon={MoreHorizontal}
+                                  label={`Opzioni ${photo.nome}`}
+                                  buttonClassName="size-6 min-w-6 bg-background/90 shadow-xs"
+                                  items={[
+                                    { label: 'Modifica', icon: Pencil, onSelect: () => setEditingSource(photo) },
+                                    ...(!photoPrimary
+                                      ? [{ label: 'Usa come principale', icon: Star, onSelect: () => handleSelectPrimary(photo) }]
+                                      : []),
+                                    { label: 'Togli', icon: X, onSelect: () => handleDeleteSource(photo) },
+                                  ]}
+                                />
+                              </div>
+                              <span className="truncate text-center text-meta text-muted-foreground tabular-nums" title={photo.nome}>
+                                {photoCaption(photo.nome)}
+                              </span>
+                            </div>
+                          )
+                        })}
                       </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    {s.tipo === 'materiale' && s.pagine?.length ? <span className="text-meta text-muted-foreground">pag. {compressPages(s.pagine)}</span> : null}
-                    {s.uso === 'integra' && <GitMerge className="size-3 text-muted-foreground" aria-label="Integra" />}
-                    {s.affidabilita === 'alta' && <span title="Affidabilità alta" aria-label="Affidabilità alta"><Shield className="size-3 fill-current text-muted-foreground" /></span>}
-                    {s.affidabilita === 'bassa' && <span title="Affidabilità bassa" aria-label="Affidabilità bassa"><Shield className="size-3 text-muted-foreground" /></span>}
-                    <span className="truncate font-medium">{isAudio && (s.parti?.length ?? 0) > 1 ? `Registrazione unita da ${s.parti?.length} parti` : s.nome}</span>
-                  </>
-                )}
-              </div>
+                    )}
+                  </div>
+                )
+              }
 
-              {s.tipo === 'materiale' && <LinkMenuButton icon={MoreHorizontal} label={`Opzioni ${s.nome}`} items={[{ label: 'Modifica', icon: Pencil, onSelect: () => setEditingSource(s) }]} />}
-              {/* Misura */}
-              {!phone && sizeText && (
-                <span className="shrink-0 whitespace-nowrap text-meta text-muted-foreground tabular-nums">{sizeText}</span>
-              )}
+              const isAudio = s.tipo === 'audio'
+              const audioIdx = isAudio ? audioCounter++ : -1
+              // Con l'audio principale il server indica la prima parte audio: basta il confronto.
+              const isPrimary = sourcesView?.principale === s.id
+              const sizeText = formatSourceSize(s)
 
-              {/* Puntino fonte nuova non ancora usata */}
-              {!s.usata && (
-                <span
-                  role="img"
-                  className="size-1.5 shrink-0 rounded-full bg-amber-500"
-                  title="Non ancora usata"
-                  aria-label="Non ancora usata"
-                  data-testid="source-unused-dot"
-                />
-              )}
+              return (
+                <div
+                  key={s.id}
+                  data-testid={`source-row-${s.id}`}
+                  onDragOver={isAudio ? (e) => handleDragOver(e, audioIdx) : undefined}
+                  onDrop={isAudio ? (e) => handleDrop(e, audioIdx) : undefined}
+                  className={cn(
+                    'group relative flex w-full min-w-0 flex-col gap-2 rounded-lg px-2 py-1.5 text-body transition-colors hover:bg-muted/60',
+                    isAudio && dragOverIndex === audioIdx && 'border-2 border-accent',
+                  )}
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                  {/* Icona tipo */}
+                  {s.tipo === 'audio' && <Mic className="size-4 shrink-0 text-muted-foreground" />}
+                  {s.tipo === 'appunti' && <FileText className="size-4 shrink-0 text-muted-foreground" />}
+                  {s.tipo === 'materiale' && <Paperclip className="size-4 shrink-0 text-muted-foreground" />}
 
-              {/* Pulsante rimuovi X */}
-              <IconButton
-                icon={X}
-                label={`Togli ${s.nome}`}
-                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                disabled={deleteMutation.isPending}
-                onClick={() => setConfirmDialog({
-                  open: true,
-                  title: `Togliere ${s.nome}?`,
-                  description: s.usata
-                    ? 'Il testo della lezione contiene ancora questa parte: per toglierla serve Ricostruisci.'
-                    : 'Vuoi togliere questa fonte dalla lezione?',
-                  confirmLabel: 'Togli',
-                  onConfirm: () => {
-                    setConfirmDialog(null)
-                    deleteMutation.mutate(s.id, { onError: (err) => setActionError(errorMessage(err)) })
-                  },
-                })}
-              />
-              </div>
-              {isAudio && s.parti && s.parti.length > 1 && <SourceAudioParts sourceId={s.id} parts={s.parti} />}
-            </div>
-          )
-        })}
-      </div>
+                  {/* Se audio: maniglia e numero */}
+                  {isAudio && (
+                    <>
+                      <span
+                        className="grip flex size-5 cursor-grab items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                        draggable="true"
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Riordina ${s.nome}`}
+                        data-testid={`grip-${s.id}`}
+                        onDragStart={(e) => handleDragStart(e, audioIdx)}
+                        onKeyDown={(e) => handleGripKeyDown(e, audioIdx)}
+                      >
+                        <GripVertical className="size-3.5 text-muted-foreground" />
+                      </span>
+                      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold tabular-nums">
+                        {audioIdx + 1}
+                      </span>
+                    </>
+                  )}
+
+                  {/* Stellina principale */}
+                  {isPrimary ? (
+                    <span
+                      className="flex size-4 shrink-0 items-center justify-center text-amber-500"
+                      title={isAudio ? 'Principale: la registrazione' : 'Fonte principale'}
+                      data-testid="star-primary"
+                    >
+                      <Star className="size-3.5 fill-current" />
+                    </span>
+                  ) : !(isAudio && audioIsPrimary) ? (
+                    <button
+                      type="button"
+                      className="flex size-4 shrink-0 cursor-pointer items-center justify-center text-muted-foreground opacity-0 hover:text-amber-500 group-hover:opacity-100 group-focus-within:opacity-100"
+                      aria-label={`Usa ${s.nome} come principale`}
+                      data-testid={`star-choose-${s.id}`}
+                      onClick={() => handleSelectPrimary(s)}
+                    >
+                      <Star className="size-3.5" />
+                    </button>
+                  ) : (
+                    <span className="size-4 shrink-0" aria-hidden />
+                  )}
+
+                  {/* Nome ed eventuali parti */}
+                  <div className="flex flex-col min-w-0 flex-1">
+                    {phone ? (
+                      <>
+                        <div className="flex items-center gap-1 min-w-0">
+                          {s.uso === 'integra' && <GitMerge className="size-3 shrink-0 text-muted-foreground" aria-label="Integra" />}
+                          {s.affidabilita === 'alta' && <span title="Affidabilità alta" aria-label="Affidabilità alta"><Shield className="size-3 shrink-0 fill-current text-muted-foreground" /></span>}
+                          {s.affidabilita === 'bassa' && <span title="Affidabilità bassa" aria-label="Affidabilità bassa"><Shield className="size-3 shrink-0 text-muted-foreground" /></span>}
+                          <span className="min-w-0 flex-1 line-clamp-2 font-medium [overflow-wrap:anywhere]">
+                            {isAudio && (s.parti?.length ?? 0) > 1 ? `Registrazione unita da ${s.parti?.length} parti` : s.nome}
+                          </span>
+                        </div>
+                        {((s.tipo === 'materiale' && s.pagine?.length) || sizeText) ? (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            {s.tipo === 'materiale' && s.pagine?.length ? <span>pag. {compressPages(s.pagine)}</span> : null}
+                            {sizeText && <span className="tabular-nums">{sizeText}</span>}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        {s.tipo === 'materiale' && s.pagine?.length ? <span className="text-meta text-muted-foreground">pag. {compressPages(s.pagine)}</span> : null}
+                        {s.uso === 'integra' && <GitMerge className="size-3 text-muted-foreground" aria-label="Integra" />}
+                        {s.affidabilita === 'alta' && <span title="Affidabilità alta" aria-label="Affidabilità alta"><Shield className="size-3 fill-current text-muted-foreground" /></span>}
+                        {s.affidabilita === 'bassa' && <span title="Affidabilità bassa" aria-label="Affidabilità bassa"><Shield className="size-3 text-muted-foreground" /></span>}
+                        <span className="truncate font-medium">{isAudio && (s.parti?.length ?? 0) > 1 ? `Registrazione unita da ${s.parti?.length} parti` : s.nome}</span>
+                      </>
+                    )}
+                  </div>
+
+                  {s.tipo === 'materiale' && <LinkMenuButton icon={MoreHorizontal} label={`Opzioni ${s.nome}`} items={[{ label: 'Modifica', icon: Pencil, onSelect: () => setEditingSource(s) }]} />}
+                  {/* Misura */}
+                  {!phone && sizeText && (
+                    <span className="shrink-0 whitespace-nowrap text-meta text-muted-foreground tabular-nums">{sizeText}</span>
+                  )}
+
+                  {/* Puntino fonte nuova non ancora usata */}
+                  {!s.usata && (
+                    <span
+                      role="img"
+                      className="size-1.5 shrink-0 rounded-full bg-amber-500"
+                      title="Non ancora usata"
+                      aria-label="Non ancora usata"
+                      data-testid="source-unused-dot"
+                    />
+                  )}
+
+                  {/* Pulsante rimuovi X */}
+                  <IconButton
+                    icon={X}
+                    label={`Togli ${s.nome}`}
+                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => handleDeleteSource(s)}
+                  />
+                  </div>
+                  {isAudio && s.parti && s.parti.length > 1 && <SourceAudioParts sourceId={s.id} parts={s.parti} />}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
 
       {/* Materiali non collocati */}
       {sourcesView?.unplaced && sourcesView.unplaced.length > 0 && (
@@ -548,6 +705,22 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData('text/plain', item.text || `Fonte: ${item.source_file}, pag. ${item.page}`)
+                  if (item.immagini && item.immagini.length > 0) {
+                    e.dataTransfer.setData(
+                      RT_MEDIA_DRAG_TYPE,
+                      JSON.stringify([
+                        {
+                          path: item.immagini[0],
+                          alt_text: `${item.source_file}, pag. ${item.page}`,
+                          source_name: item.source_file,
+                          source: `material:${item.source_id}:${item.page}`,
+                          page: item.page,
+                          in_assets: false,
+                          lessonId,
+                        },
+                      ]),
+                    )
+                  }
                 }}
                 data-testid={`unplaced-material-item-${item.page}`}
               >
@@ -679,6 +852,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
         </ConfirmDialog>
       )}
       {warningDialog}
+      <ImageInfoModal target={infoTarget} onClose={() => setInfoTarget(null)} />
     </div>
   )
 }

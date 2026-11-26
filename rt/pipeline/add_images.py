@@ -119,10 +119,13 @@ def save_image_descriptions(lesson_dir: str, data: Dict[str, Any]) -> None:
                            ('ocr_text', 'slide_title', 'visual_elements')) else None)
 
 
-def save_raw_image(lesson_dir: str, image_bytes: bytes, image_hash: str, ext: str = ".png") -> str:
+def save_raw_image(lesson_dir: str, image_bytes: bytes, image_hash: str, ext: Optional[str] = None) -> str:
     """Salva l'immagine grezza in assets/images/<hash_breve>.ext (solo se non già presente:
     idempotente per esistenza) e ritorna il path RELATIVO alla cartella della lezione (es.
     'assets/images/a1b2c3d4.png'), quello che andrà usato nel markdown finale."""
+    if ext is None:
+        from rt.core.materials import image_ext
+        ext = image_ext(image_bytes)
     short_hash = image_hash[:16]
     filename = f"{short_hash}{ext}"
     images_dir = get_images_dir(lesson_dir)
@@ -239,8 +242,13 @@ def describe_new_images(
     def _describe_one(item: Tuple[ExtractedImage, str, str, str]) -> ImageDescription:
         img, _img_hash, mime_type, _ext = item
         raise_if_cancelled()
-        b64_data = base64.b64encode(img.image_bytes).decode("utf-8")
-        image_data_url = f"data:{mime_type};base64,{b64_data}"
+        from rt.llm.decision_images import normalize_image
+        try:
+            encoded, send_mime = normalize_image(img.image_bytes)
+        except Exception:
+            encoded, send_mime = img.image_bytes, ("image/png" if mime_type == "image/webp" else mime_type)
+        b64_data = base64.b64encode(encoded).decode("utf-8")
+        image_data_url = f"data:{send_mime};base64,{b64_data}"
 
         is_curated = img.source_label.startswith(("pdf:", "folder:"))
         if is_curated:
@@ -613,8 +621,9 @@ def prepare_uploaded_images(lesson_dir, images, *, force_mock=False, failures=No
     for image, image_hash in hashed:
         if image_hash not in descriptions:
             if image.text or image.mapping_skip or by_decision:
+                from rt.core.materials import image_ext
                 descriptions[image_hash] = {
-                    "filename": save_raw_image(lesson_dir, image.image_bytes, image_hash),
+                    "filename": save_raw_image(lesson_dir, image.image_bytes, image_hash, ext=image_ext(image.image_bytes)),
                     "source": image.source_label,
                     "ocr_text": image.text,
                 }
@@ -896,10 +905,11 @@ def resolve_selected_images(
                 if fs.isfile(page_image_path(mat_match.impronta, cand)):
                     img_rel = cand
             if img_rel and fs.isfile(page_image_path(mat_match.impronta, img_rel)):
+                from rt.core.materials import image_ext
                 with fs.open(page_image_path(mat_match.impronta, img_rel), "rb") as f:
                     data = f.read()
                 h = compute_image_hash(data)
-                rel = save_raw_image(lesson_dir, data, h)
+                rel = save_raw_image(lesson_dir, data, h, ext=image_ext(data))
                 descriptions = load_image_descriptions(lesson_dir)
                 if h not in descriptions:
                     from rt.core.archive import file_type
@@ -977,9 +987,10 @@ def run_add_images(
             uploaded = extract_images(input_path, progress=report(0, 80, "Estraggo le pagine"))
         descriptions = load_image_descriptions(lesson_dir)
         for i, img in enumerate(uploaded, 1):
+            from rt.core.materials import image_ext
             h = compute_image_hash(img.image_bytes)
             if h not in descriptions:
-                rel = save_raw_image(lesson_dir, img.image_bytes, h)
+                rel = save_raw_image(lesson_dir, img.image_bytes, h, ext=image_ext(img.image_bytes))
                 descriptions[h] = {
                     "filename": rel,
                     "source": img.source_label,
@@ -1102,6 +1113,20 @@ def run_add_images(
                     [section_id] if section_kind == 'units' else [],
                     [section_id] if section_kind == 'macros' else [])
                 assigned_hashes.add(image_hash)
+    if assigned_hashes:
+        descs_now = load_image_descriptions(lesson_dir)
+        descs_changed = False
+        for image_hash in assigned_hashes:
+            entry = descs_now.get(image_hash)
+            if entry and entry.get("unplaced"):
+                entry.pop("unplaced", None)
+                if entry.get("alt_text") == "Materiale non collocato":
+                    src_tag = str(entry.get("source") or "")
+                    if src_tag.startswith("material:"):
+                        entry["alt_text"] = os.path.basename(entry.get("filename") or src_tag)
+                descs_changed = True
+        if descs_changed:
+            save_image_descriptions(lesson_dir, descs_now)
     changed = save_image_placement(lesson_dir, placement, previous.get("carousel", False), units=unit_placement)
     build_stale = build_was_valid and check_phase_status(lesson_dir, "build")[0] != PhaseStatus.VALID
 
