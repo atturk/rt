@@ -275,10 +275,12 @@ def import_archive(archive: Union[str, BinaryIO], on_existing: str = "ask",
                 for name in declared:
                     rel = name[len(folder) + 1:]
                     fs.copy2(os.path.join(staging, *rel.split("/")), lesson_path(target, rel))
+                from rt.db.sync import dual_write_lesson
+                # Data, materia, titolo e stato dall'info.yaml importato; sessione propria, come
+                # ogni dual-write: dentro un'altra transazione si bloccherebbe su SQLite.
+                dual_write_lesson(target)
                 with session_scope(db) as session:
-                    from rt.db.sync import sync_lesson
                     from rt.services.study_progress_service import restore_units
-                    sync_lesson(session, target)  # data, materia, titolo, stato dall'info.yaml importato
                     restore_units(session, created_id, manifest.get("study"))
                     _relink_calendar(session, links, created_id)
             except BaseException:
