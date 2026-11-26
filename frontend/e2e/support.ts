@@ -35,7 +35,15 @@ export function authHeaders() {
 }
 
 export async function apiGet<T>(request: APIRequestContext, path: string): Promise<T> {
-  const res = await request.get(`/api/v1${path}`, { headers: authHeaders() })
+  let res
+  try {
+    res = await request.get(`/api/v1${path}`, { headers: authHeaders() })
+  } catch (error) {
+    // Uvicorn chiude le connessioni keep-alive ferme da 5 s: se il client riusa proprio quella
+    // socket nello stesso istante riceve ECONNRESET. Una GET si può ripetere senza effetti.
+    if (!String(error).includes('ECONNRESET')) throw error
+    res = await request.get(`/api/v1${path}`, { headers: authHeaders() })
+  }
   expect(res.ok(), `GET ${path} -> ${res.status()}`).toBeTruthy()
   return (await res.json()) as T
 }
