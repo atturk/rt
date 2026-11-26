@@ -372,7 +372,8 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
             className={cn('size-3.5 shrink-0 transition-transform duration-150', !sourcesOpen && '-rotate-90')}
             aria-hidden
           />
-          <span>{sources.length > 0 ? `Fonti · ${sources.length}` : 'Fonti'}</span>
+          <span>Fonti</span>
+          {sources.length > 0 && <span className="tabular-nums">· {sources.length}</span>}
         </button>
         {/* Menu in un portale: non resta tagliato dal pannello che scorre. */}
         <LinkMenuButton

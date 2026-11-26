@@ -480,7 +480,7 @@ describe('SourcesSection: Fonti comprimibili e foto raggruppate', () => {
     renderComponent()
     // Con > 8 fonti la sezione Fonti parte chiusa di default, poi si espande
     const sourcesToggle = screen.getByTestId('sources-toggle')
-    await waitFor(() => expect(sourcesToggle).toHaveTextContent('Fonti · 17'))
+    await waitFor(() => expect(sourcesToggle).toHaveTextContent(/Fonti\s*· 17/))
     expect(sourcesToggle).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByTestId('sources-photo-group')).toBeNull()
 
@@ -542,7 +542,7 @@ describe('SourcesSection: Fonti comprimibili e foto raggruppate', () => {
 
     renderComponent(42)
     const toggle = screen.getByTestId('sources-toggle')
-    await waitFor(() => expect(toggle).toHaveTextContent('Fonti · 3'))
+    await waitFor(() => expect(toggle).toHaveTextContent(/Fonti\s*· 3/))
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByTestId('plus-sources')).toBeInTheDocument()
 
