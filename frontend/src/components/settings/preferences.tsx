@@ -309,7 +309,7 @@ function OutlineTimerRow({ initialSeconds, save }: { initialSeconds: number; sav
   )
 }
 
-const SOURCE_ROWS: [SourceKind, string][] = [['slide', 'Slide'], ['testo', 'Testi'], ['immagine', 'Immagini']]
+const SOURCE_ROWS: [SourceKind, string][] = [['slide', 'Slide'], ['testo', 'Documenti'], ['immagine', 'Immagini']]
 
 /** Modalità e uso proposti nell'import per ogni tipo di file; la guida si sceglie lì. */
 export function SourceDefaultsSection() {
@@ -319,7 +319,7 @@ export function SourceDefaultsSection() {
     <SettingsGroup
       id="fonti"
       title="Fonti"
-      description="Opzioni predefinite proposte quando carichi i file di una lezione."
+      description="Opzioni predefinite proposte quando carichi i file di una lezione. Documenti sono i PDF verticali e i file Word, TXT e MD; per Word, TXT e MD si usa sempre solo il testo, quindi lì conta solo “Come usarla”."
     >
       <SettingsMatrix
         rowHeaderLabel="Tipo di file"
