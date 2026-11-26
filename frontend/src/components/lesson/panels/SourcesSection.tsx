@@ -344,7 +344,6 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
   }
 
   let audioCounter = 0
-  let renderedPhotoGroup = false
 
   return (
     <div className="flex flex-col gap-3" data-testid="sources-section">
@@ -476,8 +475,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
           <div className="flex flex-col gap-1" data-testid="sources-list">
             {sources.map((s) => {
               if (groupPhotos && isSinglePhotoSource(s)) {
-                if (renderedPhotoGroup) return null
-                renderedPhotoGroup = true
+                if (s.id !== photoSources[0]?.id) return null
                 return (
                   <div key="photo-group" className="flex flex-col gap-2 rounded-lg px-2 py-1.5" data-testid="sources-photo-group">
                     <button
