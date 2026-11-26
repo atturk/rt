@@ -27,7 +27,8 @@ export function sourceKind(name: string, inspected?: Extraction | null): SourceK
 
 export function defaultOptions(name: string, defaults: SourceDefaults, inspected?: Extraction | null): SourceOptions {
   const chosen = defaults[sourceKind(name, inspected)]
-  return { estrai: textOnly(name) ? 'testo' : chosen.estrai, uso: chosen.estrai === 'solo_immagini' ? 'contesto' : chosen.uso, pagine: null }
+  const estrai = textOnly(name) ? 'testo' : chosen.estrai
+  return { estrai, uso: estrai === 'solo_immagini' ? 'contesto' : chosen.uso, pagine: null }
 }
 
 export function useSourceDefaults(): [SourceDefaults, (value: SourceDefaults) => void] {
