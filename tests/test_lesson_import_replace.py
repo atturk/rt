@@ -115,6 +115,12 @@ def test_keep_both_imports_next_to_the_existing_lesson(api_client, workspace, wo
     result = _import(api_client, worker, payload, [{"file": "lezione-di-b.zip", "action": "keep"}])
     assert result["results"][0]["status"] == "imported"
     assert len(api_client.get("/api/v1/lessons").json()) == 2
+    from rt.db.models import Lesson
+    from rt.db.session import session_scope
+    from rt.db.engine import get_database
+    with session_scope(get_database()) as session:
+        rows = [r for r in session.query(Lesson).all() if "Membrane" in (r.folder_name or "")]
+        assert rows and rows[0].materia and rows[0].data, "le colonne della lezione importata restano vuote"
 
 
 def test_other_hour_is_another_lesson(api_client, workspace, worker, lesson_a):
