@@ -127,6 +127,22 @@ it('PDF esportati: logo e QR di RT sono attivi e si spegne salvando pdf.qr-sito'
   expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'pdf.qr-sito' } }, body: false })
 })
 
+it('File salvati: nella finestra RT «Mostra nel Finder» è attivo e si spegne salvando file.mostra-salvati', async () => {
+  const put = vi.spyOn(api, 'PUT').mockImplementation(((_path: string, { body }: { body: unknown }) =>
+    Promise.resolve({ data: body, response: new Response('{}') })) as never)
+  render(<QueryClientProvider client={client}><AppearanceSection settings={testSettings} /></QueryClientProvider>)
+  const reveal = screen.getByRole('switch', { name: /i file appena salvati/ })
+  expect(reveal).toHaveAttribute('aria-checked', 'true')
+  await userEvent.click(reveal)
+  expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'file.mostra-salvati' } }, body: false })
+})
+
+it('File salvati: nel browser la voce non c’è', () => {
+  sessionStorage.removeItem('rt-app')
+  render(<QueryClientProvider client={client}><AppearanceSection settings={testSettings} /></QueryClientProvider>)
+  expect(screen.queryByRole('switch', { name: /i file appena salvati/ })).toBeNull()
+})
+
 it('Fonti: i default per tipo di file, con Solo immagini l’uso si spegne e la guida si sceglie nell’import', async () => {
   const { SourceDefaultsSection } = await import('./preferences')
   const stored: Record<string, unknown> = {}

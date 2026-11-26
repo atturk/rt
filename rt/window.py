@@ -302,7 +302,8 @@ class DesktopApi:
 
     def mostra_esportazione(self) -> None:
         if _last_export_path and os.path.isfile(_last_export_path):
-            _open_path(os.path.dirname(_last_export_path))
+            from rt import window_reveal
+            window_reveal.reveal([os.path.realpath(_last_export_path)])
 
     def salva_copia_backup(self, percorso_snapshot: str) -> dict:
         from rt.services import backup_service
@@ -341,7 +342,9 @@ class DesktopApi:
         if not (chosen.lower().endswith(".rtdb") or chosen.lower().endswith(".zip")):
             chosen += ".rtdb"
 
-        if not _stream_backup(self._window, ["backup", "--export", target_path, "--to", chosen, "--progress-json"], tipo="copia"):
+        from rt import window_reveal
+        if not _stream_backup(self._window, ["backup", "--export", target_path, "--to", chosen, "--progress-json"], tipo="copia",
+                              on_success=lambda: window_reveal.saved([chosen])):
             return {"errore": "Un backup è già in corso."}
         return {"avviato": True}
 
@@ -466,10 +469,13 @@ class DesktopApi:
         if not chosen or not os.path.isdir(chosen):
             return {"annullato": True}
 
+        copied = []
         for fname in files:
             src = os.path.join(job_dir, fname)
             if os.path.isfile(src):
-                shutil.copy2(src, os.path.join(chosen, fname))
+                copied.append(shutil.copy2(src, os.path.join(chosen, fname)))
+        from rt import window_reveal
+        window_reveal.saved(copied)
 
         _cleanup_share_dirs()
         shutil.rmtree(job_dir, ignore_errors=True)
@@ -1334,6 +1340,8 @@ def open_window(base_url: str, path: str = "/") -> int:
         elif sys.platform == "win32":
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("atturk.RT")
         webview.settings["ALLOW_DOWNLOADS"] = True
+        from rt import window_reveal
+        window_reveal.install_download_hooks()
         webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
         webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False
         api = DesktopApi(None, base_url=base_url)
@@ -1482,7 +1490,9 @@ def _export_collection(window):
         if folders and not window.create_confirmation_dialog('Esporta tutto',
                 f'{len(folders)} lezioni sono ancora in una cartella: le sposto nel database e continuo?'):
             return
-        _stream_backup(window, ['export', chosen, '--yes', '--json'], tipo='esporta')
+        from rt import window_reveal
+        _stream_backup(window, ['export', chosen, '--yes', '--json'], tipo='esporta',
+                       on_success=lambda: window_reveal.saved([chosen]))
     except Exception as exc:
         _notice(window, str(exc))
 
