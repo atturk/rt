@@ -15213,7 +15213,9 @@
         "responses": {
           "200": {
             "content": {
-              "image/png": {}
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {}
             },
             "description": "Successful Response"
           },
@@ -23902,7 +23904,9 @@
         "responses": {
           "200": {
             "content": {
-              "image/png": {}
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {}
             },
             "description": "Successful Response"
           },
