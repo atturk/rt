@@ -1,7 +1,7 @@
 import { ArrowDown, Clock } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 
-import { LessonConflictAction } from './LessonConflictAction'
+import { LessonConflictAction, MissingModelAction } from './LessonConflictAction'
 import { hasLessonConflict } from '@/lib/jobs'
 import { errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
@@ -67,6 +67,7 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
           <RetryButton title={conflict ? 'Esiste già una lezione con questi dati' : undefined} jobId={j.id} onRetried={compact ? undefined : (id) => navigate(`/job/${id}`)} />
         )}
         <LessonConflictAction job={j} />
+        <MissingModelAction job={j} />
         {canCloseJob(j) && (
           <Button size="sm" disabled={close.isPending} onClick={() => { close.reset(); setConfirmClose(true) }}>
             Chiudi e decidi dopo

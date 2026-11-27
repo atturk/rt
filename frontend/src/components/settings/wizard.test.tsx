@@ -137,14 +137,120 @@ describe('SetupWizard: 3 passi e Connessione', () => {
   })
 })
 
-it('il modello comune non assegna le fasi delle immagini e resta nel passo Modelli', async () => {
-  const put = vi.spyOn(api, 'PUT').mockResolvedValue({ data: testSettings, response: new Response('{}', { status: 200 }) } as never)
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/impostazioni/configurazione?passo=2']}><SetupWizard settings={testSettings} /></MemoryRouter></QueryClientProvider>)
-  const form = screen.getByRole('form', { name: 'Stesso modello per tutte le fasi' })
-  await userEvent.click(within(form).getByRole('button', { name: 'Usa per tutte le fasi' }))
-  await waitFor(() => expect(put).toHaveBeenCalledTimes(6))
-  expect((put.mock.calls as unknown as [string, { params: { path: { job: string } } }][]).map(([, options]) => options.params.path.job)).toEqual(['outline', 'rewrite', 'review', 'recall', 'enrichment_writer', 'enrichment_visualizer'])
-  expect(screen.getByText(/Descrizione immagini e generazione immagini richiedono modelli dedicati/)).toBeVisible()
-  expect(screen.getAllByTestId('phase-row')).toHaveLength(2)
+const unassignedSettings: Settings = {
+  ...testSettings,
+  phases: testSettings.phases.map((p) => ({ ...p, connection: null, model: null })),
+}
+
+const catalogModels = [
+  { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', prompt_price: 0.14, completion_price: 0.28, recommended: true },
+  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', prompt_price: 0.075, completion_price: 0.3, recommended: false },
+  ...Array.from({ length: 55 }, (_, i) => ({
+    id: `extra/model-${i + 1}`,
+    name: `Extra Model ${i + 1}`,
+    prompt_price: null,
+    completion_price: null,
+    recommended: false,
+  })),
+]
+
+describe('SetupWizard: passo Modello e combobox', () => {
+  it('combobox ARIA filtra, naviga da tastiera, ha autoComplete=off e non salva prima della scelta', async () => {
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+      if (path === '/api/v1/settings/connections/{name}/catalog') return Promise.resolve(ok(catalogModels))
+      if (path === '/api/v1/settings/estimate') return Promise.resolve(ok({ cost_eur: 0.04, formatted: 'circa 0,04 € a lezione (stima)' }))
+      return Promise.resolve(ok({}))
+    }) as never)
+    const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(testSettings))
+
+    renderWizard('/impostazioni/configurazione?passo=2', unassignedSettings)
+    const user = userEvent.setup()
+
+    const combo = await screen.findByRole('combobox')
+    expect(combo).toHaveAttribute('autocomplete', 'off')
+    const continueBtn = screen.getByRole('button', { name: 'Continua' })
+    expect(continueBtn).toBeDisabled()
+
+    // Apre l'elenco: max 50 voci, Consigliato e prezzo visibili
+    await user.click(combo)
+    const listbox = screen.getByRole('listbox')
+    expect(within(listbox).getAllByRole('option')).toHaveLength(50)
+    expect(within(listbox).getByText('Consigliato')).toBeVisible()
+    expect(within(listbox).getByText('$0.14 / M token')).toBeVisible()
+
+    // Digitare filtra senza salvare nulla
+    await user.type(combo, 'gemini')
+    expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(1)
+    expect(put).not.toHaveBeenCalled()
+    expect(continueBtn).toBeDisabled()
+
+    // Esc chiude, ArrowDown riapre e Invio sceglie
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).toBeNull()
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(combo).toHaveValue('google/gemini-2.5-flash')
+    expect(continueBtn).toBeEnabled()
+    expect(await screen.findByTestId('wizard-cost-estimate')).toHaveTextContent('circa 0,04 € a lezione (stima)')
+
+    // Nessun salvataggio prima di Continua
+    expect(put).not.toHaveBeenCalled()
+
+    await user.click(continueBtn)
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(6))
+    expect((put.mock.calls as unknown as [string, { params: { path: { job: string } } }][]).map(([, options]) => options.params.path.job)).toEqual([
+      'outline', 'rewrite', 'review', 'recall', 'enrichment_writer', 'enrichment_visualizer',
+    ])
+  })
+
+  it('nasconde la stima se il prezzo manca, e i facoltativi non bloccano Continua', async () => {
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+      if (path === '/api/v1/settings/connections/{name}/catalog') return Promise.resolve(ok(catalogModels.slice(0, 2)))
+      if (path === '/api/v1/settings/estimate') return Promise.resolve(ok({ cost_eur: null, formatted: 'stima non disponibile' }))
+      return Promise.resolve(ok({}))
+    }) as never)
+    const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(testSettings))
+
+    renderWizard('/impostazioni/configurazione?passo=2', unassignedSettings)
+    const user = userEvent.setup()
+
+    const combo = await screen.findByRole('combobox')
+    await user.click(combo)
+    await user.click(within(screen.getByRole('listbox')).getByText('DeepSeek V4 Flash'))
+
+    expect(screen.getByRole('button', { name: 'Continua' })).toBeEnabled()
+    expect(screen.queryByTestId('wizard-cost-estimate')).toBeNull()
+
+    // Facoltativi presenti e non impostati, non bloccano
+    const descRow = screen.getByTestId('optional-model-image_description')
+    expect(descRow).toHaveTextContent('Non impostato')
+    await user.click(within(descRow).getByRole('button', { name: 'Aggiungi' }))
+    const optCombo = screen.getByRole('combobox', { name: 'Modello per Descrizione immagini' })
+    await user.click(optCombo)
+    await user.click(within(screen.getByRole('listbox')).getByText('Gemini 2.5 Flash'))
+
+    await waitFor(() => expect(put).toHaveBeenCalledWith('/api/v1/settings/phases/{job}', {
+      params: { path: { job: 'image_description' } },
+      body: { connection: 'locale', model: 'google/gemini-2.5-flash', batch: false },
+    }))
+  })
+
+  it('in fallback su catalogo offline accetta un modello scritto a mano', async () => {
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+      if (path === '/api/v1/settings/connections/{name}/catalog') {
+        return Promise.resolve(ok([{ id: 'test', name: 'test', prompt_price: null, completion_price: null, recommended: false }], { 'X-Catalog-Fallback': '1' }))
+      }
+      return Promise.resolve(ok({ cost_eur: null, formatted: 'stima non disponibile' }))
+    }) as never)
+    const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(testSettings))
+
+    renderWizard('/impostazioni/configurazione?passo=2', unassignedSettings)
+    const user = userEvent.setup()
+
+    const combo = await screen.findByRole('combobox')
+    await user.type(combo, 'custom/my-local-model')
+    const continueBtn = screen.getByRole('button', { name: 'Continua' })
+    expect(continueBtn).toBeEnabled()
+    await user.click(continueBtn)
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(6))
+  })
 })

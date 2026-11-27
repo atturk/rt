@@ -103,6 +103,16 @@ describe('JobLive', () => {
     expect(screen.queryByRole('button', { name: 'Annulla job' })).toBeNull()
   })
 
+  it('un job fallito per modello immagini mancante mostra il link a /impostazioni/modelli', () => {
+    renderJob({
+      state: 'failed',
+      error: 'Per leggere le immagini serve un modello di descrizione immagini. Sceglilo in Impostazioni › Modelli.',
+      result: { code: 'missing_model', details: { phase: 'image_description', path: '/impostazioni/modelli' } },
+    })
+    expect(screen.getByTestId('job-error')).toHaveTextContent('Per leggere le immagini serve un modello di descrizione immagini.')
+    expect(screen.getByTestId('missing-model-link')).toHaveAttribute('href', '/impostazioni/modelli')
+  })
+
   it('un job completato porta alla lezione, tranne nella vista compatta', () => {
     renderJob({ state: 'succeeded' })
     expect(screen.getByRole('link', { name: 'Apri la lezione' })).toHaveAttribute('href', '/lezioni/3')

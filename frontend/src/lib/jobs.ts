@@ -287,3 +287,15 @@ export function mergeEvents(current: JobEvent[], incoming: JobEvent[]): JobEvent
 export function hasLessonConflict(job: Job) {
   return (job.result as { code?: string } | null)?.code === 'lesson_exists'
 }
+
+export function hasMissingModelError(job: Pick<Job, 'state' | 'result' | 'error' | 'error_message'>) {
+  if (job.state !== 'failed') return false
+  if ((job.result as { code?: string } | null)?.code === 'missing_model') return true
+  const msg = job.error_message || job.error || ''
+  return msg.includes('Impostazioni › Modelli')
+}
+
+export function missingModelPath(job: Pick<Job, 'result'>) {
+  const path = (job.result as { details?: { path?: string } } | null)?.details?.path
+  return typeof path === 'string' && path.startsWith('/impostazioni') ? path : '/impostazioni/modelli'
+}

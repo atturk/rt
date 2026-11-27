@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { errorMessage } from '@/api/client'
 import { useWorkers } from '@/api/hooks'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
+import { MissingModelAction } from '@/components/jobs/LessonConflictAction'
 import { Alert } from '@/components/ui/alert'
 
 const STATE_TEXT: Record<string, string> = {
@@ -47,7 +48,12 @@ export function JobProgress({
       <Alert tone={tone} className="min-w-0 [overflow-wrap:anywhere]">
         <span className="font-medium">{label}:</span> {STATE_TEXT[state] ?? state}
         {progress?.message && !jobFinished(data) ? ` · ${progress.message}` : ''}
-        {data?.error ? ` · ${data.error}` : ''}
+        {(data?.error_message || data?.error) ? ` · ${data.error_message || data.error}` : ''}
+        {data && (
+          <div className="mt-2 empty:hidden">
+            <MissingModelAction job={data} />
+          </div>
+        )}
       </Alert>
       {!jobFinished(data) && (
         <div
