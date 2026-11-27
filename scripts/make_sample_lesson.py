@@ -356,9 +356,14 @@ def build_sample_lesson(output_path: str, screenshot_dir: Optional[str] = DEFAUL
         with open(os.path.join(lesson_dir, "trascritto grezzo.md"), "w", encoding="utf-8") as f:
             f.write(TRANSCRIPT_MD)
         original = LLMClient._generate_mock_response
+        secrets_env = {} if os.environ.get("RT_SECRETS_FILE") else {
+            "RT_SECRETS_FILE": os.path.join(temp_root, "absent-secrets.enc"),
+        }
         with (
+            mock.patch.dict(os.environ, secrets_env),
             mock.patch.object(LLMClient, "_generate_mock_response", _scripted_response(original)),
             mock.patch("rt.llm.jev_client.call_jev", side_effect=JevError("disabilitato nella generazione esempio")),
+            mock.patch("rt.security.secrets.keyring_get_master_key", return_value=None),
         ):
             options = PipelineOptions(mock=True, with_review=True, auto_accept=True, rename=False)
             result = run_pipeline([lesson_dir], options, RunContext())
