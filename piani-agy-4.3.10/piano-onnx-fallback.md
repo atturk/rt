@@ -71,3 +71,18 @@ Chi ha macparakeet-cli continua a usarlo (è più veloce, Neural Engine).
 
 ## Fuori da questo piano
 Non cambiare il default salvato né migrare config esistenti. Non toccare il wizard (piano separato).
+
+## Aggiunte dal test sul Pro (27/11, macparakeet nascosto)
+
+7. **Controllo prima di creare la lezione**: oggi il SetupError arriva dopo la creazione, e la lezione resta vuota. Il motore effettivo
+   va deciso (e, se nessuno è disponibile, l'errore va dato) prima di creare la lezione, nel punto in cui si avvia l'ingest audio.
+8. **`recommended`** in `settings_service.transcription_engines()`: oggi sul Mac è sempre «macparakeet» anche senza binario. Con
+   `macparakeet_installed=false` e ONNX disponibile deve essere «parakeet».
+9. **Modello caricato due volte** al primo avvio: le righe CoreML compaiono due volte, a 11 s di distanza (probabilmente `_models` viene chiamato
+   prima per `ensure_model`/VAD e poi per la trascrizione). Caricarlo una volta sola (cache del modulo), test con un contatore.
+10. **Coda dell'ultima frase troncata**: con ONNX la fine dell'audio esce «Grazie alla pros», mentre macparakeet dà «Grazie, alla prossima lezione.».
+    Probabilmente il VAD (silero) chiude l'ultimo segmento troppo presto. Aggiungere un padding finale ai segmenti VAD (es. 300-500 ms, senza
+    superare la durata dell'audio) e, se l'ultimo segmento finisce entro 1 s dalla fine del file, estenderlo fino alla fine. Test su un audio
+    sintetico con parlato fino all'ultimo istante (o con un mock del VAD che verifica i limiti passati al modello).
+11. Nota: con un audio già trascritto RT riusa la trascrizione dall'archivio (stessa impronta e stesso motore) e non controlla il binario. Va bene così,
+    non cambiarlo.
