@@ -288,15 +288,13 @@ class TelegramRuntimeConfig(BaseModel):
 
 
 def default_engine() -> str:
-    """Parakeet ONNX ovunque se onnx-asr è disponibile; altrimenti macparakeet su Mac.
+    """macparakeet su Mac (più preciso e ~20x più veloce di ONNX; se manca, effective_engine
+    ricade su Parakeet ONNX); Parakeet ONNX sugli altri sistemi.
     RT_DEFAULT_STT_ENGINE lo fissa (la suite di test lo usa per avere lo stesso default su ogni sistema)."""
     import sys
     forced = os.environ.get("RT_DEFAULT_STT_ENGINE", "").strip()
     if forced in ("macparakeet", "parakeet", "custom"):
         return forced
-    from rt.core import onnx_stt
-    if onnx_stt.available():
-        return "parakeet"
     return "macparakeet" if sys.platform == "darwin" else "parakeet"
 
 

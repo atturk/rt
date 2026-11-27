@@ -77,9 +77,8 @@ def test_default_engine_per_system(monkeypatch, tmp_path):
     monkeypatch.setattr("sys.platform", "win32")
     assert default_engine() == "parakeet"
     monkeypatch.setattr("sys.platform", "darwin")
-    assert default_engine() == "parakeet"
+    assert default_engine() == "macparakeet"
 
-    # Se onnx-asr non è disponibile, su Mac ripiega su macparakeet
     monkeypatch.setattr(onnx_stt, "available", lambda: False)
     assert default_engine() == "macparakeet"
 

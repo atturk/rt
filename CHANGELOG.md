@@ -1,5 +1,14 @@
 # Novità di RT
 
+## 4.3.10b4 — 2026-11-27
+
+Quarta beta della 4.3.10: i dati di RT passano nella cartella di sistema e sul Mac torna macparakeet come motore predefinito.
+
+### Cambiamenti
+
+- **Cartella dati nella posizione di sistema**: sull'app Mac i dati passano da ~/.rt a ~/Library/Application Support/RT, su Windows in %LOCALAPPDATA%\RT. Lo spostamento avviene una volta sola all'avvio dopo l'aggiornamento, con una copia di sicurezza del database; se non si può fare (lavorazioni in corso, dati su un disco esterno) RT riprova al prossimo avvio. Da terminale e su Linux resta ~/.rt.
+- **macparakeet torna il motore predefinito sul Mac** per le nuove installazioni: sulle lezioni vere è più preciso e circa 20 volte più veloce di Parakeet ONNX. Se macparakeet non è installato RT usa Parakeet ONNX; Windows usa sempre Parakeet ONNX.
+
 ## 4.3.10b3 — 2026-11-27
 
 Terza beta della 4.3.10: RT trascrive da sola, senza programmi esterni, e mostra in Impostazioni i componenti che scarica.

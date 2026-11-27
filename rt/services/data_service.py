@@ -95,10 +95,11 @@ def init_data_dir(path: Optional[str] = None, say: Callable[[str], None] = print
 
 
 def _fallback_engine(general: str) -> None:
-    """Parakeet ONNX è il motore predefinito; dove onnx-asr manca (es. Python 3.15 senza ruote
-    di onnxruntime) la nuova configurazione parte con macparakeet invece di un motore rotto."""
+    """La nuova configurazione parte con macparakeet sul Mac (più preciso e veloce di ONNX) e
+    dove onnx-asr manca (es. Python 3.15 senza ruote di onnxruntime)."""
+    import sys
     from rt.core import onnx_stt
-    if onnx_stt.available():
+    if sys.platform != "darwin" and onnx_stt.available():
         return
     try:
         with open(general, encoding="utf-8") as f:

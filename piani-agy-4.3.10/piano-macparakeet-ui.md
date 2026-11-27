@@ -63,3 +63,9 @@ Mac = macparakeet (consigliato) scaricato da RT, senza Homebrew; Windows = solo 
 ## Regole
 - agy scrive solo codice; niente esecuzione del vero macparakeet-cli né download reali nei test.
 - Test e script non devono mai toccare la ~/.rt vera né Application Support veri (HOME finta).
+
+## Costanti verificate (Pro, 2026-11-27, senza eseguire il binario)
+- URL: https://github.com/moona3k/macparakeet/releases/download/cli-v5.1.0/macparakeet-cli-5.1.0-darwin-arm64.tar.gz (20.679.495 byte)
+- SHA256 del .tar.gz: b48210cb22eaf834fb4fea2201dab9334a1165ccaf4133991154c33123b43674
+- Dentro: macparakeet-cli-5.1.0-darwin-arm64/macparakeet-cli (60.823.984 byte), SHA256 ef07692faca2364ac0a24345a96389dd97721f6683f7ccee285bb4b9231212f5
+- Procedura: scarica il .tar.gz in .part, verifica SHA256, estrai SOLO quel membro (niente percorsi assoluti o con ..), verifica lo SHA256 del binario, chmod 755, os.replace in <dati>/bin/macparakeet-cli.
