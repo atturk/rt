@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/api/client'
 import type { Settings } from '@/api/settings'
+import { NewLessonContext } from '@/components/shell/newLesson'
 import { testSettings } from './testSettings'
 import { SetupWizard } from './wizard'
 
@@ -19,16 +20,21 @@ const emptySettings: Settings = {
   phases: testSettings.phases.map((p) => ({ ...p, connection: null, model: null })),
 }
 
-function renderWizard(entry: string, settings: Settings = emptySettings) {
+function renderWizard(entry: string, settings: Settings = emptySettings, onOpenNewLesson = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[entry]}>
-        <Routes>
-          <Route path="/impostazioni/configurazione" element={<SetupWizard settings={settings} />} />
-          <Route path="/" element={<p>Elenco lezioni</p>} />
-        </Routes>
-      </MemoryRouter>
+      <NewLessonContext value={onOpenNewLesson}>
+        <MemoryRouter initialEntries={[entry]}>
+          <Routes>
+            <Route path="/impostazioni/configurazione" element={<SetupWizard settings={settings} />} />
+            <Route path="/impostazioni/telegram/collega" element={<p>Schermata Telegram</p>} />
+            <Route path="/impostazioni/modelli" element={<p>Modelli</p>} />
+            <Route path="/lezioni/:id" element={<p>Lezione di esempio aperta</p>} />
+            <Route path="/" element={<p>Elenco lezioni</p>} />
+          </Routes>
+        </MemoryRouter>
+      </NewLessonContext>
     </QueryClientProvider>,
   )
 }
@@ -252,5 +258,67 @@ describe('SetupWizard: passo Modello e combobox', () => {
     expect(continueBtn).toBeEnabled()
     await user.click(continueBtn)
     await waitFor(() => expect(put).toHaveBeenCalledTimes(6))
+  })
+})
+
+describe('SetupWizard: passo Pronto', () => {
+  const readySettings: Settings = {
+    ...testSettings,
+    connections: [{
+      name: 'OpenRouter',
+      provider: 'openrouter',
+      base_url: 'https://openrouter.ai/api/v1',
+      models: ['deepseek/deepseek-v4-flash'],
+      credentials: [{ name: 'or_1', set: true }],
+      supports_batch: false,
+    }],
+    phases: testSettings.phases.map((p) =>
+      ['image_description', 'enrichment_image'].includes(p.job)
+        ? { ...p, connection: null, model: null }
+        : { ...p, connection: 'OpenRouter', model: 'deepseek/deepseek-v4-flash' },
+    ),
+  }
+
+  it('mostra le due schede, il collegamento a Telegram, il riepilogo e segna la guida completata su ogni uscita', async () => {
+    const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(readySettings))
+    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ lesson_id: 42, materia: 'ESEMPIO', titolo: 'Introduzione a RT' }))
+    const openNewLesson = vi.fn()
+
+    renderWizard('/impostazioni/configurazione?passo=3', readySettings, openNewLesson)
+    const user = userEvent.setup()
+
+    expect(screen.getByRole('heading', { name: 'RT è pronto' })).toBeVisible()
+    expect(screen.getByRole('button', { name: /Prova la lezione di esempio/ })).toBeVisible()
+    expect(screen.getByRole('button', { name: /Crea la tua prima lezione/ })).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Collega Telegram →' })).toHaveAttribute('href', '/impostazioni/telegram/collega')
+
+    const summary = screen.getByTestId('wizard-summary')
+    expect(summary).toHaveTextContent('✓ Connessione — OpenRouter · 1 chiave')
+    expect(summary).toHaveTextContent('✓ Modello — deepseek/deepseek-v4-flash')
+    expect(summary).toHaveTextContent('– Immagini (facoltativo) — Aggiungi')
+    expect(within(summary).getByRole('link', { name: 'Aggiungi' })).toHaveAttribute('href', '/impostazioni/modelli')
+
+    // Uscita 1: Prova la lezione di esempio
+    await user.click(screen.getByRole('button', { name: /Prova la lezione di esempio/ }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/lessons/sample'))
+    expect(put).toHaveBeenCalledWith('/api/v1/settings/notices', { body: { notice: 'setup_wizard', dismissed: true } })
+    expect(await screen.findByText('Lezione di esempio aperta')).toBeVisible()
+
+    // Uscita 2: Crea la tua prima lezione
+    cleanup()
+    put.mockClear()
+    renderWizard('/impostazioni/configurazione?passo=3', readySettings, openNewLesson)
+    await user.click(screen.getByRole('button', { name: /Crea la tua prima lezione/ }))
+    expect(put).toHaveBeenCalledWith('/api/v1/settings/notices', { body: { notice: 'setup_wizard', dismissed: true } })
+    expect(openNewLesson).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText('Elenco lezioni')).toBeVisible()
+
+    // Uscita 3: Vai alle lezioni
+    cleanup()
+    put.mockClear()
+    renderWizard('/impostazioni/configurazione?passo=3', readySettings, openNewLesson)
+    await user.click(screen.getByRole('button', { name: 'Vai alle lezioni' }))
+    expect(put).toHaveBeenCalledWith('/api/v1/settings/notices', { body: { notice: 'setup_wizard', dismissed: true } })
+    expect(await screen.findByText('Elenco lezioni')).toBeVisible()
   })
 })

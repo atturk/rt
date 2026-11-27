@@ -1,8 +1,9 @@
-import { Check } from 'lucide-react'
+import { Check, Loader2, Plus, Sparkles } from 'lucide-react'
 import { useId, useState, type KeyboardEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
-import { errorMessage } from '@/api/client'
+import { api, errorMessage, unwrap } from '@/api/client'
 import { useDismissNotice } from '@/api/documentEdit'
 import {
   useAssignAllPhases,
@@ -12,6 +13,7 @@ import {
   type CatalogModel,
   type Settings,
 } from '@/api/settings'
+import { useOpenNewLesson } from '@/components/shell/newLesson'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,6 +53,11 @@ export function SetupWizard({ settings }: { settings: Settings }) {
   const navigate = useNavigate()
   const dismiss = useDismissNotice()
   // Senza connessioni ogni pagina porta qui (setup_required): "Configura dopo" lo spegne.
+  const markCompleted = () => {
+    if (!settings.notices.dismissed.includes('setup_wizard')) {
+      dismiss.mutate('setup_wizard')
+    }
+  }
   const later = () => {
     if (!settings.notices.dismissed.includes('setup_wizard')) {
       dismiss.mutate('setup_wizard', { onSettled: () => void navigate('/') })
@@ -66,9 +73,13 @@ export function SetupWizard({ settings }: { settings: Settings }) {
         <div>
           <h1 className="text-heading font-bold tracking-tight">Configurazione guidata</h1>
         </div>
-        {step < STEPS.length && (
+        {step < STEPS.length ? (
           <Button variant="ghost" size="sm" onClick={later} disabled={dismiss.isPending} className="text-link hover:underline">
             Configura dopo
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" onClick={later} disabled={dismiss.isPending} className="text-link hover:underline">
+            Vai alle lezioni
           </Button>
         )}
       </div>
@@ -136,14 +147,7 @@ export function SetupWizard({ settings }: { settings: Settings }) {
           </div>
         )}
         {step === 2 && <ModelsStep settings={settings} onBack={() => go(1)} onDone={next} />}
-        {step === 3 && (
-          <div className="flex flex-col gap-3 text-body">
-            <h2 className="text-heading font-semibold tracking-tight">RT è pronto</h2>
-            <Link to="/" className="inline-flex h-11 w-fit items-center rounded-md bg-primary px-6 text-body font-medium text-primary-foreground">
-              Vai alle lezioni
-            </Link>
-          </div>
-        )}
+        {step === 3 && <ProntoStep settings={settings} onComplete={markCompleted} />}
       </Card>
     </section>
   )
@@ -629,6 +633,146 @@ function ModelsStep({ settings, onBack, onDone }: { settings: Settings; onBack: 
           Continua
         </Button>
       </div>
+    </div>
+  )
+}
+
+function ProntoStep({ settings, onComplete }: { settings: Settings; onComplete: () => void }) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const openNewLesson = useOpenNewLesson()
+  const [importing, setImporting] = useState(false)
+  const [sampleError, setSampleError] = useState<string | null>(null)
+
+  const conn = settings.connections[0]
+  const keyCount = conn?.credentials.length ?? 0
+  const mainPhase = settings.phases.find((p) => p.model && !OPTIONAL_JOBS.has(p.job)) ?? settings.phases.find((p) => p.model)
+  const imageDescPhase = settings.phases.find((p) => p.job === 'image_description')
+
+  async function handleSample() {
+    setImporting(true)
+    setSampleError(null)
+    try {
+      const res = await unwrap(api.POST('/api/v1/lessons/sample'))
+      onComplete()
+      void queryClient.invalidateQueries({ queryKey: ['lessons'] })
+      if (res && typeof res === 'object' && 'lesson_id' in res && res.lesson_id != null) {
+        void navigate(`/lezioni/${res.lesson_id}`)
+      } else {
+        void navigate('/')
+      }
+    } catch (err) {
+      setSampleError(errorMessage(err))
+      setImporting(false)
+    }
+  }
+
+  function handleNewLesson() {
+    onComplete()
+    void navigate('/')
+    openNewLesson()
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <header className="flex flex-col items-center gap-2 text-center">
+        <div className="flex size-12 items-center justify-center rounded-full bg-success-soft text-success" aria-hidden>
+          <Check className="size-6" />
+        </div>
+        <h2 className="text-heading font-semibold tracking-tight">RT è pronto</h2>
+        <p className="text-body text-muted-foreground">Ora prova a creare la tua prima lezione.</p>
+      </header>
+
+      {sampleError && <Alert tone="danger">{sampleError}</Alert>}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => void handleSample()}
+          disabled={importing}
+          className="flex flex-col items-start gap-1.5 rounded-lg bg-primary p-4 text-left text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
+        >
+          <span className="inline-flex items-center gap-1.5 text-body font-semibold">
+            {importing ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Sparkles className="size-4" aria-hidden />}
+            Prova la lezione di esempio
+          </span>
+          <span className="text-meta opacity-90">
+            Una guida rapida a RT dentro una lezione vera. Gratis, nessuna elaborazione.
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleNewLesson}
+          disabled={importing}
+          className="flex flex-col items-start gap-1.5 rounded-lg border bg-card p-4 text-left text-foreground transition-colors hover:bg-muted/40 disabled:opacity-50 cursor-pointer"
+        >
+          <span className="inline-flex items-center gap-1.5 text-body font-semibold">
+            <Plus className="size-4" aria-hidden />
+            Crea la tua prima lezione
+          </span>
+          <span className="text-meta text-muted-foreground">
+            Carica la registrazione e, se li hai, slide, PDF o foto della lavagna.
+          </span>
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-4">
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-body font-medium text-foreground">Usi Telegram?</span>
+            <Badge>FACOLTATIVO</Badge>
+          </div>
+          <p className="text-meta text-muted-foreground">Ricevi avvisi e domande di ripasso sul telefono.</p>
+        </div>
+        <Link
+          to="/impostazioni/telegram/collega"
+          state={{ from: '/impostazioni/configurazione?passo=3' }}
+          className="inline-flex h-11 items-center rounded-md border bg-card px-4 text-body font-medium text-foreground hover:bg-muted"
+        >
+          Collega Telegram →
+        </Link>
+      </div>
+
+      <ul className="flex flex-col gap-1.5 rounded-lg bg-muted/30 px-4 py-3 text-meta" data-testid="wizard-summary">
+        <li className="flex items-center gap-2">
+          <span className={conn ? 'text-success font-semibold' : 'text-muted-foreground'}>{conn ? '✓' : '–'}</span>
+          {' '}
+          <span>
+            Connessione —{' '}
+            {conn ? `${conn.name} · ${keyCount} ${keyCount === 1 ? 'chiave' : 'chiavi'}` : 'Non configurata'}
+          </span>
+        </li>
+        <li className="flex items-center gap-2">
+          <span className={mainPhase?.model ? 'text-success font-semibold' : 'text-muted-foreground'}>
+            {mainPhase?.model ? '✓' : '–'}
+          </span>
+          {' '}
+          <span>Modello — {mainPhase?.model ?? 'Non impostato'}</span>
+        </li>
+        <li className="flex items-center gap-2">
+          <span className={imageDescPhase?.model ? 'text-success font-semibold' : 'text-muted-foreground'}>
+            {imageDescPhase?.model ? '✓' : '–'}
+          </span>
+          {' '}
+          <span>
+            {imageDescPhase?.model ? (
+              `Immagini — ${imageDescPhase.model}`
+            ) : (
+              <>
+                Immagini (facoltativo) —{' '}
+                <Link to="/impostazioni/modelli" className="font-medium text-link hover:underline">
+                  Aggiungi
+                </Link>
+              </>
+            )}
+          </span>
+        </li>
+      </ul>
+
+      <p className="text-center text-meta text-muted-foreground">
+        Hai dubbi? La guida è sempre nel menu Aiuto (⌘?). Puoi rifare questa configurazione da Impostazioni.
+      </p>
     </div>
   )
 }
