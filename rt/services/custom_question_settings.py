@@ -55,7 +55,7 @@ def save(item, identifier=None, *, actor=None):
         from rt.services.lesson_service import list_lessons, resolve_lesson_dir
         subjects = {m.casefold() for m in item.materie}
         for lesson in list_lessons():
-            if (lesson.get('materia') or '').casefold() in subjects:
+            if not lesson.get('is_sample') and (lesson.get('materia') or '').casefold() in subjects:
                 get_job_queue().enqueue('classifier', resolve_lesson_dir(lesson['id']),
                                 {'job': f'custom:{item.id}', 'force': False}, created_by=actor)
     return item

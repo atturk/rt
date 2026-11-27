@@ -17,11 +17,14 @@ def usage_index():
     alias_map = archive.read_json(os.path.join(archive.archive_dir(), 'alias.json'), {})
     index = {}
 
+    from rt.db.sync import is_sample_info
     for directory in lesson_directories():
         info_path = lesson_path(directory, 'info.yaml')
         if not fs.isfile(info_path):
             continue  # lezione registrata ma senza info.yaml: non blocca l'archivio
         info = read_info_yaml(info_path)
+        if is_sample_info(info):
+            continue
         titolo = info.get('titolo') or info.get('argomenti') or os.path.basename(directory)
         data = str(info.get('data') or '')
         materia = info.get('materia') or ''

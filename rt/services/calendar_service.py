@@ -392,7 +392,8 @@ def link_lesson(
 ) -> schemas.CalendarEntryStateView:
     database = db or get_database()
     with session_scope(database) as session:
-        if data.lesson_id is not None and session.get(Lesson, data.lesson_id) is None:
+        linked = session.get(Lesson, data.lesson_id) if data.lesson_id is not None else None
+        if data.lesson_id is not None and (linked is None or linked.is_sample):
             raise NotFound("lesson_not_found", f"Lezione {data.lesson_id} non trovata.")
         if data.lesson_id is not None:
             require_linkable_event(data.date, data.entry_key, session)
@@ -502,7 +503,7 @@ def _find_lesson_for_event(
     if entry_state and entry_state.manual_link:
         if entry_state.lesson_id is not None:
             lesson = session.get(Lesson, entry_state.lesson_id)
-            if lesson is not None:
+            if lesson is not None and not lesson.is_sample:
                 return _build_lesson_summary(session, lesson), True
         return None, True
 
@@ -511,7 +512,7 @@ def _find_lesson_for_event(
     norm_event_time = normalize_time(start_time)
 
     candidate_lessons = session.scalars(
-        select(Lesson).where(Lesson.data == date_str)
+        select(Lesson).where(Lesson.data == date_str, Lesson.is_sample.is_(False))
     ).all()
 
     for cand in candidate_lessons:

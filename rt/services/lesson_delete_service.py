@@ -11,15 +11,38 @@ from sqlalchemy import select
 from rt.core.portable import lock_file, unlock_file
 from rt.services.errors import Conflict, NotFound, Unavailable
 from rt.db.engine import get_database
-from rt.db.models import Job, Lesson, LessonFile, RecallSession, Setting, StateDocument, StudyChatMessage, StudyHighlight, StudyNote, StudyUnit, TelegramCommand
+from rt.db.models import (
+    Issue, Job, Lesson, LessonFile, LessonSummaryCache, LlmCall, LlmDeferred, PhaseRun,
+    RecallSession, ReviewDecision, Setting, StateDocument, StudyChatMessage, StudyHighlight,
+    StudyNote, StudyUnit, TelegramCommand,
+)
 from rt.db.session import session_scope
-from rt.services.lesson_service import lessons_root
+from rt.services.lesson_service import forget_summary, lessons_root
 from rt.storage import fs
 
 
 def _safe_child(path: str, root: str) -> bool:
     return (not os.path.islink(path) and os.path.realpath(os.path.dirname(path)) == root
             and os.path.dirname(os.path.abspath(path)) == root and os.path.basename(path) not in ("", ".", ".."))
+
+
+def _purge_orphan_sample_subjects(session, exclude_lesson_id: int) -> None:
+    """Rimuove eventuale materia ESEMPIO e docente Team RT residui di versioni precedenti
+    se nessuna altra lezione reale o voce del calendario li usa."""
+    from sqlalchemy import delete, func
+    from rt.db.models import CalendarOverride, CalendarTemplateEntry, Subject, SubjectTeacher
+    in_lessons = session.scalar(select(Lesson.id).where(
+        Lesson.id != exclude_lesson_id,
+        Lesson.is_sample.is_(False),
+        func.upper(Lesson.materia) == "ESEMPIO",
+    ).limit(1))
+    if in_lessons is not None:
+        return
+    for model in (CalendarTemplateEntry, CalendarOverride):
+        if session.scalar(select(model.id).where(func.upper(model.materia) == "ESEMPIO").limit(1)) is not None:
+            return
+    session.execute(delete(SubjectTeacher).where(func.upper(SubjectTeacher.materia) == "ESEMPIO"))
+    session.execute(delete(Subject).where(func.upper(Subject.nome) == "ESEMPIO"))
 
 
 def purge_lesson_records(session, row: Lesson) -> None:
@@ -32,18 +55,19 @@ def purge_lesson_records(session, row: Lesson) -> None:
     from rt.services.prompt_settings import extra_keys
     session.execute(update(CalendarEntryState).where(CalendarEntryState.lesson_id == row.id).values(lesson_id=None))
     path = row.path
-    for model in (RecallSession, TelegramCommand):
+    for model in (RecallSession, TelegramCommand, LlmDeferred):
         session.execute(delete(model).where(model.lesson_path == path))
-    session.execute(delete(StudyChatMessage).where(StudyChatMessage.lesson_id == row.id))
-    session.execute(delete(StudyHighlight).where(StudyHighlight.lesson_id == row.id))
-    session.execute(delete(StudyNote).where(StudyNote.lesson_id == row.id))
-    session.execute(delete(StudyUnit).where(StudyUnit.lesson_id == row.id))
+    for model in (StudyChatMessage, StudyHighlight, StudyNote, StudyUnit,
+                  LessonSummaryCache, LessonFile, PhaseRun, Issue, ReviewDecision, LlmCall):
+        session.execute(delete(model).where(model.lesson_id == row.id))
     for job in session.scalars(select(Job).where(Job.lesson_path == path)):
         session.delete(job)  # JobEvent in cascata anche senza foreign key attive
     keys = [lease_key(row.id), *extra_keys(path)]
     session.execute(delete(Setting).where(Setting.key.in_(keys)))
     session.execute(delete(StateDocument).where(or_(StateDocument.key == path,
                                                     StateDocument.key.startswith(path + os.sep))))
+    if row.is_sample or (row.materia or "").strip().upper() == "ESEMPIO":
+        _purge_orphan_sample_subjects(session, exclude_lesson_id=row.id)
 
 
 @contextlib.contextmanager
@@ -72,6 +96,7 @@ def delete_lesson(lesson_id: int, lesson_dir: str) -> None:
     with _journal_lock(db):
         _delete_locked(db, root, lesson_id, lesson_dir)
         _recover_locked(db)
+    forget_summary(lesson_id)
 
 
 def _delete_locked(db, root, lesson_id: int, lesson_dir: str) -> None:

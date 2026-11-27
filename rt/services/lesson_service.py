@@ -552,13 +552,16 @@ def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
         for item in items:
             item.update(progress[item["id"]])
     if materia:
-        items = [i for i in items if i["materia"] == materia.strip().upper()]
+        items = [i for i in items if not i.get("is_sample") and i["materia"] == materia.strip().upper()]
     if state:
         items = [i for i in items if i["state"] == state]
     if text:
         needle = text.casefold()
-        items = [i for i in items if any(needle in str(i[k]).casefold()
-                                         for k in ("folder_name", "titolo", "argomenti", "materia", "docente"))]
+        def _search_fields(item: Dict[str, Any]):
+            if item.get("is_sample"):
+                return (item["folder_name"], item["titolo"], item["argomenti"], "Esempio")
+            return (item["folder_name"], item["titolo"], item["argomenti"], item["materia"], item["docente"])
+        items = [i for i in items if any(needle in str(val).casefold() for val in _search_fields(i))]
     items.sort(key=lambda i: (i["data"], i["ora"], i["folder_name"]), reverse=True)
     return items
 
