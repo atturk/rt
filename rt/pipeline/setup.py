@@ -157,6 +157,8 @@ _MACPARAKEET_SYSTEM_PATHS = (
 def find_macparakeet_binary() -> str:
     """Individua il binario macparakeet-cli: prima <dati>/bin, poi PATH/Homebrew."""
     from rt.core import paths
+    # macparakeet invia telemetria anonima di default: RT la spegne per tutti i processi figli
+    os.environ.setdefault("MACPARAKEET_TELEMETRY", "0")
     local_bin = os.path.join(paths.data_dir(), "bin", "macparakeet-cli")
     if fs.exists(local_bin) and os.access(local_bin, os.X_OK):
         return local_bin
@@ -773,7 +775,7 @@ def run_setup(
                         raise SetupError(str(exc)) from None
                 else:
                     cmd_json = [
-                        parakeet_bin, "transcribe", "--format", "json", "--no-diarize",
+                        parakeet_bin, "transcribe", "--format", "json", "--no-diarize", "--no-history",
                         "--output-dir", temp_audio_dir,
                     ]
                     if model:

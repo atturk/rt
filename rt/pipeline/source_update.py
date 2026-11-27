@@ -100,7 +100,7 @@ def _transcribe(path, mock=False, ctx=None, duration=None):
                 cancel_token=ctx.cancel_token if ctx else None,
             ):
                 result = _run_transcribe_with_spinner(
-                    [binary, "transcribe", "--format", "json", "--no-diarize", "--output-dir", temp,
+                    [binary, "transcribe", "--format", "json", "--no-diarize", "--no-history", "--output-dir", temp,
                      "--parakeet-model", DEFAULT_MODEL.removeprefix("parakeet-"), real], "Trascrizione della nuova fonte",
                     **({'on_message': lambda message: ctx.progress('prepare', message=message),
                         'cancel_token': ctx.cancel_token} if ctx else {}))

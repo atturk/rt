@@ -809,7 +809,7 @@ def _download_macparakeet_model(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL,
-        env=dict(os.environ),
+        env={**os.environ, "MACPARAKEET_TELEMETRY": "0"},
         **kwargs,
     )
     if active_entry is not None:
