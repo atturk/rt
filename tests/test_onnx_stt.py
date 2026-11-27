@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from rt.core import onnx_stt
-from rt.core.config import default_engine
+from rt.core.config import TranscriptionConfig, default_engine, effective_engine
 
 
 class FakeAsr:
@@ -87,3 +87,26 @@ def test_parakeet_engine_runs_on_any_worker(monkeypatch, tmp_path):
     monkeypatch.setattr(onnx_stt, "available", lambda: True)
     assert transcription_unavailable_reason() is None
     assert jobs.detect_stt_capability("auto") == "parakeet"
+
+
+def test_effective_engine_macparakeet_fallback(monkeypatch):
+    from rt.pipeline import setup
+
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "")
+    monkeypatch.setattr(onnx_stt, "available", lambda: True)
+    assert effective_engine(TranscriptionConfig(engine="macparakeet")) == "parakeet"
+
+    monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "/opt/homebrew/bin/macparakeet-cli")
+    assert effective_engine(TranscriptionConfig(engine="macparakeet")) == "macparakeet"
+
+    monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "")
+    monkeypatch.setattr(onnx_stt, "available", lambda: False)
+    assert effective_engine(TranscriptionConfig(engine="macparakeet")) == "macparakeet"
+
+    assert effective_engine(TranscriptionConfig(engine="custom")) == "custom"
+    assert effective_engine(TranscriptionConfig(engine="parakeet")) == "parakeet"
+
+    monkeypatch.setattr("sys.platform", "linux")
+    monkeypatch.setattr(onnx_stt, "available", lambda: True)
+    assert effective_engine(TranscriptionConfig(engine="macparakeet")) == "macparakeet"
