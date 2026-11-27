@@ -228,3 +228,22 @@ def test_install_skips_menubar_without_appkit(launchd, monkeypatch):
     assert sm.install(say=lambda _m: None) == ["api", "worker"]
     assert not os.path.isfile(sm.plist_path("menubar"))
     assert sm.default_services() == ["api", "worker"]
+
+
+def test_services_run_from_python_named_rt_when_present(tmp_path, monkeypatch):
+    from rt.services import service_manager as sm
+    exe = tmp_path / "bin" / "python3"
+    exe.parent.mkdir()
+    exe.write_text("")
+    named = exe.parent / "RT"
+    named.write_text("")
+    named.chmod(0o755)
+    monkeypatch.setattr(sm.sys, "executable", str(exe))
+    monkeypatch.setattr(sm.sys, "platform", "darwin")
+    monkeypatch.setattr(sm.paths, "project_root", lambda: str(tmp_path / "progetto"))
+    assert sm._python() == str(named)
+    spec = plistlib.loads(sm.render_plist("worker", data_dir=str(tmp_path / "dati"), start_at_login=True))
+    assert spec["ProgramArguments"][0] == str(named)
+    assert spec["AssociatedBundleIdentifiers"] == ["com.atturk.rt"]
+    named.unlink()
+    assert sm._python() == str(exe)

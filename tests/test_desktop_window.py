@@ -74,6 +74,7 @@ def mac_ready(monkeypatch):
     monkeypatch.setattr(desktop, "_services_match_app", lambda: True)
     monkeypatch.setattr(desktop, "_service_port", lambda: 8765)
     monkeypatch.setattr(desktop, "_wait_for_api", lambda port: True)
+    monkeypatch.setattr(sm, "status", lambda name: sm.ServiceStatus(name, True, True, True))
 
 
 @pytest.mark.parametrize("browser, show, expected", [(False, True, "window"), (True, True, "browser"),
@@ -100,6 +101,17 @@ def test_macos_starts_installed_but_stopped_services(monkeypatch):
     monkeypatch.setattr(launcher, "run_spa", Mock(return_value=0))
     assert desktop.run_macos(8765, False, lambda s: None) == 0
     start.assert_called_once_with()
+
+
+def test_macos_restarts_stopped_menubar_when_api_is_up(monkeypatch):
+    mac_ready(monkeypatch)
+    monkeypatch.setattr(sm, "default_services", lambda: ["api", "worker", "menubar"])
+    monkeypatch.setattr(sm, "status", lambda name: sm.ServiceStatus(name, True, True, name != "menubar"))
+    start = Mock()
+    monkeypatch.setattr(sm, "start", start)
+    monkeypatch.setattr(launcher, "run_spa", Mock(return_value=0))
+    assert desktop.run_macos(8765, False, lambda s: None) == 0
+    start.assert_called_once_with(["menubar"])
 
 
 @pytest.mark.parametrize("running", [False, True])

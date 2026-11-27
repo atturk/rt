@@ -103,7 +103,7 @@ export function WeekRangePopup(props: WeekRangePopupProps) {
         <div className="mt-2 flex items-center justify-between gap-2">
           <div className="text-muted-foreground" aria-live="polite">{countLabel}</div>
           <div className="flex items-center gap-1">
-            <Tooltip content={helpText}>
+            <Tooltip content={helpText} openOnClick>
               {trigger => (
                 <button
                   type="button"

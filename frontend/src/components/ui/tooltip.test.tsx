@@ -82,3 +82,29 @@ it('la nota immediata annulla il suggerimento annidato ancora in attesa', () => 
   fireEvent.mouseLeave(note)
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
 })
+
+describe('Tooltip openOnClick', () => {
+  it('apre e chiude il suggerimento col clic e lo chiude cliccando altrove', async () => {
+    const { render, screen, fireEvent, act } = await import('@testing-library/react')
+    const { Tooltip } = await import('./tooltip')
+    render(
+      <div>
+        <Tooltip content="Spiegazione" openOnClick>
+          {(t) => <button type="button" {...t}>i</button>}
+        </Tooltip>
+        <button type="button">fuori</button>
+      </div>,
+    )
+    const tip = () => screen.getByRole('tooltip', { hidden: true })
+    expect(tip()).toHaveAttribute('hidden')
+    act(() => { fireEvent.click(screen.getByText('i')) })
+    expect(tip()).not.toHaveAttribute('hidden')
+    act(() => { fireEvent.mouseLeave(screen.getByText('i')) })
+    expect(tip()).not.toHaveAttribute('hidden')
+    act(() => { fireEvent.pointerDown(screen.getByText('fuori')) })
+    expect(tip()).toHaveAttribute('hidden')
+    act(() => { fireEvent.click(screen.getByText('i')) })
+    act(() => { fireEvent.click(screen.getByText('i')) })
+    expect(tip()).toHaveAttribute('hidden')
+  })
+})

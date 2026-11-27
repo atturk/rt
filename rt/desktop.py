@@ -132,7 +132,7 @@ def _services_match_app() -> bool:
                 program = plistlib.load(f)["ProgramArguments"][0]
         except (OSError, KeyError, IndexError, plistlib.InvalidFileException):
             return False
-        if os.path.realpath(program) != os.path.realpath(sys.executable):
+        if os.path.realpath(program) != os.path.realpath(sm._python()):
             return False
     return True
 
@@ -275,6 +275,19 @@ def _applescript_string(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _ensure_services_running(say: Callable[[str], None]) -> None:
+    """Con l'API già su, worker o icona della barra dei menu possono essere fermi (chiusi,
+    caduti): all'apertura di RT si riavviano, così l'icona c'è sempre mentre RT è aperta."""
+    from rt.services import service_manager as sm
+    try:
+        stopped = [name for name in sm.default_services() if name != "api" and not sm.status(name).running]
+        if stopped:
+            sm.start(stopped)
+            say(f"▶️  Riavviati: {', '.join(stopped)}.")
+    except sm.ServiceError as exc:
+        say(f"⚠️  Servizi non riavviati: {exc}")
+
+
 def run_macos(port: int, open_browser: bool, say: Callable[[str], None], browser: bool = False) -> int:
     from rt.api.launcher import run_spa
     from rt.services import service_manager as sm
@@ -298,6 +311,7 @@ def run_macos(port: int, open_browser: bool, say: Callable[[str], None], browser
         else:
             _alert(f"RT non risponde. Il registro è in {log}.")
         return 1
+    _ensure_services_running(say)
     if open_browser and not browser:
         from rt import window
         if window.available():

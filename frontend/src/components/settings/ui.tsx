@@ -166,7 +166,7 @@ export function LabelWithInfo({ label, info, infoLabel }: { label: ReactNode; in
  */
 export function SettingsInfoButton({ label, info, className }: { label: string; info: ReactNode; className?: string }) {
   return (
-    <Tooltip content={info}>
+    <Tooltip content={info} openOnClick>
       {(trigger) => (
         <button
           type="button"

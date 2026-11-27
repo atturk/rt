@@ -22,6 +22,7 @@ export type TooltipTriggerProps = {
   onBlur: () => void
   onPointerDown: () => void
   onKeyDown: (e: React.KeyboardEvent) => void
+  onClick?: () => void
 }
 
 /**
@@ -36,6 +37,7 @@ export function Tooltip({
   describe = true,
   disabled = false,
   delay = 600,
+  openOnClick = false,
   children,
 }: {
   content: React.ReactNode
@@ -43,6 +45,8 @@ export function Tooltip({
   describe?: boolean
   disabled?: boolean
   delay?: number
+  /** Il clic sul trigger apre e chiude il suggerimento (pulsanti «i» e «?»): serve anche al tocco. */
+  openOnClick?: boolean
   children: (props: TooltipTriggerProps) => React.ReactNode
 }) {
   const id = React.useId()
@@ -66,12 +70,12 @@ export function Tooltip({
   }, [])
   React.useEffect(() => hide, [hide])
 
-  const show = React.useCallback(() => {
+  const show = React.useCallback((force = false) => {
     clearTimeout(timer.current)
     timer.current = undefined
     if (pendingTooltip !== hide) pendingTooltip?.()
     pendingTooltip = null
-    if (!trigger || disabled || suppressed.current || !canHover()) return
+    if (!trigger || disabled || (!force && (suppressed.current || !canHover()))) return
     if (activeTooltip !== hide) activeTooltip?.()
     activeTooltip = hide
     setAnchor(trigger.getBoundingClientRect())
@@ -86,11 +90,39 @@ export function Tooltip({
     if (pendingTooltip !== hide) pendingTooltip?.()
     pendingTooltip = hide
     if (delay === 0 || activeTooltip || (lastClosed !== null && Date.now() - lastClosed < 300)) show()
-    else timer.current = setTimeout(show, delay)
+    else timer.current = setTimeout(() => show(), delay)
   }, [disabled, delay, hide, show])
 
   const focus = React.useCallback(() => { if (trigger?.matches(':focus-visible')) show() }, [trigger, show])
-  const pointerDown = React.useCallback(() => { suppressed.current = true; hide() }, [hide])
+  const pointerDown = React.useCallback(() => {
+    if (openOnClick) return
+    suppressed.current = true
+    hide()
+  }, [hide, openOnClick])
+  // Fissato dal clic: resta aperto anche quando il mouse esce, finché non si clicca di nuovo o altrove.
+  const pinned = React.useRef(false)
+  const click = React.useCallback(() => {
+    if (pinned.current) {
+      pinned.current = false
+      hide()
+    } else {
+      pinned.current = true
+      show(true)
+    }
+  }, [hide, show])
+  const leave = React.useCallback(() => { if (!pinned.current) hide() }, [hide])
+  // Aperto col clic: si chiude toccando altrove o scorrendo la pagina.
+  React.useEffect(() => {
+    if (!openOnClick || !open) return
+    const close = () => { pinned.current = false; hide() }
+    const away = (e: Event) => { if (!trigger?.contains(e.target as Node)) close() }
+    document.addEventListener('pointerdown', away, true)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      document.removeEventListener('pointerdown', away, true)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [openOnClick, open, trigger, hide])
   // Misura la bolla prima di disegnarla: se dal lato scelto esce dalla finestra passa al lato
   // opposto, e resta comunque dentro la finestra (4.2.3.1: gomma ed evidenziatore in cima).
   React.useLayoutEffect(() => {
@@ -103,14 +135,17 @@ export function Tooltip({
     ref: setTrigger,
     'aria-describedby': describe && !disabled ? id : undefined,
     onMouseEnter: hover,
-    onMouseLeave: hide,
+    onMouseLeave: leave,
     onFocus: focus,
     onPointerDown: pointerDown,
-    onBlur: hide,
+    onBlur: leave,
+    // Solo se richiesto: un onClick undefined sovrascriverebbe quello del trigger.
+    ...(openOnClick ? { onClick: click } : {}),
     onKeyDown: (e) => {
       // Solo se il suggerimento si vede: altrimenti Esc va a chi lo aspetta (menu, dialoghi).
       if (e.key === 'Escape' && visible) {
         e.stopPropagation()
+        pinned.current = false
         hide()
       }
     },
