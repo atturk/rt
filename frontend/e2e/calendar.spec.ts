@@ -327,7 +327,9 @@ test('calendario: aggiunge un’ora solo nelle settimane scelte', async ({ page 
   let createdId: number | undefined
   try {
     await page.goto('/calendario')
-    await page.getByRole('button', { name: 'Modifica orario' }).focus()
+    // con l'orario vuoto il calendario entra da solo in «Modifica solo questa settimana» e il menu è già aperto
+    const pencil = page.getByRole('button', { name: 'Modifica orario' })
+    if (await pencil.isVisible()) await pencil.focus()
     await page.getByRole('button', { name: 'Modifica la settimana tipo in un intervallo di settimane' }).click()
     const popup = page.getByRole('dialog', { name: 'Intervallo di settimane' })
     await popup.locator(`[data-week="${from}"]`).click()

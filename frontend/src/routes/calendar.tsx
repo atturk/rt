@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router'
 import { errorMessage } from '@/api/client'
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   Calendar as CalendarIcon,
   CalendarSearch,
@@ -15,6 +15,7 @@ import {
   Columns2,
   Info,
   Pencil,
+  X,
   Rows3,
 } from 'lucide-react'
 
@@ -291,6 +292,17 @@ export function CalendarPage() {
     setRangeAnchor({ x: rect.left, y: rect.bottom, width: rect.width, height: rect.height })
   }
 
+  // Orario ancora vuoto (nessuna settimana tipo, nessun evento): si entra da soli in «Modifica solo questa
+  // settimana», una volta sola per apertura della pagina, così il primo clic aggiunge subito una lezione.
+  const autoEdited = useRef(false)
+  useEffect(() => {
+    if (autoEdited.current || annual || editing || !week || !templateQuery.data) return
+    if (templateQuery.data.length > 0 || week.days.some(d => (d.events?.length ?? 0) > 0)) return
+    autoEdited.current = true
+    // oxlint-disable-next-line react/set-state-in-effect
+    setEditing('week')
+  }, [annual, editing, week, templateQuery.data])
+
   function beginEditing(mode: 'week' | 'tpl') {
     closeAllPopups()
     setEditing(mode)
@@ -353,14 +365,14 @@ export function CalendarPage() {
         />
 
         <div ref={pencil} className={`flex items-center rounded-lg focus-within:bg-muted ${editing || menuOpen || multiple ? 'bg-muted' : 'hover:bg-muted'}`}>
-          <IconButton label="Modifica orario" icon={Pencil} aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}
+          <IconButton label={menuOpen ? 'Chiudi il menu di modifica' : 'Modifica orario'} icon={menuOpen ? X : Pencil} aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}
             className={hover && (editing || multiple) ? 'hidden' : undefined} />
           <div className={`${menuOpen || hover && (editing || multiple) ? 'flex' : 'hidden'} items-center gap-0.5 ${hover ? '' : 'absolute right-3 top-full z-50 mt-1 rounded-lg border bg-card p-1 shadow-panel'}`}>
             <CalendarClipboardActions week={week} yearWeeks={yearQuery.data ?? []} selected={selectedWeeks} annual={annual} />
             {annual ? <IconButton icon={ListChecks} label="Seleziona più settimane" active={multiple} onClick={() => { setMultiple(value => !value); setMenuOpen(true) }} /> : <>
-              <IconButton label="Modifica solo questa settimana" icon={CalendarRange} active={editing === 'week'} onClick={() => beginEditing('week')} />
-              <IconButton label="Modifica la settimana tipo, da questa settimana in poi" icon={CalendarSync} active={editing === 'tpl'} onClick={() => beginEditing('tpl')} />
               <IconButton label="Modifica la settimana tipo in un intervallo di settimane" icon={CalendarDays} active={editing === 'range'} onClick={openRange} />
+              <IconButton label="Modifica la settimana tipo, da questa settimana in poi" icon={CalendarSync} active={editing === 'tpl'} onClick={() => beginEditing('tpl')} />
+              <IconButton label="Modifica solo questa settimana" icon={CalendarRange} active={editing === 'week'} onClick={() => beginEditing('week')} />
             </>}
             {(editing || multiple || menuOpen) && <IconButton label="Fatto" icon={Check} onClick={() => {
               closeAllPopups(); setEditing(null); setRangeEdit(null); setMultiple(false); setMenuOpen(false)
