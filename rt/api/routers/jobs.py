@@ -461,11 +461,13 @@ def test_credential(body: schemas.CredentialTest, actor: Actor):
 @router.get("/jobs", response_model=List[schemas.Job], summary="Job recenti")
 def list_jobs(_actor: Actor, state: Optional[str] = Query(None), lesson_id: Optional[int] = Query(None),
               limit: int = Query(50, ge=1, le=500)):
+    from rt.services.jobs import ACTIVE_STATES
     lesson_path = None
     if lesson_id is not None:
         from rt.api.deps import lesson_dir as resolve
         lesson_path = resolve(lesson_id)
-    return [job_view(j) for j in queue().list(state=state, lesson_id=lesson_path, limit=limit)]
+    state_filter = list(ACTIVE_STATES) if state == "active" else state
+    return [job_view(j) for j in queue().list(state=state_filter, lesson_id=lesson_path, limit=limit)]
 
 
 def _get(job_id: str):

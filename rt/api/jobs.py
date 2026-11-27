@@ -20,6 +20,20 @@ def queue():
         raise ApiError(503, "database_unavailable", str(exc))
 
 
+def _lesson_title(lesson_id: int) -> Optional[str]:
+    from rt.db.engine import get_database
+    from rt.db.models import Lesson
+    from rt.db.session import read_scope
+    db = get_database()
+    if db is None:
+        return None
+    with read_scope(db) as session:
+        lesson = session.get(Lesson, lesson_id)
+        if lesson is None:
+            return None
+        return (lesson.titolo or lesson.folder_name or "").strip() or None
+
+
 def job_view(info) -> Dict[str, Any]:
     from rt.services.lesson_service import lesson_id_for_dir
     from rt.services.jobs import JobState
@@ -28,6 +42,7 @@ def job_view(info) -> Dict[str, Any]:
         data["result"] = None
     lesson_path = data.get("lesson_path")
     data["lesson_id"] = lesson_id_for_dir(lesson_path) if lesson_path and fs.isdir(lesson_path) else None
+    data["lesson_title"] = _lesson_title(data["lesson_id"]) if data["lesson_id"] is not None else None
     if data.get("error") and not data.get("error_message"):
         from rt.services.human_error import human_error
         data["error_message"] = human_error(data.get("error"))
