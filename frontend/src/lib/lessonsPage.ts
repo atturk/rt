@@ -332,9 +332,9 @@ export const STATUS_LABELS: Record<LessonStatus, string> = {
 }
 
 /** Il pallino della riga: in corso (un job attivo), errore, da verificare, pronta o da completare. */
-export function lessonStatus(lesson: Lesson, running: boolean): LessonStatus {
+export function lessonStatus(lesson: Lesson, running: boolean, failed = false): LessonStatus {
   if (running) return 'in-corso'
-  if (lesson.error || lesson.state === 'fallito') return 'errore'
+  if (failed || lesson.error || lesson.state === 'fallito') return 'errore'
   if (lesson.pending_issues > 0) return 'da-verificare'
   return lesson.phases.build === 'VALID' ? 'pronta' : 'da-completare'
 }

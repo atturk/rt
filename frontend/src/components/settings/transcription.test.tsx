@@ -60,4 +60,21 @@ describe('Trascrizione: motori per sistema', () => {
     })
     expect(screen.getByRole('button', { name: 'Salva chiave' })).toBeDisabled()
   })
+
+  it('sul Mac senza macparakeet-cli mostra il messaggio di fallback a Parakeet ONNX con link alla guida', () => {
+    renderSection({
+      engine: 'macparakeet',
+      recommended: 'macparakeet',
+      effective_engine: 'parakeet',
+      macparakeet_fallback: true,
+      macparakeet_available: true,
+      macparakeet_installed: false,
+      parakeet_available: true,
+    })
+    const hint = screen.getByTestId('stt-engine-hint')
+    expect(hint).toHaveTextContent(
+      'macparakeet-cli non è installato: RT usa Parakeet ONNX, che funziona senza installare nulla. Per la massima velocità puoi installare macparakeet-cli con Homebrew.',
+    )
+    expect(screen.getByRole('link', { name: 'Come?' })).toHaveAttribute('href', '/guida/installazione')
+  })
 })

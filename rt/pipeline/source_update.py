@@ -45,7 +45,7 @@ def _duration(path):
 
 def _transcribe(path, mock=False, ctx=None, duration=None):
     """Riusa motore e comando dell'import, soltanto per il nuovo file."""
-    from rt.core.config import load_config, load_env_file
+    from rt.core.config import effective_engine, load_config, load_env_file
     from rt.pipeline.setup import (find_macparakeet_binary, DEFAULT_MODEL,
                                    generate_deterministic_mock_asr, _run_transcribe_with_spinner)
     from rt.core.archive import cached_transcript, store_transcript, transcript_engine
@@ -60,20 +60,24 @@ def _transcribe(path, mock=False, ctx=None, duration=None):
     if ctx and duration is not None:
         ctx.progress('prepare', message=f'Trascrizione di {os.path.basename(path)} (durata audio {_elapsed(duration)}): avvio del motore')
     stt = load_config().transcription
+    resolved_engine = effective_engine(stt)
     with fs.materialize(path) as real, tempfile.TemporaryDirectory(prefix="rt-source-") as temp:
         if mock:
             raw_path, _ = generate_deterministic_mock_asr(real, "2026-01-01", "Appunti", "", temp)
-        elif stt.engine in ("custom", "parakeet"):
+        elif resolved_engine in ("custom", "parakeet"):
             from rt.core.custom_stt import transcribe_custom
             from rt.core.onnx_stt import transcribe_onnx
             load_env_file()
-            if stt.engine == "parakeet":
+            if resolved_engine == "parakeet":
                 from rt.core.stt_slot import local_transcription_slot
                 with local_transcription_slot(
                     on_wait=(lambda msg: ctx.progress('prepare', message=msg)) if ctx else None,
                     cancel_token=ctx.cancel_token if ctx else None,
                 ):
-                    data = transcribe_onnx(real)
+                    data = transcribe_onnx(
+                        real,
+                        on_progress=(lambda msg: ctx.progress('prepare', message=msg)) if ctx else None,
+                    )
             else:
                 data = transcribe_custom(real, stt.base_url, stt.model, stt.timeout_seconds)
             raw_path = os.path.join(temp, "raw.json")

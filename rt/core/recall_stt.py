@@ -17,6 +17,9 @@ def transcribe_voice_answer(audio_path: str, stt_engine: str = "macparakeet") ->
     Solleva un'eccezione chiara se la trascrizione non è possibile (macparakeet-cli non trovato/comando fallito,
     o motore non ancora implementato)."""
     if stt_engine == "macparakeet":
+        from rt.core.config import effective_engine
+        stt_engine = effective_engine(stt_engine)
+    if stt_engine == "macparakeet":
         from rt.pipeline.setup import find_macparakeet_binary
 
         parakeet_bin = find_macparakeet_binary()

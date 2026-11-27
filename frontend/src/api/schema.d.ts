@@ -9618,6 +9618,11 @@ export interface components {
             api_key_set: boolean;
             /** Base Url */
             base_url?: string | null;
+            /**
+             * Effective Engine
+             * @description Motore effettivo usato a runtime
+             */
+            effective_engine: string;
             /** Engine */
             engine: string;
             /**
@@ -9625,6 +9630,11 @@ export interface components {
              * @description macparakeet può girare qui (solo macOS)
              */
             macparakeet_available: boolean;
+            /**
+             * Macparakeet Fallback
+             * @description True se su macOS manca macparakeet-cli e si usa Parakeet ONNX
+             */
+            macparakeet_fallback: boolean;
             /** Macparakeet Installed */
             macparakeet_installed: boolean;
             /** Model */

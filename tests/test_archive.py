@@ -61,6 +61,7 @@ def test_audio_alias_and_engine_cache(tmp_path, monkeypatch):
         return True
     converter = Mock(side_effect=convert)
     monkeypatch.setattr('rt.pipeline.setup.transcode_audio_for_storage', converter)
+    monkeypatch.setattr('rt.pipeline.setup.find_macparakeet_binary', lambda: '/usr/local/bin/macparakeet-cli')
     first = add_source(one, 'audio', 'recording.wav', b'original wav')
     archive.store_transcript(first.impronta, 'macparakeet', {'segments': [], 'duration': 0})
     second = add_source(two, 'audio', 'recording.wav', b'original wav')

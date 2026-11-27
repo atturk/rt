@@ -247,6 +247,18 @@ def notify_review_completed(lesson_dir: str, pending_count: int, ctx: RunContext
             ctx.emit(Notice(message=f"Notifica di fine verifica inviata ({getattr(notifier, 'channel', 'notifica')})."))
 
 
+def _setup_progress(ctx: RunContext, msg: str) -> None:
+    if msg.startswith("✔"):
+        ctx.emit(Notice(message=msg))
+        return
+    import re
+    pct = None
+    match = re.search(r"\b(\d{1,3})%", msg)
+    if match and "Scarico" in msg:
+        pct = min(100, int(match.group(1)))
+    ctx.progress("setup", pct, 100 if pct is not None else None, msg)
+
+
 def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> Dict[str, Any]:
     from rt.pipeline.setup import DEFAULT_MODEL
     setup_res = run_setup(
@@ -261,7 +273,7 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> 
         force=options.force,
         mock_asr=options.mock,
         interactive=False,
-        on_progress=lambda msg: ctx.emit(Notice(message=msg)),
+        on_progress=lambda msg: _setup_progress(ctx, msg),
         on_lesson_created=lambda d: _lesson_created(ctx, d),
         # Percentuale di macparakeet: la barra del job avanza durante la trascrizione.
         on_transcription_progress=lambda pct: ctx.progress("setup", pct, 100, f"Trascrizione audio: {pct}%"),
@@ -327,21 +339,30 @@ class TranscriptionUnavailable(RuntimeError):
 
 def transcription_unavailable_reason(mock: bool = False, skip_transcribe: bool = False) -> Optional[str]:
     """Motivo per cui l'ingest audio non può trascrivere qui (None se può). macparakeet-cli
-    esiste solo su macOS; il motore STT 'custom' e la modalità mock girano ovunque."""
+    esiste solo su macOS; il motore STT 'custom', Parakeet ONNX e la modalità mock girano ovunque."""
     import sys
-    if mock or skip_transcribe or sys.platform == "darwin":
+    if mock or skip_transcribe:
         return None
     try:
-        from rt.core.config import load_config
-        engine = load_config().transcription.engine
+        from rt.core.config import effective_engine, load_config
+        engine = effective_engine(load_config().transcription)
         if engine == "custom":
             return None
         if engine == "parakeet":
             from rt.core.onnx_stt import available
             if available():
                 return None
+            return ("Parakeet ONNX scelto ma il pacchetto onnx-asr non è installato. "
+                    "Reinstalla RT oppure scegli un altro motore in Impostazioni.")
+        if sys.platform == "darwin":
+            from rt.pipeline.setup import find_macparakeet_binary
+            if find_macparakeet_binary():
+                return None
+            return ("macparakeet-cli non trovato e Parakeet ONNX non è disponibile. "
+                    "Installa macparakeet-cli oppure reinstalla RT.")
     except Exception:
-        pass
+        if sys.platform == "darwin":
+            return None
     return ("La trascrizione con macparakeet funziona solo su macOS: in Impostazioni scegli "
             "Parakeet ONNX (locale) o un server di trascrizione compatibile.")
 

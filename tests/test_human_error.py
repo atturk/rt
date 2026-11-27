@@ -118,3 +118,14 @@ def test_enrichment_image_without_model_raises_missing_phase_model(tmp_path, mon
         generate_image("schema cellula", str(tmp_path))
     assert exc.value.code == "missing_model"
     assert exc.value.details == {"phase": "enrichment_image", "path": "/impostazioni/modelli"}
+
+
+def test_human_error_onnx_download_offline():
+    err = (
+        "SetupError: Download del modello nemo-parakeet-tdt-0.6b-v3 non riuscito: "
+        "controlla la connessione e riprova (('Connection aborted.', RemoteDisconnected('x')))."
+    )
+    assert human_error(err) == (
+        "Serve internet la prima volta per scaricare il modello di trascrizione "
+        "(circa 700 MB). Riprova quando sei connesso."
+    )

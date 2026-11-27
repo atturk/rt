@@ -263,19 +263,33 @@ def save_telegram_notify(project_root: Path, notify: dict[str, bool]) -> dict[st
     return merged
 
 
-def transcription_engines() -> Dict[str, Any]:
+def transcription_engines(cfg: Any = None) -> Dict[str, Any]:
     """Quali motori locali girano qui e quale consigliare (macparakeet sul Mac, Parakeet ONNX
     altrove)."""
     import sys
 
     from rt.core import onnx_stt
-    from rt.core.config import default_engine
+    from rt.core.config import default_engine, effective_engine, load_config
     from rt.pipeline.setup import find_macparakeet_binary
+
+    if cfg is None:
+        try:
+            cfg = load_config().transcription
+        except Exception:
+            cfg = default_engine()
+    configured = cfg if isinstance(cfg, str) else getattr(cfg, "engine", default_engine())
+    resolved = effective_engine(cfg)
+    mac_available = sys.platform == "darwin"
+    mac_installed = mac_available and bool(find_macparakeet_binary())
+    parakeet_available = onnx_stt.available()
+    recommended = "parakeet" if (mac_available and not mac_installed and parakeet_available) else default_engine()
     return {
-        "recommended": default_engine(),
-        "macparakeet_available": sys.platform == "darwin",
-        "macparakeet_installed": sys.platform == "darwin" and bool(find_macparakeet_binary()),
-        "parakeet_available": onnx_stt.available(),
+        "recommended": recommended,
+        "effective_engine": resolved,
+        "macparakeet_fallback": configured == "macparakeet" and resolved == "parakeet",
+        "macparakeet_available": mac_available,
+        "macparakeet_installed": mac_installed,
+        "parakeet_available": parakeet_available,
         "parakeet_model_ready": onnx_stt.model_ready(),
     }
 
@@ -416,7 +430,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "transcription": {
             "engine": cfg.transcription.engine, "base_url": cfg.transcription.base_url,
             "model": cfg.transcription.model, "api_key_set": secret_is_set("RT_STT_API_KEY"),
-            **transcription_engines(),
+            **transcription_engines(cfg.transcription),
         },
         "telegram": {
             "enabled": cfg.telegram.enabled,

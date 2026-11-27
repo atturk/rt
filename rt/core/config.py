@@ -297,6 +297,36 @@ def default_engine() -> str:
     return "macparakeet" if sys.platform == "darwin" else "parakeet"
 
 
+def effective_engine(cfg: Any = None) -> str:
+    """Motore STT usato davvero a runtime.
+
+    Con ``macparakeet`` sul Mac, se ``macparakeet-cli`` non è installato ma Parakeet ONNX è
+    disponibile, ricade su ``parakeet`` senza modificare il valore salvato in configurazione.
+    """
+    import sys
+
+    if cfg is None:
+        engine = load_config().transcription.engine
+    elif isinstance(cfg, str):
+        engine = cfg
+    elif hasattr(cfg, "transcription"):
+        engine = cfg.transcription.engine
+    else:
+        engine = getattr(cfg, "engine", None) or "macparakeet"
+
+    if engine != "macparakeet":
+        return engine
+
+    if sys.platform == "darwin":
+        from rt.pipeline.setup import find_macparakeet_binary
+        if find_macparakeet_binary():
+            return "macparakeet"
+        from rt.core import onnx_stt
+        if onnx_stt.available():
+            return "parakeet"
+    return "macparakeet"
+
+
 class TranscriptionConfig(BaseModel):
     """Motore ASR usato dal setup delle lezioni e, se scelto, dal recall vocale: macparakeet
     (solo macOS, consigliato sul Mac), parakeet (Parakeet ONNX locale, ovunque) o custom (server

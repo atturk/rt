@@ -115,6 +115,8 @@ class Transcription(BaseModel):
     model: Optional[str] = None
     api_key_set: bool
     recommended: str = Field(description="Motore consigliato su questo sistema")
+    effective_engine: str = Field(description="Motore effettivo usato a runtime")
+    macparakeet_fallback: bool = Field(description="True se su macOS manca macparakeet-cli e si usa Parakeet ONNX")
     macparakeet_available: bool = Field(description="macparakeet può girare qui (solo macOS)")
     macparakeet_installed: bool
     parakeet_available: bool = Field(description="Parakeet ONNX installato (il modello si scarica al primo uso)")
