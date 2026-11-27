@@ -49,6 +49,7 @@ def sandbox(tmp_path, monkeypatch):
     agents.mkdir()
 
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))  # su Windows expanduser("~") usa USERPROFILE
     monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
     monkeypatch.setenv("RT_LAUNCH_AGENTS_DIR", str(agents))
     monkeypatch.delenv("RT_DATA_DIR", raising=False)
@@ -84,7 +85,7 @@ def _fake_launchd(monkeypatch, loaded=None):
         calls.append(cmd[1:])
         verb, rc, out = cmd[1], 0, ""
         if verb == "bootstrap":
-            loaded.add(cmd[3].rsplit("/", 1)[-1].replace(".plist", ""))
+            loaded.add(cmd[3].replace("\\", "/").rsplit("/", 1)[-1].replace(".plist", ""))
         elif verb == "bootout":
             label = cmd[2].rsplit("/", 1)[-1]
             rc = 0 if label in loaded else 3
