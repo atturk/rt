@@ -95,8 +95,14 @@ export function ComponentActions({
     return null
   }
 
+  const failure = download.error ?? cancel.error
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
+      {failure && (
+        <span className="text-meta text-danger" role="alert">
+          {errorMessage(failure)}
+        </span>
+      )}
       {component.state === 'not_downloaded' && (
         <Button
           type="button"

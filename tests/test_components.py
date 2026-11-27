@@ -259,3 +259,25 @@ def test_emit_stt_progress_extracts_percentage():
     assert events[0].phase == "prepare"
     assert events[0].current == 42
     assert events[0].total == 100
+
+
+def test_cancel_never_kills_other_process_downloading_model(isolated_data, monkeypatch):
+    """La pausa da Impostazioni non deve mai terminare il worker che scarica il modello per una
+    lezione (né un PID salvato e magari riusato): risponde «occupato»."""
+    monkeypatch.setattr(onnx_stt, "available", lambda: True)
+    killed = []
+    monkeypatch.setattr(components.os, "kill", lambda pid, sig: killed.append(pid))
+    lock = components.lock_path_for(components.TRANSCRIPTION_ID)
+    import os as _os
+    _os.makedirs(_os.path.dirname(lock), exist_ok=True)
+    acquire_file_lock(lock, retries=1, stale_sec=30)
+    try:
+        components._write_component_state(components.TRANSCRIPTION_ID, {"state": "downloading", "pid": 424242})
+        with pytest.raises(components.ComponentBusy):
+            components.cancel_download(components.TRANSCRIPTION_ID)
+    finally:
+        release_file_lock(lock)
+    assert killed == []
+    components._write_component_state(components.BROWSER_ID, {"state": "downloading", "pid": 424243, "helper_pid": 424244})
+    components.cancel_download(components.BROWSER_ID)
+    assert killed == []

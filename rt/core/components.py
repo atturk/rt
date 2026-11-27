@@ -856,12 +856,17 @@ def cancel_download(component_id: str) -> Dict[str, Any]:
             entry.cancel()
 
     saved = _read_all_states().get(component_id) or {}
-    if entry is None:
-        # Processo esterno (es. browser avviato da rt desktop o worker): terminiamo se vivo.
-        _terminate_external_process(saved.get("pid"))
-        _terminate_external_process(saved.get("helper_pid"))
-        lock_pid = _lock_owner_pid(lock_path_for(component_id))
-        _terminate_external_process(lock_pid)
+    if entry is None and is_download_active(component_id):
+        if component_id == TRANSCRIPTION_ID:
+            # Lo scarica un altro processo (il worker, dentro una lezione): non si termina mai
+            # un processo che potrebbe avere altri lavori in corso.
+            raise ComponentBusy("Il modello si sta scaricando per una lezione in corso: "
+                                "per fermarlo annulla la lezione.")
+        # Browser: si termina solo il processo dedicato lanciato da ensure_browser_detached, e
+        # solo se è lui a tenere il lock (mai un PID salvato e magari riusato da altri).
+        detached = saved.get("detached_pid")
+        if detached and detached == _lock_owner_pid(lock_path_for(component_id)):
+            _terminate_external_process(detached)
 
     if entry is not None and entry.thread.is_alive():
         entry.thread.join(timeout=2.0)
@@ -974,7 +979,11 @@ def _main(argv: Optional[List[str]] = None) -> int:
             raise SystemExit(1)
 
         signal.signal(signal.SIGTERM, _on_sigterm)
-        ok = run_browser_download_sync()
+        _write_component_state(BROWSER_ID, {"detached_pid": os.getpid()})
+        try:
+            ok = run_browser_download_sync()
+        finally:
+            _write_component_state(BROWSER_ID, {"detached_pid": None})
         return 0 if ok else 1
     return 0
 

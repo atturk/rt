@@ -35,7 +35,7 @@ telegram:
 # Motore usato dal setup delle lezioni. Un server custom deve supportare
 # POST /audio/transcriptions e restituire verbose_json con segmenti temporizzati.
 transcription:
-  engine: "macparakeet"  # oppure "custom"
+  engine: "parakeet"  # Parakeet ONNX incluso in RT; oppure "macparakeet" (Mac, Homebrew) o "custom"
   base_url: null
   model: null
   timeout_seconds: 600
