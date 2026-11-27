@@ -127,7 +127,7 @@ def cmd_service(args: argparse.Namespace) -> None:
         if command == "status":
             if not sm.supported():
                 print("I servizi launchd esistono solo su macOS (su Linux: docker compose, docs/SELF_HOSTING.md).")
-            for name in (names or sm.SERVICES):
+            for name in (names or sm.default_services()):
                 st = sm.status(name)
                 state = ("attivo" + (f", pid {st.pid}" if st.pid else "")) if st.running else (
                     "caricato, fermo" if st.loaded else ("installato, fermo" if st.installed else "non installato"))
@@ -136,7 +136,7 @@ def cmd_service(args: argparse.Namespace) -> None:
                   + ("(risponde)" if sm.api_is_up() else "(non risponde)"))
             return
         if command == "install":
-            chosen = names or list(sm.SERVICES)
+            chosen = names or None
             sm.install(chosen, start=not args.no_start)
             return
         if command == "uninstall":

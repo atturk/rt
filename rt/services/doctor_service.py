@@ -214,7 +214,7 @@ def check_services() -> List[Check]:
     out = []
     api_up = sm.api_is_up(port)
     if sm.supported():
-        for name in sm.SERVICES:
+        for name in sm.default_services():
             st = sm.status(name)
             label = f"Servizio {name}"
             if not st.installed:

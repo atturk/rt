@@ -242,6 +242,21 @@ def remove_legacy_agents(say: Callable[[str], None] = print) -> List[str]:
     return removed
 
 
+def menubar_supported() -> bool:
+    """L'icona nella barra dei menu serve PyObjC (AppKit): c'è nell'app, non nelle installazioni
+    da terminale. Senza, il servizio uscirebbe a ogni avvio e launchd lo riavvierebbe di continuo."""
+    import importlib.util
+    try:
+        return importlib.util.find_spec("AppKit") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def default_services() -> List[str]:
+    """I servizi da installare qui: la barra dei menu solo se AppKit è disponibile."""
+    return [n for n in SERVICES if n != "menubar" or menubar_supported()]
+
+
 def installed(names: Optional[Sequence[str]] = None) -> List[str]:
     return [n for n in (names or SERVICES) if os.path.isfile(plist_path(n))]
 
@@ -251,7 +266,9 @@ def install(names: Optional[Sequence[str]] = None, start: bool = True, data_dir:
     """Scrive (o riscrive) i .plist e li carica. Idempotente: reinstallare aggiorna comando e
     percorsi, per esempio dopo aver spostato la cartella di RT."""
     _require_supported()
-    names = list(names or SERVICES)
+    if not names and not menubar_supported() and os.path.isfile(plist_path("menubar")):
+        uninstall(["menubar"], say=say)
+    names = list(names or default_services())
     data = data_dir or paths.default_data_dir()
     os.makedirs(os.path.join(data, "logs"), exist_ok=True)
     os.makedirs(agents_dir(), exist_ok=True)

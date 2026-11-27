@@ -584,6 +584,11 @@ def run_menubar(base_url: Optional[str] = None) -> int:
 
 
 def cmd_menubar(_args: Optional[argparse.Namespace] = None) -> None:
+    from rt.services.service_manager import menubar_supported
+    if not menubar_supported():
+        # uscita pulita: launchd non la riavvia (KeepAlive solo sulle uscite con errore)
+        print("Barra dei menu non disponibile: manca PyObjC (AppKit) in questa installazione.")
+        return
     code = run_menubar()
     if code:
         sys.exit(code)

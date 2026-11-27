@@ -126,7 +126,7 @@ def ensure_capture_browser(say: Callable[[str], None]) -> None:
 def _services_match_app() -> bool:
     """I servizi launchd usano il Python di questa app (non quello di un'altra installazione)."""
     from rt.services import service_manager as sm
-    for name in sm.SERVICES:
+    for name in sm.default_services():
         try:
             with open(sm.plist_path(name), "rb") as f:
                 program = plistlib.load(f)["ProgramArguments"][0]

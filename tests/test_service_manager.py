@@ -19,6 +19,7 @@ def launchd(tmp_path, monkeypatch):
     monkeypatch.setenv("RT_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(sm, "supported", lambda: True)
     monkeypatch.setattr(sm.os, "getuid", lambda: 501, raising=False)
+    monkeypatch.setattr(sm, "menubar_supported", lambda: True)  # come nell'app, che ha PyObjC
 
     def fake_run(cmd, capture_output=True, text=True, timeout=30):
         calls.append(cmd[1:])
@@ -215,3 +216,15 @@ def test_background_disabled_checks_launchctl_output(monkeypatch):
 
     monkeypatch.setattr(sm, "supported", lambda: False)
     assert sm.background_disabled() is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="launchd esiste solo sul Mac")
+def test_install_skips_menubar_without_appkit(launchd, monkeypatch):
+    """Installazione da terminale senza PyObjC: niente servizio menubar (andrebbe in crash a ciclo)."""
+    calls, loaded = launchd
+    sm.install(say=lambda _m: None)
+    assert os.path.isfile(sm.plist_path("menubar"))
+    monkeypatch.setattr(sm, "menubar_supported", lambda: False)
+    assert sm.install(say=lambda _m: None) == ["api", "worker"]
+    assert not os.path.isfile(sm.plist_path("menubar"))
+    assert sm.default_services() == ["api", "worker"]
