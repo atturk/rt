@@ -396,6 +396,13 @@ def build_sample_lesson(output_path: str, screenshot_dir: Optional[str] = DEFAUL
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("RT_DATABASE_URL", "off")
+    # Mai i dati veri: cartella dati temporanea (database, lock, segreti) anche se RT_DATA_DIR è già impostata.
+    # Il 27/11 una versione dello script senza questo isolamento ha migrato il database vero del Mac di prova.
+    sandbox = tempfile.mkdtemp(prefix="rt-sample-data-")
+    os.environ["RT_DATA_DIR"] = sandbox
+    os.environ["RT_DATABASE_URL"] = "off"
     os.environ.setdefault("RT_SECRETS_FILE", os.path.join(tempfile.gettempdir(), "rt-sample-absent-secrets.enc"))
-    build_sample_lesson(os.path.join(ROOT_DIR, "rt", "assets", "esempio", "lezione-esempio.rt"))
+    try:
+        build_sample_lesson(os.path.join(ROOT_DIR, "rt", "assets", "esempio", "lezione-esempio.rt"))
+    finally:
+        shutil.rmtree(sandbox, ignore_errors=True)
