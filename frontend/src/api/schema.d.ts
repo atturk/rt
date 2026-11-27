@@ -2893,6 +2893,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/connections/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verifica una chiave API scaricando l'elenco dei modelli senza salvare la connessione */
+        post: operations["verify_connection_api_v1_settings_connections_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/connections/{name}": {
         parameters: {
             query?: never;
@@ -2905,6 +2922,23 @@ export interface paths {
         post?: never;
         /** Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o il classificatore la usa) */
         delete: operations["delete_connection_api_v1_settings_connections__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/connections/{name}/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Catalogo dei modelli di una connessione (cache 10 min, fallback ai modelli noti) */
+        get: operations["get_connection_catalog_api_v1_settings_connections__name__catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5030,6 +5064,22 @@ export interface components {
              */
             number: number;
         };
+        /** CatalogModelOut */
+        CatalogModelOut: {
+            /** Completion Price */
+            completion_price?: number | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Prompt Price */
+            prompt_price?: number | null;
+            /**
+             * Recommended
+             * @default false
+             */
+            recommended: boolean;
+        };
         /** ChangelogGroup */
         ChangelogGroup: {
             /** Items */
@@ -5396,6 +5446,33 @@ export interface components {
              * @enum {string}
              */
             provider: "openrouter" | "google" | "deepseek" | "openai_compatible";
+        };
+        /** ConnectionVerifyIn */
+        ConnectionVerifyIn: {
+            /** Api Key */
+            api_key: string;
+            /**
+             * Base Url
+             * @default
+             */
+            base_url: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "openrouter" | "google" | "deepseek" | "openai_compatible";
+        };
+        /** ConnectionVerifyOut */
+        ConnectionVerifyOut: {
+            /** Message */
+            message: string;
+            /**
+             * Models Count
+             * @default 0
+             */
+            models_count: number;
+            /** Ok */
+            ok: boolean;
         };
         /** ConvertersInfo */
         ConvertersInfo: {
@@ -22860,6 +22937,75 @@ export interface operations {
             };
         };
     };
+    verify_connection_api_v1_settings_connections_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionVerifyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionVerifyOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     delete_connection_api_v1_settings_connections__name__delete: {
         parameters: {
             query?: never;
@@ -22878,6 +23024,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_connection_catalog_api_v1_settings_connections__name__catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogModelOut"][];
                 };
             };
             /** @description Autenticazione mancante o non valida */

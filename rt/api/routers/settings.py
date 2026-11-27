@@ -256,6 +256,26 @@ class ModelIn(BaseModel):
     model: str
 
 
+class CatalogModelOut(BaseModel):
+    id: str
+    name: str
+    prompt_price: Optional[float] = None
+    completion_price: Optional[float] = None
+    recommended: bool = False
+
+
+class ConnectionVerifyIn(BaseModel):
+    provider: Literal["openrouter", "google", "deepseek", "openai_compatible"]
+    base_url: str = ""
+    api_key: str = Field(min_length=1)
+
+
+class ConnectionVerifyOut(BaseModel):
+    ok: bool
+    models_count: int = 0
+    message: str
+
+
 class PhaseIn(BaseModel):
     connection: str
     model: str
@@ -472,6 +492,25 @@ def post_connection(body: ConnectionIn, _actor: Actor):
     from rt.services.settings_service import snapshot
     _call(save_connection, _project_root(), body.name, body.provider, body.base_url, body.api_keys)
     return snapshot(_project_root())
+
+
+@router.post("/settings/connections/verify", response_model=ConnectionVerifyOut,
+             summary="Verifica una chiave API scaricando l'elenco dei modelli senza salvare la connessione")
+def verify_connection(body: ConnectionVerifyIn, _actor: Actor):
+    from rt.services.connections_service import verify_connection_key
+    return verify_connection_key(body.provider, body.base_url, body.api_key)
+
+
+@router.get("/settings/connections/{name}/catalog", response_model=List[CatalogModelOut],
+            summary="Catalogo dei modelli di una connessione (cache 10 min, fallback ai modelli noti)")
+def get_connection_catalog(name: str, response: Response, _actor: Actor):
+    from rt.services.connections_service import connection_catalog, connection_names
+    if name not in connection_names(_project_root()):
+        raise ApiError(404, "connection_not_found", "Connessione inesistente.")
+    items, fallback = connection_catalog(_project_root(), name)
+    if fallback:
+        response.headers["X-Catalog-Fallback"] = "1"
+    return items
 
 
 @router.post("/settings/connections/{name}/models", response_model=Settings, summary="Aggiunge un modello a una connessione")
