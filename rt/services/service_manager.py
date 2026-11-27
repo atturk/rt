@@ -25,8 +25,13 @@ LABEL_PREFIX = "com.atturk.rt."
 SERVICES: Dict[str, List[str]] = {
     "api": ["api", "--service"],
     "worker": ["worker"],
+    "menubar": ["menubar"],
 }
-DESCRIPTIONS = {"api": "API e web app", "worker": "worker dei job"}
+DESCRIPTIONS = {
+    "api": "API e web app",
+    "worker": "worker dei job",
+    "menubar": "barra dei menu",
+}
 AGENTS_DIR_ENV = "RT_LAUNCH_AGENTS_DIR"
 PORT_ENV = "RT_API_PORT"
 DEFAULT_PORT = 8765
@@ -134,10 +139,17 @@ def _python() -> str:
     return venv if os.path.isfile(venv) else sys.executable
 
 
-def render_plist(name: str, data_dir: Optional[str] = None, port: Optional[int] = None) -> bytes:
+def render_plist(name: str, data_dir: Optional[str] = None, port: Optional[int] = None,
+                 start_at_login: Optional[bool] = None) -> bytes:
     """Il .plist del servizio: comando, cartella dati, log, riavvio se cade."""
     if name not in SERVICES:
         raise ServiceError(f"Servizio sconosciuto: {name} (disponibili: {', '.join(SERVICES)})")
+    if start_at_login is None:
+        try:
+            from rt.core.config import load_config
+            start_at_login = bool(load_config().ui.start_at_login)
+        except Exception:
+            start_at_login = True
     data = data_dir or paths.default_data_dir()
     args = [_python(), os.path.join(paths.project_root(), "bin", "rt")] + SERVICES[name]
     if name == "api":
@@ -153,7 +165,7 @@ def render_plist(name: str, data_dir: Optional[str] = None, port: Optional[int] 
         "EnvironmentVariables": env,
         "StandardOutPath": log,
         "StandardErrorPath": log,
-        "RunAtLoad": True,
+        "RunAtLoad": bool(start_at_login),
         # riparte se esce con errore; un'uscita pulita ('rt service stop') no
         "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": 10,
@@ -281,13 +293,51 @@ def start(names: Optional[Sequence[str]] = None) -> List[str]:
     return out
 
 
+def sync_start_at_login(start_at_login: Optional[bool] = None) -> List[str]:
+    """Riscrive i .plist installati aggiornando RunAtLoad senza riavviare i servizi attivi."""
+    if not supported():
+        return []
+    names = installed()
+    if not names:
+        return []
+    data = paths.default_data_dir()
+    os.makedirs(os.path.join(data, "logs"), exist_ok=True)
+    os.makedirs(agents_dir(), exist_ok=True)
+    updated: List[str] = []
+    for name in names:
+        port = None
+        if name == "api":
+            try:
+                with open(plist_path("api"), "rb") as f:
+                    args = plistlib.load(f).get("ProgramArguments") or []
+                port = int(args[args.index("--port") + 1])
+            except (OSError, ValueError, IndexError, plistlib.InvalidFileException):
+                port = None
+        content = render_plist(name, data_dir=data, port=port, start_at_login=start_at_login)
+        with open(plist_path(name), "wb") as f:
+            f.write(content)
+        updated.append(name)
+    return updated
+
+
 def stop(names: Optional[Sequence[str]] = None) -> List[str]:
     """Ferma e scarica i servizi (ripartono al prossimo login o con 'rt service start')."""
     _require_supported()
     out = []
+    self_pid = os.getpid()
     for name in installed(names):
-        if status(name).loaded:
-            _launchctl("bootout", _target(name))
+        st = status(name)
+        if st.loaded:
+            if st.pid == self_pid:
+                subprocess.Popen(
+                    ["launchctl", "bootout", _target(name)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+            else:
+                _launchctl("bootout", _target(name))
             out.append(name)
     return out
 

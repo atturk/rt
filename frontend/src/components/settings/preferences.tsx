@@ -31,7 +31,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
   // Seravek e Avenir ci sono solo sul Mac: si mostrano i font installati, più quello salvato.
   const [availableFonts] = useState(() => new Set(STUDY_FONTS.filter(([v]) => studyFontAvailable(v)).map(([v]) => v)))
   const save = useGeneralPreference()
-  const preferences = settings.preferences ?? { modalita_scaletta: 'auto' as const, secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const, chiusura_x: 'background' as const }
+  const preferences = settings.preferences ?? { modalita_scaletta: 'auto' as const, secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const, chiusura_x: 'background' as const, avvia_all_accesso: true }
 
   const [wpmEdit, setWpmEdit] = useState<{ base: number; value: number } | null>(null)
   const [pauseEdit, setPauseEdit] = useState<{ base: number; value: number } | null>(null)
@@ -247,7 +247,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
 
 export function OutlineSettingsSection({ settings }: { settings: Settings }) {
   const save = useGeneralPreference()
-  const preferences = settings.preferences ?? { modalita_scaletta: 'auto' as const, secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const, chiusura_x: 'background' as const }
+  const preferences = settings.preferences ?? { modalita_scaletta: 'auto' as const, secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const, chiusura_x: 'background' as const, avvia_all_accesso: true }
   const propMode = preferences.modalita_scaletta ?? 'auto'
   const [draftMode, setDraftMode] = useState<{ prop: string; value: 'auto' | 'timer' | 'manual' } | null>(null)
   const mode = draftMode && draftMode.prop === propMode ? draftMode.value : propMode

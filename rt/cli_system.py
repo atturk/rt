@@ -111,7 +111,7 @@ def configure_service_parser(p: argparse.ArgumentParser) -> None:
                        ("uninstall", "Ferma e rimuove i servizi"), ("start", "Avvia i servizi installati"),
                        ("stop", "Ferma i servizi (ripartono al prossimo login)"), ("restart", "Riavvia i servizi")):
         sp = sub.add_parser(name, help=text)
-        sp.add_argument("names", nargs="*", metavar="servizio", help="api, worker (default: tutti)")
+        sp.add_argument("names", nargs="*", metavar="servizio", help="api, worker, menubar (default: tutti)")
         if name == "install":
             sp.add_argument("--no-start", action="store_true", help="Scrive i file ma non avvia i servizi")
 

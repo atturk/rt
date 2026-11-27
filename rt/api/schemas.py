@@ -401,6 +401,7 @@ class Job(BaseModel):
     state: str = Field(description="queued | running | waiting_for_decision | waiting_for_provider | succeeded | failed | cancelled")
     lesson_id: Optional[int] = None
     lesson_path: Optional[str] = None
+    lesson_title: Optional[str] = None
     payload: Dict[str, Any] = {}
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None

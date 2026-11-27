@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { isAppWindow } from '@/lib/zoom'
 import { ExtraSecretDelete } from './keys'
-import { AutoSaveStatus, SaveFeedback, SecretBadge, SettingsGroup, SettingsInfoButton, SettingsRow, SettingsSelect as Select } from './ui'
+import { AutoSaveStatus, SaveFeedback, SecretBadge, SettingsGroup, SettingsInfoButton, SettingsRow, SettingsSelect as Select, SettingsSwitch } from './ui'
 import { useAutoSave } from './useAutoSave'
 import { useGeneralPreference } from './useGeneralPreference'
 
@@ -301,6 +301,31 @@ export function CloseActionSection({ settings }: { settings: Settings }) {
       >
         <p>Ogni volta che chiudi la finestra con la X, RT smetterà di lavorare in background e i job in corso si fermeranno.</p>
       </ConfirmDialog>
+    </SettingsGroup>
+  )
+}
+
+export function StartAtLoginSection({ settings }: { settings: Settings }) {
+  const save = useGeneralPreference()
+  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent)
+  if (!isAppWindow() || !isMac) return null
+  const enabled = settings.preferences?.avvia_all_accesso ?? true
+
+  return (
+    <SettingsGroup id="avvio-accesso" title="Avvio all'accesso">
+      <SettingsSwitch
+        id="pref-start-at-login"
+        label="Avvia RT all'accesso"
+        description="Avvia RT all'accesso: le elaborazioni ripartono da sole dopo il riavvio del Mac."
+        checked={enabled}
+        disabled={save.isPending}
+        onChange={(checked) => save.mutate({ avvia_all_accesso: checked })}
+      />
+      {save.isError && (
+        <div className="px-4 py-3">
+          <SaveFeedback mutation={save} />
+        </div>
+      )}
     </SettingsGroup>
   )
 }

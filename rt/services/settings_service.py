@@ -456,6 +456,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "sfondo_gruppi": {"none": "niente", "gray": "grigi", "colors": "colori"}.get(cfg.ui.group_background, cfg.ui.group_background),
             "modalita_arricchimento": {"off": "disattivata", "manual": "manuale", "pipeline": "automatica"}[classifier_job(cfg,"enrichment").mode],
             "chiusura_x": {"background": "background", "quit": "esci"}.get(getattr(cfg.ui, "close_action", "background"), "background"),
+            "avvia_all_accesso": bool(getattr(cfg.ui, "start_at_login", True)),
         },
         "stati_studio": [s.model_dump() if hasattr(s, "model_dump") else dict(s) for s in getattr(cfg.ui, "study_statuses", [])],
         "ordine_stati_studio": getattr(cfg.ui, "study_status_order", []) or ["da-imparare", "in-apprendimento", "appreso", "ignorata"],
@@ -581,6 +582,10 @@ def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[st
     if "chiusura_x" in preferences:
         ui_data["close_action"] = close_canonical
 
+    start_at_login = bool(preferences.get("avvia_all_accesso", cfg.ui.start_at_login))
+    if "avvia_all_accesso" in preferences:
+        ui_data["start_at_login"] = start_at_login
+
     classifier = cfg.classifier
     current_mode = classifier_job(cfg, "enrichment").mode
     enr_val = preferences.get("modalita_arricchimento", {"off": "disattivata", "manual": "manuale", "pipeline": "automatica"}[current_mode])
@@ -589,12 +594,19 @@ def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[st
     write_classifier(data, classifier)
 
     _atomic_yaml(path, data)
+    if "avvia_all_accesso" in preferences:
+        from rt.services import service_manager as sm
+        try:
+            sm.sync_start_at_login(start_at_login)
+        except Exception:
+            pass
     return {
         "modalita_scaletta": mode,
         "secondi_approvazione": secs,
         "sfondo_gruppi": bg_val,
         "modalita_arricchimento": enr_val,
         "chiusura_x": "esci" if close_canonical == "quit" else "background",
+        "avvia_all_accesso": start_at_login,
     }
 
 

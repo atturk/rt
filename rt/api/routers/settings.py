@@ -166,6 +166,7 @@ class PreferencesSettings(BaseModel):
     sfondo_gruppi: Literal["colori", "grigi", "niente"] = Field(default="colori", description="Sfondo dei gruppi in Lezioni")
     modalita_arricchimento: Literal["manuale", "automatica", "disattivata"] = Field(default="manuale", description="Modalità dell'arricchimento")
     chiusura_x: Literal["background", "esci"] = Field(default="background", description="Azione chiudendo la finestra dell'app con la X")
+    avvia_all_accesso: bool = Field(default=True, description="Avvia RT all'accesso su macOS")
 
 
 class StudyStatusesUpdate(BaseModel):
