@@ -1,5 +1,20 @@
 # Novità di RT
 
+## 4.3.10b5 — 2026-11-27
+
+Quinta beta della 4.3.10: sul Mac RT scarica da sola il motore di trascrizione, senza Homebrew.
+
+### Novità
+
+- **Motore di trascrizione per Mac** in Impostazioni › Componenti: RT scarica macparakeet 5.1.0 dalla release ufficiale (controllo dell'impronta SHA256) e il suo modello, con percentuale, pausa e ripresa. Se manca quando parte una lezione con audio, lo scarica da sola. Non serve più Homebrew; chi lo ha già installato con brew continua a usarlo.
+- **Pallino sull'ingranaggio** quando manca il componente necessario per trascrivere; il clic porta ai Componenti.
+- **Configurazione guidata**: la scheda Trascrizione avvia subito il download del motore consigliato, con un link per sceglierne un altro.
+
+### Cambiamenti
+
+- **Motore per sistema**: macparakeet consigliato sul Mac, Parakeet ONNX su Windows. Le trascrizioni non finiscono più nella cronologia di MacParakeet e la telemetria di macparakeet è spenta.
+- **Browser per PDF e catture** più leggero (versione headless di Chromium); serve per l'esportazione in PDF e le catture.
+
 ## 4.3.10b4 — 2026-11-27
 
 Quarta beta della 4.3.10: i dati di RT passano nella cartella di sistema e sul Mac torna macparakeet come motore predefinito.
