@@ -48,3 +48,26 @@ class Unavailable(ServiceError):
 class UpstreamFailed(ServiceError):
     """Un servizio esterno (es. Telegram) ha risposto con un errore."""
     kind = "upstream"
+
+
+MISSING_PHASE_MODEL_MESSAGES = {
+    "image_description": (
+        "Per leggere le immagini serve un modello di descrizione immagini. "
+        "Sceglilo in Impostazioni › Modelli."
+    ),
+    "enrichment_image": (
+        "Per generare le immagini serve un modello di generazione immagini. "
+        "Sceglilo in Impostazioni › Modelli."
+    ),
+}
+
+
+class MissingPhaseModel(Conflict):
+    """Manca il modello per una fase facoltativa (descrizione o generazione immagini)."""
+
+    def __init__(self, phase: str, message: str | None = None):
+        msg = message or MISSING_PHASE_MODEL_MESSAGES.get(
+            phase,
+            f"Serve un modello per la fase '{phase}'. Sceglilo in Impostazioni › Modelli.",
+        )
+        super().__init__("missing_model", msg, details={"phase": phase, "path": "/impostazioni/modelli"})

@@ -504,8 +504,12 @@ class Worker:
                 outcome = JobOutcome(state=JobState.CANCELLED)
             except Exception as exc:  # noqa: BLE001 - l'errore diventa lo stato del job
                 logger.exception("Job %s fallito", job.id)
+                from rt.services.errors import ServiceError
                 from rt.services.lesson_conflicts import LessonConflict
-                result = {'code': exc.code, 'details': exc.details} if isinstance(exc, LessonConflict) else {}
+                if isinstance(exc, (LessonConflict, ServiceError)) and getattr(exc, "code", None):
+                    result = {"code": exc.code, "details": exc.details}
+                else:
+                    result = {}
                 outcome = JobOutcome(state=JobState.FAILED, error=_sanitize(job_error_message(exc)), result=result)
             except BaseException:
                 # Ctrl+C / arresto del worker: il job torna in coda e un altro worker lo

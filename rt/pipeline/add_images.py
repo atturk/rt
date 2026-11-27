@@ -239,6 +239,13 @@ def describe_new_images(
     if not pending:
         return
 
+    if not client.force_mock:
+        route_cfg = client.config.jobs.get("image_description")
+        primary = getattr(route_cfg, "primary", None) if route_cfg else None
+        if not primary or not primary.is_configured:
+            from rt.services.errors import MissingPhaseModel
+            raise MissingPhaseModel("image_description")
+
     def _describe_one(item: Tuple[ExtractedImage, str, str, str]) -> ImageDescription:
         img, _img_hash, mime_type, _ext = item
         raise_if_cancelled()

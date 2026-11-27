@@ -14,6 +14,7 @@ import { isRewriting, liveRewrite } from '@/components/lesson/lessonWorkflow'
 import { isPanelView, OPEN_QUESTIONS_EVENT, PANEL_ID, usePanelView, type PanelView } from '@/lib/lessonPanel'
 import { PhaseProgress } from '@/components/jobs/PhaseProgress'
 import { RetryButton } from '@/components/jobs/JobParts'
+import { MissingModelAction } from '@/components/jobs/LessonConflictAction'
 import { LessonWaiting } from '@/components/jobs/JobsIndicator'
 import { LessonsHeaderActions, LessonsList, SelectionBar } from '@/components/lessons/LessonsView'
 import { WelcomeBox } from '@/components/lessons/WelcomeBox'
@@ -413,6 +414,7 @@ export function LessonPage() {
               <p className="font-medium">{failedJob.error_message || failedJob.error || 'Elaborazione della lezione fallita.'}</p>
               <div className="flex items-center gap-2">
                 <RetryButton jobId={failedJob.id} />
+                <MissingModelAction job={failedJob} />
                 <Button variant="outline" size="sm" onClick={() => setConfirmDelete(true)}>
                   Elimina
                 </Button>

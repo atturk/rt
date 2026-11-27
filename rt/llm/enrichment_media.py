@@ -189,7 +189,8 @@ def generate_image(prompt, lesson_dir):
     job = cfg.jobs.get("enrichment_image")
     route = job.primary if job else None
     if not route or not route.is_configured:
-        raise ValueError("Configura il modello Generazione immagini IA in Impostazioni → Modelli")
+        from rt.services.errors import MissingPhaseModel
+        raise MissingPhaseModel("enrichment_image")
     if route.provider not in ("openrouter", "openai_compatible"):
         raise ValueError("La generazione di immagini IA richiede una connessione OpenRouter oppure OpenAI-compatible (Images API)")
     key = GLOBAL_CREDENTIALS.get_api_key(route.credential or route.provider)

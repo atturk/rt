@@ -124,6 +124,7 @@ const imagesArea: Area = {
 const settingsArea: Area = {
   routes: [
     { path: 'impostazioni/configurazione', Component: page(settings, (m) => m.SetupWizardPage) },
+    { path: 'impostazioni/telegram/collega', Component: page(settings, (m) => m.TelegramConnectPage) },
     {
       path: 'impostazioni',
       Component: page(settings, (m) => m.SettingsLayout),

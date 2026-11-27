@@ -482,6 +482,9 @@ class LLMClient:
                 effective_stream = False
             else:
                 if not route or not route.is_configured or not route.provider:
+                    if job_name in ("image_description", "enrichment_image"):
+                        from rt.services.errors import MissingPhaseModel
+                        raise MissingPhaseModel(job_name)
                     raise LLMError(f"La route per il job '{job_name}' non è configurata (provider o model mancante).")
                 route_id = route.route_id
                 visited_route_ids.add(route_id)

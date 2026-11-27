@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api, unwrap, type Schemas } from './client'
+import { api, toApiError, unwrap, type Schemas } from './client'
 
 /** Hook delle impostazioni (RT4-F5). Ogni scrittura invalida le query delle impostazioni:
  * la pagina mostra sempre quello che il backend ha salvato, mai lo stato del form. */
 
 export type Settings = Schemas['Settings']
 export type RouteOut = Schemas['RouteOut']
+export type CatalogModel = Schemas['CatalogModelOut']
+export type ConnectionCatalog = { items: CatalogModel[]; fallback: boolean }
 
 export const settingsKeys = {
   all: ['settings'] as const,
@@ -73,6 +75,44 @@ export function useFindTelegramChat() {
 
 export function useCreateConnection() {
   return useSettingsMutation((body: Schemas['ConnectionIn']) => unwrap(api.POST('/api/v1/settings/connections', { body })))
+}
+
+export function useVerifyConnectionKey() {
+  return useMutation({
+    mutationFn: (body: Schemas['ConnectionVerifyIn']) =>
+      unwrap(api.POST('/api/v1/settings/connections/verify', { body })),
+  })
+}
+
+export function useConnectionCatalog(connectionName: string | undefined) {
+  return useQuery({
+    queryKey: ['settings', 'connection-catalog', connectionName ?? ''],
+    enabled: !!connectionName,
+    staleTime: 10 * 60_000,
+    queryFn: async (): Promise<ConnectionCatalog> => {
+      const res = await api.GET('/api/v1/settings/connections/{name}/catalog', {
+        params: { path: { name: connectionName! } },
+      })
+      if (res.error !== undefined || !res.response.ok) {
+        throw toApiError(res.response.status, res.error)
+      }
+      return {
+        items: (res.data ?? []) as CatalogModel[],
+        fallback: res.response?.headers?.get('X-Catalog-Fallback') === '1',
+      }
+    },
+  })
+}
+
+export function useCostEstimate(provider?: string, model?: string) {
+  return useQuery({
+    queryKey: ['settings', 'estimate', provider ?? '', model ?? ''],
+    enabled: !!provider && !!model,
+    queryFn: () =>
+      unwrap(api.GET('/api/v1/settings/estimate', {
+        params: { query: { provider, model } },
+      })),
+  })
 }
 
 export function useAddModel() {

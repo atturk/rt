@@ -33,6 +33,15 @@ def human_error(text: Optional[str]) -> str:
     # Punto 3: timeout
     elif "timeout" in text.lower():
         base = "Il modello non ha risposto in tempo."
+    # Punto 3b: modello mancante per descrizione/generazione immagini
+    elif "image_description" in text and ("non è configurata" in text or "nessuna configurazione" in text.lower()):
+        from rt.services.errors import MISSING_PHASE_MODEL_MESSAGES
+        base = MISSING_PHASE_MODEL_MESSAGES["image_description"]
+    elif "Configura il modello Generazione immagini IA" in text or (
+        "enrichment_image" in text and ("non è configurata" in text or "nessuna configurazione" in text.lower())
+    ):
+        from rt.services.errors import MISSING_PHASE_MODEL_MESSAGES
+        base = MISSING_PHASE_MODEL_MESSAGES["enrichment_image"]
     # Punto 4: tutto il resto senza prefisso della classe di errore
     else:
         base = text

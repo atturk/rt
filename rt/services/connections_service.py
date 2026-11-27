@@ -5,9 +5,15 @@ dalla vecchia web Gradio (RT4-E4).
 """
 from __future__ import annotations
 
+import math
 from pathlib import Path
 import re
+import threading
+import time
+from typing import Any
 from urllib.parse import urlparse
+
+import requests
 
 from rt.core.config import KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths
 from rt.services.settings_service import (_atomic_yaml, _read_yaml, credential_names,
@@ -125,6 +131,7 @@ def save_connection(project_root: Path, name: str, provider: str,
                                                 "credentials": credential_ids,
                                                 "models": []})
     _atomic_yaml(path, data)
+    clear_catalog_cache(name)
     return name
 
 
@@ -263,4 +270,178 @@ def delete_connection(project_root: Path, name: str) -> list[str]:
     env_vars = [item["env_var"] for item in removed if item.get("env_var") and item["env_var"] not in kept_vars]
     for env_var in env_vars:
         config_service.unset_secret(env_var, project_root=project_root)
+    clear_catalog_cache(name)
     return env_vars
+
+
+# ---------------------------------------------------------------- catalogo modelli per connessione
+
+CATALOG_CACHE_TTL = 600.0
+CATALOG_TIMEOUT_SECONDS = 6.0
+# Modelli consigliati di default per provider: oggi non esiste una costante globale per provider,
+# quindi resta vuoto finché non verrà definita (mantiene l'etichetta «Consigliato» pronta).
+RECOMMENDED_MODELS: dict[str, str] = {}
+
+_CATALOG_LOCK = threading.Lock()
+_CATALOG_CACHE: dict[tuple[str, str, str], tuple[float, list[dict[str, Any]]]] = {}
+
+
+def clear_catalog_cache(name: str | None = None) -> None:
+    """Svuota la cache in memoria del catalogo modelli (tutta o per una sola connessione)."""
+    with _CATALOG_LOCK:
+        if name is None:
+            _CATALOG_CACHE.clear()
+        else:
+            for key in [k for k in _CATALOG_CACHE if k[0] == name]:
+                _CATALOG_CACHE.pop(key, None)
+
+
+def _catalog_models_url(provider: str, base_url: str) -> str:
+    raw = (base_url or KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider, "")).strip().rstrip("/")
+    if provider == "openrouter" and not raw:
+        raw = KNOWN_PROVIDER_DEFAULT_BASE_URLS["openrouter"]
+    if raw.endswith("/chat/completions"):
+        raw = raw[:-len("/chat/completions")].rstrip("/")
+    if not raw:
+        raise ValueError("Inserisci un Base URL HTTP valido.")
+    return f"{raw}/models"
+
+
+def _parse_per_token_price(raw: Any) -> float | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(val) or val < 0:
+        return None
+    return round(val * 1_000_000.0, 6)
+
+
+def _default_catalog_prices(provider: str, model_id: str) -> tuple[float | None, float | None]:
+    from rt.llm.pricing import DEFAULT_PRICING
+    prov_map = DEFAULT_PRICING.get((provider or "").lower().strip(), {})
+    clean = model_id.lower().strip()
+    entry = prov_map.get(clean)
+    if entry is None and clean.startswith(f"{provider}/"):
+        entry = prov_map.get(clean[len(provider) + 1:])
+    if entry is None:
+        return None, None
+    return float(entry.input_per_million), float(entry.output_per_million)
+
+
+def _catalog_item(provider: str, model_id: str, name: str | None = None,
+                  prompt_price: float | None = None, completion_price: float | None = None) -> dict[str, Any]:
+    if prompt_price is None and completion_price is None:
+        prompt_price, completion_price = _default_catalog_prices(provider, model_id)
+    recommended_id = RECOMMENDED_MODELS.get(provider)
+    return {
+        "id": model_id,
+        "name": (name or model_id).strip() or model_id,
+        "prompt_price": prompt_price,
+        "completion_price": completion_price,
+        "recommended": bool(recommended_id and model_id == recommended_id),
+    }
+
+
+def _parse_catalog_payload(provider: str, payload: Any) -> list[dict[str, Any]]:
+    rows = payload.get("data") if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        raise ValueError("Risposta del catalogo modelli non valida.")
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        model_id = str(row.get("id") or "").strip()
+        if not model_id or model_id in seen:
+            continue
+        seen.add(model_id)
+        pricing = row.get("pricing") if isinstance(row.get("pricing"), dict) else {}
+        prompt_price = _parse_per_token_price(pricing.get("prompt"))
+        completion_price = _parse_per_token_price(pricing.get("completion"))
+        display_name = row.get("name") or row.get("display_name") or model_id
+        items.append(_catalog_item(provider, model_id, str(display_name), prompt_price, completion_price))
+    items.sort(key=lambda item: (0 if item["recommended"] else 1))
+    return items
+
+
+def fetch_remote_catalog(provider: str, base_url: str, api_key: str | None) -> list[dict[str, Any]]:
+    """Scarica l'elenco dei modelli da GET {base_url}/models con timeout di 6 s."""
+    from rt.llm.providers import get_provider
+    url = _catalog_models_url(provider, base_url)
+    prov_adapter = get_provider(provider)
+    if api_key and api_key.strip():
+        headers = prov_adapter.get_headers(api_key.strip())
+    elif provider == "openai_compatible":
+        headers = {"Content-Type": "application/json"}
+    else:
+        raise ValueError("Nessuna chiave API impostata per questa connessione.")
+    resp = requests.get(url, headers=headers, timeout=CATALOG_TIMEOUT_SECONDS)
+    if resp.status_code >= 400:
+        from rt.services.probes import _provider_error
+        detail = _provider_error(resp)[:300]
+        raise RuntimeError(f"Errore del servizio (HTTP {resp.status_code}): {detail}")
+    return _parse_catalog_payload(provider, resp.json())
+
+
+def connection_catalog(project_root: Path, name: str) -> tuple[list[dict[str, Any]], bool]:
+    """Elenco dei modelli dal provider (cache in memoria 10 min) o fallback ai modelli noti."""
+    from rt.core.config import load_config
+    from rt.llm.credentials import GLOBAL_CREDENTIALS
+
+    conn = find_connection(project_root, name)
+    provider = (conn.get("provider") or "").strip()
+    base_url = (conn.get("base_url") or KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider, "")).strip().rstrip("/")
+    cache_key = (conn["name"], provider, base_url)
+    now = time.monotonic()
+
+    with _CATALOG_LOCK:
+        cached = _CATALOG_CACHE.get(cache_key)
+        if cached and (now - cached[0]) < CATALOG_CACHE_TTL:
+            return [dict(item) for item in cached[1]], False
+
+    load_config()
+    api_key = next(
+        (k for k in (GLOBAL_CREDENTIALS.get_api_key(c) for c in conn.get("credentials") or []) if k),
+        None,
+    )
+    try:
+        items = fetch_remote_catalog(provider, base_url, api_key)
+        with _CATALOG_LOCK:
+            _CATALOG_CACHE[cache_key] = (time.monotonic(), items)
+        return [dict(item) for item in items], False
+    except Exception:
+        known = list(dict.fromkeys(m for m in (conn.get("models") or []) if isinstance(m, str) and m.strip()))
+        fallback_items = [_catalog_item(provider, m) for m in known]
+        fallback_items.sort(key=lambda item: (0 if item["recommended"] else 1))
+        return fallback_items, True
+
+
+def verify_connection_key(provider: str, base_url: str, api_key: str) -> dict[str, Any]:
+    """Verifica una chiave non ancora salvata interrogando GET {base_url}/models."""
+    from rt.services.context import _sanitize
+    clean_key = (api_key or "").strip()
+    if not clean_key:
+        return {"ok": False, "models_count": 0, "message": "Inserisci una chiave API."}
+
+    def _clean(msg: str) -> str:
+        return _sanitize(msg).replace(clean_key, "[chiave]")
+
+    try:
+        items = fetch_remote_catalog(provider, base_url, clean_key)
+        return {
+            "ok": True,
+            "models_count": len(items),
+            "message": "Chiave valida · elenco dei modelli scaricato",
+        }
+    except requests.Timeout:
+        return {"ok": False, "models_count": 0, "message": "Nessuna risposta dal servizio entro 6 secondi."}
+    except requests.RequestException as exc:
+        return {"ok": False, "models_count": 0, "message": _clean(f"Servizio non raggiungibile: {exc}")[:300]}
+    except Exception as exc:  # noqa: BLE001 - errore umano al client
+        msg = _clean(str(exc))
+        if "401" in msg or "403" in msg:
+            return {"ok": False, "models_count": 0, "message": "Chiave API non valida o non autorizzata."}
+        return {"ok": False, "models_count": 0, "message": msg[:300] or "Verifica non riuscita."}
