@@ -1,5 +1,19 @@
 # Novità di RT
 
+## 4.3.10b3 — 2026-11-27
+
+Terza beta della 4.3.10: RT trascrive da sola, senza programmi esterni, e mostra in Impostazioni i componenti che scarica.
+
+### Novità
+
+- **Componenti di RT** in Impostazioni › Lavorazione delle lezioni: modello di trascrizione, browser per le catture e conversione delle presentazioni, con stato, dimensione, download con percentuale, pausa e ripresa.
+- **Download del modello visibile** anche nella configurazione guidata e in Nuova lezione, se una lezione con audio parte mentre il modello si sta scaricando.
+
+### Cambiamenti
+
+- **Parakeet ONNX è il motore di trascrizione predefinito** sulle nuove installazioni: non serve più installare altro con Homebrew. Chi ha già scelto un motore lo tiene.
+- **Presentazioni .pptx**: il pannello dice con cosa vengono convertite (LibreOffice, PowerPoint, Keynote o, se mancano, Quick Look a qualità ridotta).
+
 ## 4.3.10b2 — 2026-11-27
 
 Seconda beta della 4.3.10: aggiornamenti dentro Impostazioni senza popup, installazione che chiude subito RT e lavora dietro le quinte, servizi in background col nome di RT.
