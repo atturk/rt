@@ -50,10 +50,14 @@ Oggi (`start_install` → `install` → `install_macos`) con la finestra aperta 
 rilettura SHA256 del .dmg, `hdiutil attach`, `ditto` di RT.app (centinaia di MB), poi uno script chiude la finestra,
 scambia le app e riapre. Quindi l'utente vede una barra che non si riempie mai per decine di secondi.
 
+Misura sul Pro (4.3.9.1, 26/11): clic 10:05:39 → montaggio 10:05:42 → copia finita 10:05:48 → solo alle 10:05:59
+la finestra si chiude. Gli 11 s dopo la copia sono `xattr -dr com.apple.quarantine` ricorsivo su tutta RT.app:
+usare `ditto --noqtn` (non copia la quarantena) e togliere il passaggio `xattr -dr`.
+
 Nuovo comportamento (macOS):
 1. In-app restano solo i passi veloci: controllo SHA256 contro ready.json e backup pre-aggiornamento (già piccolo).
-2. Poi RT lancia subito un helper staccato (lo script sh di oggi esteso: `hdiutil attach` → `ditto` in
-   `RT.app.update` → `hdiutil detach` → `xattr -dr com.apple.quarantine` → scambio → `open RT.app --args --after-update`),
+2. Poi RT lancia subito un helper staccato (lo script sh di oggi esteso: `hdiutil attach` → `ditto --noqtn` in
+   `RT.app.update` → `hdiutil detach` → scambio → `open RT.app --args --after-update`),
    con log in `updates/install.log` come oggi, e **chiude subito la finestra** (stessa via di `window.pid`).
 3. Mentre l'helper lavora scrive `updates/installing.json` con il suo PID; se l'utente riapre RT in quel momento,
    `rt/desktop.py` vede il PID vivo e mostra l'avviso nativo «RT si sta aggiornando: si riapre da solo tra poco.»
