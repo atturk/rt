@@ -685,6 +685,11 @@ def _migrate_platform_data_dir(say: Callable[[str], None],
     old_marker = paths.read_marker(old_dir)
     if old_marker.get("location"):
         return True
+    if os.path.isdir(new_dir) and not os.path.islink(new_dir) and not os.listdir(new_dir):
+        try:
+            os.rmdir(new_dir)  # cartella vuota creata da altri: non deve bloccare per sempre lo spostamento
+        except OSError:
+            pass
     if os.path.lexists(new_dir):
         say(f"⚠️  Spostamento della cartella dati rimandato al prossimo avvio: {new_dir} esiste già.")
         return False

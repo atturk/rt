@@ -667,3 +667,19 @@ def test_windows_open_log_streams_suspended_and_reopened(sandbox, monkeypatch):
     text = new_log.read_text(encoding="utf-8")
     assert "riga prima su windows" in text
     assert "riga dopo su windows" in text
+
+
+def test_empty_platform_dir_does_not_block_migration(sandbox, monkeypatch):
+    """Una cartella Application Support/RT vuota (creata da altri) non deve rimandare lo
+    spostamento per sempre; una non vuota sì."""
+    _root, home, _local, _agents = sandbox
+    monkeypatch.setattr(paths.sys, "platform", "darwin")
+    monkeypatch.setattr(bundle, "kind", lambda _r=None: bundle.MACOS)
+    old_dir, _folder, _db_lesson_path, _ext = _seed_legacy_app_data(home, include_folder_lesson=False)
+    new_dir = home / "Library" / "Application Support" / "RT"
+    new_dir.mkdir(parents=True)
+    messages = []
+    data_service.post_update(say=messages.append)
+    assert (new_dir / paths.DATA_MARKER).is_file()
+    assert (new_dir / "rt.db").is_file()
+    assert paths.read_marker(str(old_dir)).get("location") == str(new_dir)
