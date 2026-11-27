@@ -1,5 +1,37 @@
 # Novità di RT
 
+## 4.3.10b1 — 2026-11-27
+
+Prima beta della 4.3.10: primo avvio rifatto (configurazione guidata, lezione di esempio come guida rapida), trascrizione sul Mac senza Homebrew, icona nella barra dei menu e le correzioni del collaudo su Mac.
+
+### Novità
+
+- **Configurazione guidata in 3 passi**: servizio e chiave (verificata subito), modello scelto da un elenco con prezzi e stima del costo, modelli per le immagini facoltativi; schermata finale «Pronto» con la lezione di esempio o la tua prima lezione.
+- **Telegram in una schermata a parte**: spiega a cosa serve e come collegarlo in due minuti, con l'ID della chat inseribile a mano se serve.
+- **Trascrizione sul Mac senza Homebrew**: se macparakeet-cli non è installato RT usa Parakeet ONNX da solo; il modello si scarica la prima volta con percentuale e tempo rimanente e il download riprende da dove si era fermato.
+- **Icona di RT nella barra dei menu**: mostra quando RT lavora in background, apre RT, «Esci da RT» ferma anche i servizi; nuova opzione «Avvia RT all'accesso».
+- **Lezione di esempio come guida rapida**: spiega passo passo come creare e studiare la prima lezione e non lascia tracce (niente materia «ESEMPIO» nel calendario, eliminazione pulita).
+- **Calendario: più settimane insieme**: clic, trascinamento, ⌘+clic e ⇧+clic nella scelta dell'intervallo, anche settimane non consecutive.
+- **Modello mancante per le immagini**: l'errore spiega cosa serve e porta a Impostazioni › Modelli.
+
+### Cambiamenti
+
+- **Benvenuto**: riquadro centrato, senza «Non mostrare più»; la stima del costo compare solo quando è disponibile.
+- **Editor**: la barra di formattazione è spenta di base; si accende da Impostazioni › Editor.
+- **Calendario**: icone di modifica in ordine più naturale, la matita diventa una X a menu aperto e con l'orario vuoto si entra subito in modifica.
+- **Meno consumi a riposo**: il worker controlla la coda meno spesso quando non ha lavori.
+- **Immagini dei materiali in WebP**, Fonti comprimibili, pagine non collocate fuori dal testo e foto collocate per orario.
+- **File salvati mostrati nel Finder** (si può disattivare).
+
+### Correzioni
+
+- **Lezione di esempio**: non si apriva più («Errore interno del server»).
+- **Modello di una fase**: non viene più salvato a ogni lettera, solo all'uscita dal campo o con Invio.
+- **Lezione vuota dopo una trascrizione fallita**: mostra l'errore con «Riprova», che rifà la trascrizione.
+- **Ultima frase tagliata** nella trascrizione Parakeet ONNX.
+- **Materiali «Da descrivere»** anche già letti, import di lezioni senza ora con docenti diversi, documenti Word/TXT/MD tra le fonti.
+- **.dmg**: sfondo e icona del volume non si vedono più con «Mostra file nascosti».
+
 ## 4.3.9.1 — 2026-11-26
 
 Correzione dopo la 4.3.9.
