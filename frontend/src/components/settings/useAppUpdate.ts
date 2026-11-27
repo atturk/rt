@@ -1,13 +1,50 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, unwrap, type Schemas } from '@/api/client'
-import { isAppWindow } from '@/lib/zoom'
+import { usePreference } from '@/lib/preferences'
 
 export type AppUpdate = Schemas['AppUpdate']
+export type UpdateNotice = 'available' | 'ready' | 'error'
 export const updateKey = ['system', 'update'] as const
-// L'installazione (montare il .dmg, copiare RT.app) dura minuti: la pagina la segue come il download.
 const BUSY_PHASES = new Set(['downloading', 'verifying', 'installing'])
+
+export const UPDATE_NOTICE_LABELS: Record<UpdateNotice, string> = {
+  available: 'Aggiornamento disponibile',
+  ready: 'Aggiornamento pronto',
+  error: 'Aggiornamento non riuscito',
+}
+
+export function computeUpdateNotice(
+  data: AppUpdate | undefined,
+  seen: string | null | undefined,
+): { notice: UpdateNotice | null; seenKey: string | null } {
+  if (!data) return { notice: null, seenKey: null }
+  const phase = data.progress?.phase
+  if (phase && BUSY_PHASES.has(phase)) {
+    return { notice: null, seenKey: null }
+  }
+  let notice: UpdateNotice | null = null
+  let version: string | null | undefined = null
+  if (phase === 'error') {
+    notice = 'error'
+    version = data.progress?.target || data.latest || data.current
+  } else if (data.ready || phase === 'ready') {
+    notice = 'ready'
+    version = data.latest || data.progress?.target || data.current
+  } else if (data.available && data.latest) {
+    notice = 'available'
+    version = data.latest
+  }
+  if (!notice || !version) {
+    return { notice: null, seenKey: null }
+  }
+  const seenKey = `${version}:${notice}`
+  if (seen === seenKey) {
+    return { notice: null, seenKey }
+  }
+  return { notice, seenKey }
+}
 
 export function useAppUpdate() {
   const client = useQueryClient()
@@ -48,50 +85,23 @@ export function useAppUpdate() {
   }
 }
 
-/** Hook per aprire il popup degli aggiornamenti nella finestra principale dell'app pywebview. */
-export function useUpdatePopup() {
-  const isApp = isAppWindow()
+/** Calcola l'avviso di aggiornamento non ancora visto (preferenza server `update.seen`). */
+export function useUpdateNotice() {
   const { data } = useQuery({
     queryKey: updateKey,
     queryFn: () => unwrap(api.GET('/api/v1/system/update')),
-    enabled: isApp,
     refetchInterval: (query) => (BUSY_PHASES.has(query.state.data?.progress?.phase ?? '') ? 3000 : false),
   })
+  const [seen, setSeen] = usePreference<string | null>('update.seen', null)
+  const { notice, seenKey } = computeUpdateNotice(data as AppUpdate | undefined, seen)
 
-  const prevPhaseRef = useRef<string | undefined>(undefined)
-
-  useEffect(() => {
-    if (!isApp || !data) return
-    const pyApi = window.pywebview?.api
-    if (!pyApi?.apri_aggiornamento) return
-
-    const phase = data.progress?.phase
-    const prevPhase = prevPhaseRef.current
-    prevPhaseRef.current = phase
-
-    // Quando un download avviato dal popup finisce mentre il popup è chiuso, riapre il popup
-    if (prevPhase === 'downloading' && phase === 'ready') {
-      pyApi.apri_aggiornamento()
-      return
+  const markSeen = useCallback(() => {
+    if (seenKey && seen !== seenKey) {
+      setSeen(seenKey)
     }
+  }, [seen, seenKey, setSeen])
 
-    if (data.ready) {
-      const shownKey = `rt-update-ready-shown:${data.latest}`
-      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(shownKey) !== '1') {
-        sessionStorage.setItem(shownKey, '1')
-        pyApi.apri_aggiornamento()
-      }
-      return
-    }
-
-    if (data.available && data.latest) {
-      const shownKey = `rt-update-shown:${data.latest}`
-      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(shownKey) !== '1') {
-        sessionStorage.setItem(shownKey, '1')
-        pyApi.apri_aggiornamento()
-      }
-    }
-  }, [isApp, data])
+  return { notice, seenKey, markSeen }
 }
 
 /** Durante l'installazione RT si spegne e riparte: quando l'API risponde con la versione nuova

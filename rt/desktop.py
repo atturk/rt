@@ -423,11 +423,22 @@ def stop_background(base_url: str) -> None:
         auth.drop_session(session)
 
 
+def check_installing() -> bool:
+    """Se l'helper di aggiornamento è vivo mostra l'avviso nativo e restituisce True."""
+    from rt.core import app_update
+    if app_update.is_installing():
+        _alert("RT si sta aggiornando: si riapre da solo tra poco.")
+        return True
+    return False
+
+
 def run(port: Optional[int] = None, open_browser: bool = True, browser: bool = False,
         serve: bool = False) -> int:
     from rt.core.version import get_current_version
     from rt.services.service_manager import choose_port
     say = _sayer()
+    if not serve and check_installing():
+        return 0
     version = get_current_version(paths.project_root())
     if not serve and not check_folder_access(say):
         return 1
@@ -454,6 +465,8 @@ def configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--after-update", action="store_true",
                    help="Riapre RT dopo un aggiornamento dell'app")
+    p.add_argument("--update-failed", action="store_true",
+                   help="Riapre RT dopo un aggiornamento non riuscito")
     p.add_argument("--open", nargs="*", default=None,
                    help="Apre uno o più file con RT")
 
@@ -472,8 +485,11 @@ def cmd_desktop(args: argparse.Namespace) -> None:
         try:
             from rt.core import app_update
             app_update.cleanup(None)
+            app_update.clear_last_error()
         except Exception:
             pass
+    if getattr(args, "update_failed", False):
+        _sayer()("⚠️  Aggiornamento non riuscito: riapro RT.")
     # pythonw può partire senza stream: uvicorn e i messaggi hanno comunque un registro.
     if sys.platform == "win32":
         for name in ("stdout", "stderr"):

@@ -17,7 +17,12 @@ vi.mock('@/api/liveUpdates', () => ({
   useLiveUpdates: () => {},
 }))
 vi.mock('@/components/settings/useAppUpdate', () => ({
-  useUpdatePopup: () => {},
+  UPDATE_NOTICE_LABELS: {
+    available: 'Aggiornamento disponibile',
+    ready: 'Aggiornamento pronto',
+    error: 'Aggiornamento non riuscito',
+  },
+  useUpdateNotice: () => ({ notice: null, seenKey: null, markSeen: () => {} }),
 }))
 vi.mock('@/components/jobs/useDesktopJobSignals', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/jobs/useDesktopJobSignals')>()

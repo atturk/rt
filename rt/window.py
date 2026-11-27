@@ -235,7 +235,6 @@ class DesktopApi:
     def __init__(self, window=None, base_url: str = ""):
         self._window = window
         self._base_url = base_url.rstrip("/")
-        self._update_window = None
 
     def file_in_attesa(self) -> list:
         from rt.core import opened_files
@@ -254,37 +253,21 @@ class DesktopApi:
         return {"ok": True}
 
     def apri_aggiornamento(self):
-        import webview
-        if self._update_window is not None:
-            if hasattr(self._update_window, "show"):
-                self._update_window.show()
-            return self._update_window
-
+        if not self._window:
+            return None
         base = self._base_url
-        if not base and self._window and hasattr(self._window, "get_current_url"):
+        if not base and hasattr(self._window, "get_current_url"):
             curr = self._window.get_current_url() or ""
             if "://" in curr:
                 parts = curr.split("/", 3)
                 base = f"{parts[0]}//{parts[2]}"
-        url = f"{base}/app/aggiornamento" if base else "/app/aggiornamento"
-
-        popup = webview.create_window(
-            "Aggiornamento di RT",
-            url,
-            width=420,
-            height=240,
-            resizable=False,
-            on_top=True,
-        )
-        self._update_window = popup
-
-        def _on_closed():
-            self._update_window = None
-
-        if hasattr(popup, "events") and hasattr(popup.events, "closed"):
-            popup.events.closed += _on_closed
-
-        return popup
+        if hasattr(self._window, "show"):
+            try:
+                self._window.show()
+            except Exception:
+                pass
+        _navigate_to(self._window, base, f"{INFO_PATH}#aggiornamenti")
+        return self._window
 
     def badge(self, count: int) -> None:
         from rt import window_signals
@@ -878,15 +861,20 @@ def _guide_slugify(text: str) -> str:
     return hyphenated.strip("-")
 
 
-def _open_guide(window, base_url: str, route: str):
-    """Apre la guida navigando dentro l'app, senza ricaricare la pagina: così «Indietro»
-    della guida riporta alla pagina da cui si è entrati. Ricarica solo se l'app non risponde."""
+def _navigate_to(window, base_url: str, route: str) -> None:
+    """Naviga dentro l'app senza ricaricare la pagina; ripiega su load_url se l'app non risponde."""
     try:
         if window.evaluate_js(f"Boolean(window.rtNavigate && (window.rtNavigate({json.dumps(route)}), true))"):
             return
     except Exception as exc:
-        _log(f"Guida: navigazione interna non riuscita: {exc}")
+        _log(f"Navigazione interna non riuscita: {exc}")
     window.load_url(f"{base_url}{route}")
+
+
+def _open_guide(window, base_url: str, route: str):
+    """Apre la guida navigando dentro l'app, senza ricaricare la pagina: così «Indietro»
+    della guida riporta alla pagina da cui si è entrati. Ricarica solo se l'app non risponde."""
+    _navigate_to(window, base_url, route)
 
 
 def _build_guide_menu(window, base_url: str):

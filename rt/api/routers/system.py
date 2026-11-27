@@ -159,6 +159,7 @@ class UpdateChannelRequest(BaseModel):
 def _app_update(refresh: bool) -> AppUpdate:
     from rt.core import app_update
     info = app_update.cached_check(refresh=refresh)
+    app_update.sync_last_error(target=info.latest)
     data = app_update.as_dict(info)
     data.pop("checked_at", None)
     data.pop("asset_url", None)
