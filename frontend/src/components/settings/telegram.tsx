@@ -1,12 +1,15 @@
-import { Eye, EyeOff, Link2, Send, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeft, Bell, Eye, EyeOff, Link2, MessageSquareText, Send, Trash2 } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 
 import { errorMessage } from '@/api/client'
-import { useFindTelegramChat, useRevealTelegram, useSetTelegramEnabled, useSetTelegramNotify, type Settings } from '@/api/settings'
+import { useFindTelegramChat, useRevealTelegram, useSaveTelegram, useSetTelegramEnabled, useSetTelegramNotify, type Settings } from '@/api/settings'
 import { useClearTelegramNotifications, useTelegramNotifications, useTelegramTest } from '@/api/telegram'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { Tooltip } from '@/components/ui/tooltip'
 import { formatDateTime } from '@/lib/format'
@@ -82,14 +85,207 @@ export function TelegramEnabledToggle({ enabled }: { enabled: boolean }) {
 
 export function TelegramSection({ settings }: { settings: Settings }) {
   const tg = settings.telegram
+  const firstConnection = !tg.bot_token_set && !tg.chat_id_set
   return (
     <>
       <SettingsGroup id="telegram" title="Collegamento">
         <TelegramEnabledToggle enabled={tg.enabled ?? false} />
-        {tg.enabled && <TelegramChatSetup settings={settings} />}
+        {tg.enabled && (firstConnection ? <TelegramConnectScreen settings={settings} embedded /> : <TelegramChatSetup settings={settings} />)}
       </SettingsGroup>
       {tg.enabled && <TelegramNotifyEvents settings={settings} />}
     </>
+  )
+}
+
+export function TelegramConnectScreen({ settings, embedded = false }: { settings?: Settings; embedded?: boolean }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const saveTelegram = useSaveTelegram()
+  const findChat = useFindTelegramChat()
+  const setEnabled = useSetTelegramEnabled()
+
+  const [token, setToken] = useState('')
+  const [chatNotFound, setChatNotFound] = useState(false)
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualChatId, setManualChatId] = useState('')
+
+  const from = (location.state as { from?: string } | null)?.from
+  function goBack() {
+    if (embedded) {
+      setEnabled.mutate(false)
+      return
+    }
+    if (from) void navigate(from)
+    else void navigate(-1)
+  }
+
+  const busy = saveTelegram.isPending || findChat.isPending || setEnabled.isPending
+  const canConnect = (Boolean(token.trim()) || Boolean(settings?.telegram.bot_token_set)) && !busy
+  const error = saveTelegram.isError
+    ? errorMessage(saveTelegram.error)
+    : findChat.isError
+      ? errorMessage(findChat.error)
+      : null
+
+  async function handleConnect(e: FormEvent) {
+    e.preventDefault()
+    const cleanToken = token.trim()
+    setChatNotFound(false)
+    try {
+      if (cleanToken) {
+        await saveTelegram.mutateAsync({ bot_token: cleanToken })
+      }
+      const res = await findChat.mutateAsync({ bot_token: cleanToken || null })
+      if (res.found) {
+        if (settings && !settings.telegram.enabled) {
+          await setEnabled.mutateAsync(true)
+        }
+        if (!embedded) goBack()
+      } else {
+        setChatNotFound(true)
+      }
+    } catch {
+      // Gli stati errore delle mutation mostrano il messaggio
+    }
+  }
+
+  async function handleSaveManualChatId(e: FormEvent) {
+    e.preventDefault()
+    const cleanId = manualChatId.trim()
+    if (!cleanId) return
+    try {
+      await saveTelegram.mutateAsync({
+        bot_token: token.trim() || undefined,
+        chat_id: cleanId,
+      })
+      if (settings && !settings.telegram.enabled) {
+        await setEnabled.mutateAsync(true)
+      }
+      if (!embedded) goBack()
+    } catch {
+      // Errore mostrato sotto
+    }
+  }
+
+  const content = (
+    <div className="flex flex-col gap-5">
+      <header className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-heading font-semibold tracking-tight">Usa RT anche da Telegram</h2>
+          <Badge className="w-fit">FACOLTATIVO</Badge>
+        </div>
+        <p className="text-body text-muted-foreground">
+          Se usi Telegram, RT può scriverti tramite un tuo bot personale. Non serve per usare RT.
+        </p>
+      </header>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex items-start gap-3 rounded-lg border bg-muted/20 p-3.5">
+          <Bell className="mt-0.5 size-5 shrink-0 text-primary-foreground" aria-hidden />
+          <div className="flex flex-col gap-0.5">
+            <strong className="text-body font-medium text-foreground">Avvisi sul telefono</strong>
+            <span className="text-meta text-muted-foreground">Ti avvisa quando una lezione è pronta o se qualcosa si blocca.</span>
+          </div>
+        </div>
+        <div className="flex items-start gap-3 rounded-lg border bg-muted/20 p-3.5">
+          <MessageSquareText className="mt-0.5 size-5 shrink-0 text-primary-foreground" aria-hidden />
+          <div className="flex flex-col gap-0.5">
+            <strong className="text-body font-medium text-foreground">Ripasso con domande</strong>
+            <span className="text-meta text-muted-foreground">Ricevi le domande di ripasso delle tue lezioni e rispondi in chat.</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border bg-muted/30 p-4">
+        <h3 className="mb-2 text-body font-medium text-foreground">Come si collega · circa 2 minuti</h3>
+        <ol className="list-decimal space-y-1 pl-5 text-body text-muted-foreground">
+          <li>In Telegram apri <strong className="text-foreground">@BotFather</strong> e crea un bot con <code>/newbot</code>.</li>
+          <li>Copia il token che ti dà e incollalo qui sotto.</li>
+          <li>Scrivi un messaggio qualsiasi al tuo bot, poi premi «Collega».</li>
+        </ol>
+      </div>
+
+      <form className="flex flex-col gap-4" onSubmit={handleConnect}>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="tg-connect-token" className="text-body font-medium text-foreground">
+            Token del bot
+          </label>
+          <SecretInput
+            id="tg-connect-token"
+            className="h-11"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="123456:ABC…"
+          />
+        </div>
+
+        {error && <Alert tone="danger">{error}</Alert>}
+
+        {chatNotFound && (
+          <Alert tone="warning" className="flex flex-col gap-2" data-testid="telegram-chat-not-found">
+            <p>Non trovo il tuo messaggio: scrivi qualcosa al bot e riprova</p>
+            <div>
+              <button
+                type="button"
+                onClick={() => setManualOpen((v) => !v)}
+                className="text-meta font-medium text-link underline underline-offset-2 cursor-pointer"
+              >
+                Inserisci l'ID a mano
+              </button>
+            </div>
+          </Alert>
+        )}
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="outline" className="h-11" onClick={goBack} disabled={busy}>
+            Annulla
+          </Button>
+          <Button type="submit" className="h-11 px-6" disabled={!canConnect}>
+            Collega
+          </Button>
+        </div>
+      </form>
+
+      {manualOpen && (
+        <form className="flex flex-col gap-2 rounded-lg border p-3.5" onSubmit={handleSaveManualChatId} data-testid="telegram-manual-chat-form">
+          <label htmlFor="tg-manual-chat-id" className="text-body font-medium text-foreground">
+            Chat ID
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              id="tg-manual-chat-id"
+              className="h-11 flex-1"
+              value={manualChatId}
+              onChange={(e) => setManualChatId(e.target.value)}
+              placeholder="es. 123456789"
+            />
+            <Button type="submit" variant="outline" className="h-11" disabled={!manualChatId.trim() || busy}>
+              Salva Chat ID
+            </Button>
+          </div>
+        </form>
+      )}
+
+      <p className="text-meta text-muted-foreground">
+        Puoi collegarlo o scollegarlo quando vuoi da Impostazioni › Telegram.
+      </p>
+    </div>
+  )
+
+  if (embedded) {
+    return <div className="p-4">{content}</div>
+  }
+
+  return (
+    <section className="mx-auto flex max-w-2xl flex-col gap-4">
+      <div>
+        <Button type="button" variant="ghost" size="sm" onClick={goBack} className="-ml-2 text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="size-4" aria-hidden />
+          Indietro
+        </Button>
+      </div>
+      <Card className="p-6">{content}</Card>
+    </section>
   )
 }
 

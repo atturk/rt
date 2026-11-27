@@ -25,7 +25,7 @@ import { useLogout } from '@/api/hooks'
 import { useSettings, useSystemInfo, type Settings } from '@/api/settings'
 import { DeviceAccessSection } from '@/components/settings/device-access'
 import { CloseActionSection, TranscriptionSection } from '@/components/settings/general'
-import { NotificationsCard, TelegramSection } from '@/components/settings/telegram'
+import { NotificationsCard, TelegramConnectScreen, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
 import { AppearanceSection, OutlineSettingsSection, SourceDefaultsSection, SpeedSection } from '@/components/settings/preferences'
@@ -239,6 +239,10 @@ export function SettingsIndexPage() {
   return <AppearanceSettingsPage />
 }
 export function SetupWizardPage() { return <WithSettings>{s => <SetupWizard settings={s} />}</WithSettings> }
+export function TelegramConnectPage() {
+  const settings = useSettings()
+  return <TelegramConnectScreen settings={settings.data} />
+}
 export function AppearanceSettingsPage() {
   return (
     <WithSettings>
