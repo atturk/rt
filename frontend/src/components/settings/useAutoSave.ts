@@ -30,6 +30,8 @@ export function useAutoSave<TValue, TPayload = TValue>(
     initial?: TValue
     serialize?: (value: TValue) => TPayload
     equals?: (a: TValue, b: TValue) => boolean
+    /** Niente salvataggio mentre si scrive: solo con flush() (uscita dal campo) o saveNow() (Invio). */
+    manual?: boolean
   },
 ): AutoSaveState & {
   flush: () => void
@@ -38,6 +40,7 @@ export function useAutoSave<TValue, TPayload = TValue>(
 } {
   const delay = options?.delay ?? 600
   const enabled = options?.enabled ?? true
+  const manual = options?.manual ?? false
   const equals = options?.equals ?? defaultEquals
   const initialValue = options && 'initial' in options ? (options.initial as TValue) : value
 
@@ -119,7 +122,7 @@ export function useAutoSave<TValue, TPayload = TValue>(
   useEffect(() => {
     clearTimeout(debounceTimerRef.current)
     debounceTimerRef.current = undefined
-    if (!enabled) return
+    if (!enabled || manual) return
     if (equalsRef.current(value, committedRef.current)) return
     if (inFlightRef.current !== null && equalsRef.current(inFlightRef.current, value)) return
 
@@ -135,7 +138,7 @@ export function useAutoSave<TValue, TPayload = TValue>(
       clearTimeout(debounceTimerRef.current)
       debounceTimerRef.current = undefined
     }
-  }, [value, delay, enabled, runSave])
+  }, [value, delay, enabled, manual, runSave])
 
   const flush = useCallback(() => {
     clearTimeout(debounceTimerRef.current)

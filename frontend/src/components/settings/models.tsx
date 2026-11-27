@@ -201,6 +201,9 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
     { connection, model: trimmedModel },
     {
       delay: 600,
+      // Il nome del modello si salva all'uscita dal campo o con Invio: salvarlo a ogni pausa
+      // registrava ogni prefisso digitato («re», «recraft/», …) tra i modelli della connessione.
+      manual: true,
       enabled: Boolean(connection) && Boolean(trimmedModel),
       initial: { connection: phase.connection ?? '', model: savedDisplay },
       equals: (a, b) => a.connection === b.connection && a.model.trim() === b.model.trim(),
