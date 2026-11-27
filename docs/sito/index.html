@@ -47,7 +47,8 @@ html { scroll-behavior: smooth; scrollbar-width: none; overflow-anchor: none; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; height: 0; }
 /* scorrimento ancorato: ogni atto si ferma sul suo testo */
 @media (min-width: 901px) and (min-height: 620px) { html { scroll-snap-type: y mandatory; } }
-@media (max-width: 900px), (max-height: 619px) { html { scroll-snap-type: y proximity; } }
+@media (max-height: 619px) { html { scroll-snap-type: y proximity; } }
+@media (max-width: 900px) { html { scroll-snap-type: none; } }
 body { background: var(--bg); color: var(--fg); font: 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: clip; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
 .wrap { max-width: 1160px; margin: 0 auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
@@ -128,9 +129,20 @@ a { color: inherit; }
 .scan.fatto .linea { display: none; }
 .sc-pk { position: absolute; right: 7%; top: 30%; width: calc(var(--th) * 2.1); height: calc(var(--th) * 1.9); transform: translateX(160%) rotate(8deg); opacity: 0; transition: transform .9s var(--ease), opacity .4s; z-index: 3; }
 .sc-pk .tile { position: absolute; box-shadow: var(--shadow); }
-.sc-pk .pg { left: 0; top: 0; transform: rotate(-5deg); }
+.sc-pk .sc-pdf { position: absolute; left: 0; top: 0; height: var(--th); aspect-ratio: 4 / 3; transform: rotate(-5deg); }
+.sc-pk .sc-pdf .tile { inset: 0; transition: transform .5s var(--ease); }
+.sc-pk .sc-pdf .b { transform: translate(5px, 5px); }
+.scan.split .sc-pk .sc-pdf .a { transform: translate(-62%, -38%) rotate(-7deg); }
+.scan.split .sc-pk .sc-pdf .b { transform: translate(-48%, 92%) rotate(6deg); }
 .sc-pk .ft { right: 0; bottom: 0; transform: rotate(6deg); }
-.sc-pk::after { content: "PDF"; position: absolute; left: -6px; top: -8px; font: 700 9px/1 var(--sans); color: #fff; background: #c2413a; padding: 3px 4px; border-radius: 3px; }
+.sc-pk .sc-pdf::after { content: "PDF"; position: absolute; z-index: 2; left: -6px; top: -8px; font: 700 9px/1 var(--sans); color: #fff; background: #c2413a; padding: 3px 4px; border-radius: 3px; transition: opacity .3s; }
+.scan.split .sc-pk .sc-pdf::after { opacity: 0; }
+.tile.pg2::after { left: 24%; right: 20%; top: 30%; bottom: 24%; border: 0; border-radius: 0; background: linear-gradient(var(--acc-strong), var(--acc-strong)) 0 100% / 20% 45% no-repeat, linear-gradient(var(--acc-strong), var(--acc-strong)) 50% 100% / 20% 85% no-repeat, linear-gradient(var(--acc-strong), var(--acc-strong)) 100% 100% / 20% 62% no-repeat; }
+/* Verifica: una barra scende sul testo e sottolinea in rosso le parole sbagliate */
+.sc-doc .vl { position: absolute; z-index: 2; left: 5%; right: 5%; top: 4%; height: 3px; margin-top: -1.5px; border-radius: 3px; background: var(--acc-strong); box-shadow: 0 0 22px 4px color-mix(in srgb, var(--acc-strong) 40%, transparent); opacity: 0; transition: opacity .25s; pointer-events: none; }
+.scan.ver .sc-doc .vl { opacity: 1; }
+.scan .u > i.e::before { content: ""; position: absolute; left: var(--el); width: var(--ew); bottom: -5px; height: 3px; border-radius: 2px; background: #d8463c; transform: scaleX(0); transform-origin: left; transition: transform .35s var(--ease); }
+.scan .u > i.e.on::before { transform: none; }
 .scan.pk .sc-pk { transform: none; opacity: 1; }
 .scan.pkvia .sc-pk { opacity: 0; transform: scale(.9); }
 .sc-doc { transition: transform .9s var(--ease-io), opacity .3s ease-in .7s, background .3s; }
@@ -185,6 +197,7 @@ a { color: inherit; }
 .l-cal.sopra .ev.tgt { box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc-strong) 55%, transparent); background: color-mix(in srgb, var(--acc-strong) 8%, var(--card)); }
 .l-cal.ok .ev.tgt, .l-cal.posa .ev.tgt { background: color-mix(in srgb, var(--k) 12%, var(--card)); border-style: solid; border-width: 0 0 0 3px; }
 .l-cal.ok .ev.tgt em, .l-cal.posa .ev.tgt em { max-height: 40px; opacity: 1; }
+@media (max-width: 900px) { .l-cal .ev em, .sc-ev em { display: none; } }   /* su telefono i blocchi non si allungano */
 .l-audio { position: absolute; z-index: 4; display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow); font: 600 12.5px/1 var(--mono); color: var(--fg); white-space: nowrap; pointer-events: none; transition: left 1.1s var(--ease-io), top 1.1s var(--ease-io), opacity .3s, transform .3s; }
 .l-audio .w { display: flex; align-items: center; gap: 2px; height: 16px; }
 .l-audio .w i { width: 2.5px; border-radius: 2px; background: var(--acc-strong); }
@@ -223,6 +236,13 @@ a { color: inherit; }
 
 /* Atto 01 */
 .atto > .wrap { width: 100%; }
+/* Su schermi larghi titolo e testo stanno affiancati: titolo a sinistra, testo a destra */
+@media (min-width: 1000px) {
+  .atto > .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 64px; }
+  .atto > .wrap > * { grid-column: 1 / -1; min-width: 0; }
+  .atto > .wrap > h2:has(+ .intro) { grid-column: 1; align-self: end; }
+  .atto > .wrap > h2 + .intro { grid-column: 2; align-self: end; margin: 0; max-width: 56ch; }
+}
 .atto { min-height: calc(100svh - var(--testata)); display: flex; flex-direction: column; justify-content: center; padding-block: clamp(28px, 5vh, 64px); border-top: 1px solid var(--border); scroll-margin-top: var(--testata); scroll-snap-align: start; scroll-snap-stop: always; }
 .atto-num { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--acc); }
 .atto-num::after { content: ""; width: 80px; height: 1px; background: var(--border); }
@@ -309,7 +329,7 @@ a { color: inherit; }
 /* ============ Atto 02 · Arricchimento ============ */
 :root { --lavagna: #23392f; --gesso: #e8efe9; --carta: #fbf1ee; --carta-griglia: #efc9bf; --traccia: #2a2a2a; }
 .ar { margin: 28px 0 0; }
-.ar-stage { position: relative; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+.ar-stage { position: relative; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 28px; align-items: start; align-content: start; }
 .ar-pan { border: 1px solid var(--border); border-radius: 14px; background: var(--soft); padding: 16px; display: grid; gap: 12px; }
 .ar-pan > header { font-size: 15px; font-weight: 600; }
 .ar-pan > small { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); }
@@ -393,7 +413,7 @@ a { color: inherit; }
 @keyframes vfscan { 0% { top: -46px; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
 
 /* Pannello Verifica */
-.vf-pan { min-width: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--soft); padding: 14px; display: grid; gap: 10px; align-content: start; }
+.vf-pan { min-width: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--soft); padding: 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-content: start; }
 .vf-pan > header { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; min-height: 24px; }
 .vf-pan > header .n { font: 600 11px/1 var(--mono); padding: 4px 7px; border-radius: 99px; background: var(--x1); color: var(--mute); transition: background .3s, color .3s; }
 .vf.uno .vf-pan > header .n { background: var(--warn-soft); color: var(--warn); }
@@ -872,11 +892,13 @@ a { color: inherit; }
 .cf-vuoto, .cf-pieno { position: absolute; inset: 0; transition: opacity .35s; }
 .cf-vuoto { display: grid; place-content: center; justify-items: center; gap: 10px; padding: 0 20px; text-align: center; font-size: 13px; color: var(--mute); }
 .cf-vuoto svg { width: 22px; height: 22px; }
-.cf-pieno { padding: 12px; display: grid; gap: 10px; align-content: start; opacity: 0; }
+.cf-pieno { padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-content: start; opacity: 0; }
+@media (max-width: 560px) { .cf-tl { gap: 6px; } .cf-tl .cf-t { flex: 1 1 0; width: auto; min-width: 0; } .cf-t .ic { width: 100%; max-width: 52px; } }
 .cf.pieno .cf-vuoto { opacity: 0; } .cf.pieno .cf-pieno { opacity: 1; }
 .cf-au { display: flex; align-items: center; gap: 10px; white-space: nowrap; overflow: hidden; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: 13.5px; font-weight: 500; opacity: 0; transform: translateY(-6px); transition: opacity .3s, transform .4s var(--ease); }
 .cf-au svg { width: 17px; height: 17px; color: var(--mute); flex: none; }
 .cf-au small { font-size: 12.5px; color: var(--faint); font-weight: 400; }
+.cf-au .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; } .cf-au small, .cf-au .x { flex: none; }
 .cf-au .x { margin-left: auto; color: var(--mute); }
 .cf-tl { display: flex; gap: 10px; }
 .cf-t { display: grid; justify-items: center; gap: 4px; width: 74px; opacity: 0; transform: translateY(-6px); transition: opacity .3s, transform .4s var(--ease); }
@@ -928,6 +950,16 @@ a { color: inherit; }
   .cn-r > b { grid-column: 1 / -1; padding-bottom: 0; }
   .cn-r > * { padding: 10px 14px; font-size: 13.5px; }
   .cn-h > b { display: none; }
+}
+/* Telefono: chat e RT uno sotto l'altro, così le righe restano leggibili */
+@media (max-width: 560px) {
+  .cn-h { display: none; }
+  .cn-r { grid-template-columns: minmax(0, 1fr); }
+  .cn-r > b { padding: 12px 14px 2px; }
+  .cn-r > .ch { padding-bottom: 6px; }
+  .cn-r > .ch::after { content: "Chat AI"; order: -1; flex: none; font: 600 9.5px/1.6 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+  .cn-r > .ch::before { display: none; }
+  .cn-r > .rt { padding-top: 8px; padding-bottom: 12px; }
 }
 
 /* ============ Scarica ============ */
@@ -1036,7 +1068,7 @@ a { color: inherit; }
         <div class="ev k2" style="--c:3;--r:3;--s:2;--d:.2s"><b>Biochimica</b><small>11:30–13:30</small></div>
         <div class="ev k1" style="--c:4;--r:1;--s:2;--d:.2s"><b>Fisiologia</b><small>09:30–11:30</small></div>
         <div class="ev" style="--c:4;--r:3;--s:2;--d:.25s"><b>Patologia generale 2</b><small>11:30–13:30</small></div>
-        <div class="ev k3 go" id="lGo" style="--c:4;--r:6;--s:2;--d:.3s"><b>Anatomia 2</b><small>14:30–16:30</small><em>Anatomia del cuore</em></div>
+        <div class="ev k3" style="--c:4;--r:6;--s:2;--d:.3s"><b>Anatomia 2</b><small>14:30–16:30</small></div>
         <div class="ev k4" style="--c:5;--r:0;--s:3;--d:.25s"><b>Patologia clinica 2</b><small>08:30–11:30</small></div>
         <div class="ev k5" style="--c:5;--r:3;--s:2;--d:.3s"><b>Farmacologia</b><small>11:30–13:30</small></div>
       </div>
@@ -1048,15 +1080,16 @@ a { color: inherit; }
           <div class="sc-doc" id="scD">
             <div class="bars" data-barre="56"></div>
             <div class="righe">
-              <div class="u"><i class="t"></i><i style="--w:96%"></i><i class="h" style="--w:84%;--l:30%;--hw:16%"></i><i style="--w:62%"></i><div class="sl"><b class="tile pg" id="scP"></b></div></div>
-              <div class="u"><i class="t" style="--w:40%"></i><i class="h h2" style="--w:92%;--l:6%;--hw:14%"></i><i class="h h3" style="--w:74%;--l:62%;--hw:18%"></i><div class="sl"><b class="tile ft" id="scF"></b></div></div>
+              <div class="u"><i class="t"></i><i class="e" style="--w:96%;--el:48%;--ew:22%"></i><i class="h" style="--w:84%;--l:30%;--hw:16%"></i><i class="e" style="--w:62%;--el:28%;--ew:30%"></i><div class="sl"><b class="tile pg" id="scP"></b></div></div>
+              <div class="u"><i class="t" style="--w:40%"></i><i class="h h2" style="--w:92%;--l:6%;--hw:14%"></i><i class="h h3 e" style="--w:74%;--l:62%;--hw:18%;--el:8%;--ew:26%"></i><div class="sl"><b class="tile pg pg2" id="scP2"></b><b class="tile ft" id="scF"></b></div></div>
             </div>
             <div class="linea"></div>
+            <div class="vl"></div>
           </div>
-          <div class="sc-pk" id="scK"><b class="tile pg"></b><b class="tile ft"></b></div>
+          <div class="sc-pk" id="scK"><div class="sc-pdf"><b class="tile pg pg2 b"></b><b class="tile pg a"></b></div><b class="tile ft"></b></div>
           <div class="sc-rip" id="scR"><div class="cr">
             <div class="mo"><span class="on">Mista</span><span class="qz">Quiz</span><span>Mirata</span><span>Caso clinico</span></div>
-            <span class="lb">QUIZ · unità 3.2 · domanda 4</span>
+            <span class="lb">QUIZ · unità 1.2 · domanda 4</span>
             <i class="q"></i><i class="q" style="--w:58%"></i>
             <div class="op"><span><em>A.</em><i style="--w:70%"></i></span><span class="ok"><em>B.</em><i style="--w:56%"></i></span><span><em>C.</em><i style="--w:78%"></i></span><span><em>D.</em><i style="--w:48%"></i></span></div>
             <div class="pd"><i></i><i></i><i class="t"></i></div>
@@ -1497,7 +1530,7 @@ a { color: inherit; }
           <div class="cf-drop" id="cfDrop">
             <div class="cf-vuoto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>Trascina qui l'audio della lezione, slide, PDF o foto, oppure un pacchetto .zip.</div>
             <div class="cf-pieno">
-              <div class="cf-au"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 17a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 0v-5l5-1v4.5"/></svg>lezione-microeconomia.m4a <small>84 MB</small><span class="x">×</span></div>
+              <div class="cf-au"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 17a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 0v-5l5-1v4.5"/></svg><span class="nm">lezione-microeconomia.m4a</span><small>84 MB</small><span class="x">×</span></div>
               <div class="cf-tl">
                 <div class="cf-t"><span class="ic"><b>PDF</b></span><span>slide-prof.pdf</span><i class="a">Alta</i></div>
                 <div class="cf-t"><span class="ic"><b>PDF</b></span><span>manuale-cap4.pdf</span><i class="n">Normale</i></div>
@@ -1599,8 +1632,9 @@ a { color: inherit; }
   });
   (function () {
     var sc = document.getElementById('sc'), A = document.getElementById('scA'), D = document.getElementById('scD'), T = document.getElementById('scT');
-    var K = document.getElementById('scK'), P = document.getElementById('scP'), F = document.getElementById('scF'), R = document.getElementById('scR');
-    var L = document.querySelector('.landing'), C = document.getElementById('lCal'), B = document.getElementById('lTgt'), G = document.getElementById('lGo');
+    var K = document.getElementById('scK'), P = document.getElementById('scP'), P2 = document.getElementById('scP2'), F = document.getElementById('scF'), R = document.getElementById('scR');
+    var Es = [].slice.call(D.querySelectorAll('.u > i.e')), Vl = D.querySelector('.vl'), vr = 0;
+    var L = document.querySelector('.landing'), C = document.getElementById('lCal'), B = document.getElementById('lTgt');
     var posto = document.getElementById('scPosto'), Ev = document.getElementById('scEv');
     function relL(el) { var a = el.getBoundingClientRect(), b = L.getBoundingClientRect(); return { x: a.left - b.left, y: a.top - b.top, w: a.width, h: a.height }; }
     function posa(el, r) { el.style.left = r.x + 'px'; el.style.top = r.y + 'px'; el.style.width = r.w + 'px'; el.style.height = r.h + 'px'; }
@@ -1614,6 +1648,15 @@ a { color: inherit; }
     function dopo(ms, fn) { timers.push(setTimeout(fn, ms)); }
     function stop() { timers.forEach(clearTimeout); timers = []; inCorso = false; }
     function add(c) { sc.classList.add(c); }
+    function verifica() { // la barra scende e sottolinea le parole quando ci passa sopra
+      add('ver'); var t0 = performance.now(), dur = 2000;
+      (function passo(now) {
+        var k = Math.min(1, (now - t0) / dur); Vl.style.top = (4 + 92 * k) + '%';
+        var y = Vl.getBoundingClientRect().top;
+        Es.forEach(function (e) { if (!e.classList.contains('on') && e.getBoundingClientRect().top + 6 < y) e.classList.add('on'); });
+        if (k < 1) vr = requestAnimationFrame(passo); else sc.classList.remove('ver');
+      })(t0);
+    }
     function rel(el) { var a = el.getBoundingClientRect(), b = A.getBoundingClientRect(); return { x: a.left - b.left, y: a.top - b.top, w: a.width, h: a.height }; }
     function titolo(t) { T.style.opacity = 0; dopo(260, function () { T.textContent = t; T.style.opacity = 1; }); }
     function vola(tile, da) { // la tessera parte dal pacco e si posa nella sua unità
@@ -1655,11 +1698,11 @@ a { color: inherit; }
       dopo(1400, function () { sc.classList.add('subito', 'via'); sc.classList.remove('muove'); void sc.offsetWidth; sc.classList.remove('subito'); poi && poi(); });
     }
     function pulisci() {
-      cancelAnimationFrame(tw); tw = 0; B.classList.remove('assente'); G.classList.remove('assente'); sc.className = 'scan libero via subito'; fissa(); void sc.offsetWidth; sc.classList.remove('subito'); T.textContent = 'lezione-12.mp3'; T.style.opacity = 1; Fa.textContent = '';
+      cancelAnimationFrame(tw); tw = 0; B.classList.remove('assente'); cancelAnimationFrame(vr); Vl.style.top = ''; Es.forEach(function (e) { e.classList.remove('on'); }); sc.className = 'scan libero via subito'; fissa(); void sc.offsetWidth; sc.classList.remove('subito'); T.textContent = 'lezione-12.mp3'; T.style.opacity = 1; Fa.textContent = '';
       [D, R].forEach(function (e) { e.style.transition = 'none'; e.style.transform = ''; e.style.opacity = ''; });
       if (audio) { audio.remove(); audio = null; }
       C.className = 'l-cal on'; Bem.textContent = 'lezione-12.mp3';
-      [P, F].forEach(function (e) { e.className = e.className.replace(' in', ''); e.style.transform = ''; e.style.opacity = ''; });
+      [P, P2, F].forEach(function (e) { e.className = e.className.replace(' in', ''); e.style.transform = ''; e.style.opacity = ''; });
       void sc.offsetWidth; D.style.transition = ''; R.style.transition = '';
     }
     function ciclo() {
@@ -1679,32 +1722,29 @@ a { color: inherit; }
       dopo(3500, function () { fase('Trascrizione'); });
       // 1. trascrizione: la linea trasforma l'onda in testo
       dopo(4000, function () { add('p1'); });
-      dopo(6800, function () { add('fatto'); titolo('Fisiopatologia della febbre'); fase('Arricchimento'); });
-      // 2. arricchimento: PDF e foto arrivano e vanno nelle unità
-      dopo(7200, function () { add('pk'); });
-      dopo(8200, function () { add('aperto'); });
-      dopo(8750, function () { vola(P, K.querySelector('.pg')); add('pkvia'); });
-      dopo(8950, function () { vola(F, K.querySelector('.ft')); });
-      // 3. studio: si evidenziano le parole chiave
-      dopo(9900, function () { fase('Studio'); });
-      dopo(10200, function () { add('studio'); });
-      // 4. il box torna nel suo blocco del calendario
-      dopo(12300, function () { piazzaCal(); Bem.textContent = 'Fisiopatologia della febbre'; C.className = 'l-cal on ok'; });
-      dopo(12500, function () { chiudi(B, function () { C.classList.add('posa'); }); });
-      // 5. si apre un'altra lezione dal calendario e parte il quiz
-      dopo(14400, function () { C.classList.add('punta'); });
-      dopo(15200, function () {
-        D.style.opacity = 0; add('rip'); T.textContent = 'Anatomia del cuore'; Fa.textContent = 'Ripasso';
-        apri(G);
-      });
-      dopo(16800, function () { add('risp'); });
-      dopo(17300, function () { add('voto'); });
-      // 6. il quiz torna nel suo blocco: il giro ricomincia dal calendario
-      dopo(19400, function () { C.className = 'l-cal on ok posa'; });
-      dopo(19600, function () { chiudi(G); });
-      dopo(21600, function () { if (visibile) ciclo(); else stop(); });
+      // pausa di 500 ms alla fine di ogni fase
+      dopo(7300, function () { add('fatto'); titolo('Fisiopatologia della febbre'); fase('Arricchimento'); });
+      // 2. arricchimento: arrivano il PDF e la foto; il PDF si divide in due pagine mentre il testo si apre, poi tutto va al suo posto
+      dopo(7500, function () { add('pk'); });
+      dopo(8400, function () { add('split'); add('aperto'); });
+      dopo(8900, function () { vola(P, K.querySelector('.sc-pdf .a')); add('pkvia'); });
+      dopo(8980, function () { vola(P2, K.querySelector('.sc-pdf .b')); });
+      dopo(9060, function () { vola(F, K.querySelector('.ft')); });
+      // 3. verifica: la barra scende e sottolinea gli errori
+      dopo(10360, function () { fase('Verifica'); });
+      dopo(10600, verifica);
+      // 4. studio: spariscono le sottolineature rosse e si evidenziano le parole chiave
+      dopo(13100, function () { Es.forEach(function (e) { e.classList.remove('on'); }); fase('Studio'); add('studio'); });
+      // 5. ripasso nella stessa finestra
+      dopo(14850, function () { fase('Ripasso'); D.style.transition = 'opacity .35s'; D.style.opacity = 0; add('rip'); });
+      dopo(16050, function () { add('risp'); });
+      dopo(16550, function () { add('voto'); });
+      // 6. la lezione torna nel suo blocco del calendario e il giro ricomincia
+      dopo(17400, function () { piazzaCal(); Bem.textContent = 'Fisiopatologia della febbre'; C.className = 'l-cal on ok'; });
+      dopo(17600, function () { chiudi(B, function () { C.classList.add('posa'); }); });
+      dopo(19500, function () { if (visibile) ciclo(); else stop(); });
     }
-    function finale() { stop(); pulisci(); C.className = 'l-cal'; Fa.textContent = 'Studio'; sc.className = 'scan libero fatto aperto studio'; fissa(); sc.style.setProperty('--x', '100%'); T.textContent = 'Fisiopatologia della febbre'; P.className += ' in'; F.className += ' in'; P.style.opacity = F.style.opacity = 1; }
+    function finale() { stop(); pulisci(); C.className = 'l-cal'; Fa.textContent = 'Studio'; sc.className = 'scan libero fatto aperto studio'; fissa(); sc.style.setProperty('--x', '100%'); T.textContent = 'Fisiopatologia della febbre'; [P, P2, F].forEach(function (e) { e.className += ' in'; e.style.opacity = 1; }); }
     if (riduci) finale();
     else new IntersectionObserver(function (v) { visibile = v[0].isIntersecting; if (visibile && !inCorso) ciclo(); }, { threshold: 0.3 }).observe(posto);
     var lw3 = innerWidth;
@@ -1802,22 +1842,23 @@ a { color: inherit; }
     stop(); inCorso = true;
     ld.className = 'ld'; costruisci(); schede.forEach(function (c) { c.classList.remove('scelta'); }); ldCur.className = 'ld-cur'; void ld.offsetWidth;
     ld.classList.add('a');
-    dopo(2500, function () { ld.className = 'ld b'; });
-    dopo(5000, function () { ld.className = 'ld c u'; });               // via le parti inutili e, insieme, l'onda entra nei 3 blocchi
-    dopo(6600, function () { poggia(); ld.classList.add('carte'); scorri(1900, function () { ld.classList.add('scritto'); nomeFile(true); }); });
+    // tra un movimento e il successivo restano al massimo 500 ms di pausa
+    dopo(2200, function () { ld.className = 'ld b'; });
+    dopo(3500, function () { ld.className = 'ld c u'; });               // via le parti inutili e, insieme, l'onda entra nei 3 blocchi
+    dopo(5200, function () { poggia(); ld.classList.add('carte'); scorri(1900, function () { ld.classList.add('scritto'); nomeFile(true); }); });
     if (stretto()) {   // su mobile le unità si uniscono nel documento
-      dopo(9100, function () { ld.classList.add('d'); unisci(); });
-      dopo(10000, function () { ld.classList.add('unito'); });
+      dopo(7600, function () { ld.classList.add('d'); unisci(); });
+      dopo(8500, function () { ld.classList.add('unito'); });
     }
     // si sceglie un'unità e la si riascolta dal suo punto
-    var t = stretto() ? 10800 : 9200;
+    var t = stretto() ? 9100 : 7600;
     dopo(t, function () { cursore(schede[1]); });
-    dopo(t + 1100, function () { ldCur.classList.add('clic'); schede[1].classList.add('scelta'); });
-    dopo(t + 1250, function () { ldCur.classList.remove('clic'); });
-    dopo(t + 1500, function () { suona(); });
-    dopo(t + 2000, function () { ldCur.classList.remove('su'); });
-    dopo(t + 6200, function () { ld.classList.add('reset'); });
-    dopo(t + 6700, function () { if (visibile) ciclo(); else stop(); });
+    dopo(t + 1000, function () { ldCur.classList.add('clic'); schede[1].classList.add('scelta'); });
+    dopo(t + 1150, function () { ldCur.classList.remove('clic'); });
+    dopo(t + 1300, function () { suona(); });
+    dopo(t + 1800, function () { ldCur.classList.remove('su'); });
+    dopo(t + 4800, function () { ld.classList.add('reset'); });
+    dopo(t + 5300, function () { if (visibile) ciclo(); else stop(); });
   }
   var ldPlay = document.getElementById('ldPlay'), ldPw = document.getElementById('ldPw'), ldPt = document.getElementById('ldPt'), ldCur = document.getElementById('ldCur'), barre = [];
   (function () { var r = rnd(11); for (var k = 0; k < 64; k++) { var i = document.createElement('i'); i.style.setProperty('--h', Math.round((0.2 + 0.8 * Math.abs(Math.sin(k * 0.55)) * (0.5 + r() * 0.5)) * 100) + '%'); ldPw.appendChild(i); barre.push(i); } })();
@@ -1885,7 +1926,7 @@ a { color: inherit; }
       dopo(300, function () { pacco.style.left = (D.x + (D.w - pw) / 2) + 'px'; pacco.style.top = (D.y + (D.h - ph) / 2 - 8) + 'px'; });
       dopo(1100, function () { ar.classList.add('sopra'); });
       // 2. rilascio: il PDF si divide in pagine, le foto si separano
-      dopo(2000, function () {
+      dopo(1600, function () {
         var P = rel(pacco), pd = rel(pacco.querySelector('.pdf')), f1 = rel(pacco.querySelector('.f1')), f2 = rel(pacco.querySelector('.f2'));
         ORD.forEach(function (k) {
           var v = document.createElement('div'); v.className = 'vola'; v.innerHTML = FIG[k];
@@ -1909,18 +1950,18 @@ a { color: inherit; }
         });
       });
       // 4. le unità si aprono e ogni immagine vola nella sua
-      dopo(4100, function () { ar.classList.add('aperto'); });
-      dopo(4800, function () {
+      dopo(3250, function () { ar.classList.add('aperto'); });
+      dopo(3850, function () {
         ['p1', 'p2', 'p3', 'f1', 'f2'].forEach(function (k, i) {
           var v = vol[k]; v.style.transitionDelay = (i * 0.18) + 's';
           posa(v, rel(slots[k]));
           dopo(950 + i * 180, function () { slots[k].classList.add('pieno'); v.style.opacity = 0; v.style.transition = 'opacity .15s'; arN.textContent = i + 1; });
         });
       });
-      dopo(7000, function () { ar.classList.remove('diviso'); });
-      dopo(12000, function () { ar.classList.add('reset'); });
-      dopo(12500, function () { ar.className = 'ar'; pulisci(); });
-      dopo(13300, function () { if (visibile) ciclo(); else stop(); });
+      dopo(6000, function () { ar.classList.remove('diviso'); });
+      dopo(6800, function () { ar.classList.add('reset'); });
+      dopo(7300, function () { ar.className = 'ar'; pulisci(); });
+      dopo(7700, function () { if (visibile) ciclo(); else stop(); });
     }
     function finale() { stop(); pulisci(); arN.textContent = '5'; ar.className = 'ar aperto diviso'; Object.keys(slots).forEach(function (k) { slots[k].classList.add('pieno'); }); }
     if (riduci) finale();
@@ -1953,12 +1994,12 @@ a { color: inherit; }
       // entrambe le segnalazioni arrivano chiuse nel pannello
       dopo(3900, function () { vf.classList.add('uno', 'due'); n.textContent = '2'; i1.className = 'vf-i si'; i2.className = 'vf-i si'; });
       // si apre la prima: il suo errore si evidenzia
-      dopo(5200, function () { i1.classList.add('aperto'); u1.classList.add('attivo'); });
-      // poi la seconda
-      dopo(9800, function () { i1.classList.remove('aperto'); u1.classList.remove('attivo'); i2.classList.add('aperto'); u2.classList.add('attivo'); });
-      dopo(16000, function () { vf.classList.add('reset'); });
-      dopo(16500, pulisci);
-      dopo(17000, function () { if (visibile) ciclo(); else stop(); });
+      dopo(5000, function () { i1.classList.add('aperto'); u1.classList.add('attivo'); });
+      // poi la seconda (con un pannello aperto la pausa sale a 1000 ms, c'è da leggere)
+      dopo(6600, function () { i1.classList.remove('aperto'); u1.classList.remove('attivo'); i2.classList.add('aperto'); u2.classList.add('attivo'); });
+      dopo(8200, function () { vf.classList.add('reset'); });
+      dopo(8650, pulisci);
+      dopo(8800, function () { if (visibile) ciclo(); else stop(); });
     }
     function finale() { stop(); pulisci(); vf.className = 'vf uno due'; u1.className = 'vf-u trovato'; u2.className = 'vf-u trovato attivo'; i1.className = 'vf-i si'; i2.className = 'vf-i si aperto'; n.textContent = '2'; }
     if (riduci) finale();
@@ -2006,27 +2047,27 @@ a { color: inherit; }
     function ciclo() {
       stop(); inCorso = true; pulisci();
       // evidenziatore: giallo, poi verde
-      dopo(900, function () { pen.classList.add('on'); avviso('E', 'Evidenzia', 2600); });
-      dopo(1300, function () { h1.classList.add('on'); });
-      dopo(2300, function () { h2.classList.add('on'); });
+      dopo(500, function () { pen.classList.add('on'); avviso('E', 'Evidenzia', 2600); });
+      dopo(800, function () { h1.classList.add('on'); });
+      dopo(1800, function () { h2.classList.add('on'); });
       // l'unità è studiata, con la freccia si passa alla successiva
-      dopo(4300, function () { pen.classList.remove('on'); attiva('s'); st.classList.add('studiata'); avviso('S', 'Segna come studiata'); });
-      dopo(6100, function () { avviso('→', 'Unità successiva'); st.classList.add('u2'); Un.textContent = '2'; });
-      // chiedi: si seleziona un passaggio e arriva la risposta
-      dopo(7800, function () { attiva('c'); sel.classList.add('on'); });
-      dopo(8200, function () { piazzaAsk(); ask.classList.add('on'); avviso('C', 'Chiedi'); });
-      dopo(9100, function () { ask.classList.add('ris'); });
-      dopo(11200, function () { ask.classList.remove('on'); sel.classList.remove('on'); });
+      dopo(3200, function () { pen.classList.remove('on'); attiva('s'); st.classList.add('studiata'); avviso('S', 'Segna come studiata', 1100); });
+      dopo(4400, function () { avviso('→', 'Unità successiva', 1100); st.classList.add('u2'); Un.textContent = '2'; });
+      // chiedi: si seleziona un passaggio e arriva la risposta; il riquadro resta aperto 750 ms
+      dopo(5500, function () { attiva('c'); sel.classList.add('on'); });
+      dopo(5900, function () { piazzaAsk(); ask.classList.add('on'); avviso('C', 'Chiedi', 1950); });
+      dopo(6600, function () { ask.classList.add('ris'); });
+      dopo(7850, function () { ask.classList.remove('on'); sel.classList.remove('on'); });
       // modalità zen
-      dopo(11700, function () { attiva('z'); st.classList.add('zen'); avviso('Z', 'Modalità zen'); });
-      dopo(14100, function () { st.classList.remove('zen'); });
+      dopo(8650, function () { attiva('z'); st.classList.add('zen'); avviso('Z', 'Modalità zen', 1600); });
+      dopo(9750, function () { st.classList.remove('zen'); });
       // lettura veloce: una parola alla volta, poi più veloce
-      dopo(14900, function () { attiva('v'); vel.classList.add('on'); st.classList.add('veloce'); });
-      dopo(15500, scorri);
-      dopo(18500, function () { velocita(725, 74); });
-      dopo(24000, function () { clearTimeout(giro); st.classList.remove('veloce'); vel.classList.remove('on'); attiva(''); });
-      dopo(25300, function () { st.classList.add('reset'); });
-      dopo(25800, function () { if (visibile) ciclo(); else stop(); });
+      dopo(10850, function () { attiva('v'); vel.classList.add('on'); st.classList.add('veloce'); });
+      dopo(11350, scorri);
+      dopo(13350, function () { velocita(725, 74); });
+      // finita la lettura veloce si dissolve tutto e il giro ricomincia, senza tornare alla lettura normale
+      dopo(16600, function () { clearTimeout(giro); st.classList.add('reset'); });
+      dopo(17100, function () { if (visibile) ciclo(); else stop(); });
     }
     function finale() { stop(); pulisci(); st.className = 'st studiata'; h1.classList.add('on'); h2.classList.add('on'); }
     if (riduci) finale();
@@ -2052,6 +2093,7 @@ a { color: inherit; }
       dopo(da + 900, function () { A.classList.add('scrive'); });
       var fine = scrivi(A, s.a, da + 1000, s.passo || 32);
       dopo(fine + 300, function () { A.classList.remove('scrive'); Go.classList.add('si'); });
+      return fine;
     }
     function pulisci() {
       rp.className = 'rp'; M.classList.add('on'); K.className = 'rp-card'; F.className = 'rp-make'; Nw.className = 'rp-new'; Fok.className = '';
@@ -2064,27 +2106,28 @@ a { color: inherit; }
       // 1. domanda mirata: risposta, valutazione e approfondimento
       dopo(700, function () { A.classList.add('scrive'); });
       var t = scrivi(A, 'Se il prezzo sale compro meno: il bene costa di più rispetto agli altri e il mio reddito vale meno.', 800, 26);
-      dopo(t + 300, function () { A.classList.remove('scrive'); Go.classList.add('si'); });
-      dopo(t + 800, function () { Go.classList.add('premi'); });
-      dopo(t + 1000, function () { Go.classList.remove('premi'); V.classList.add('on'); });
-      dopo(t + 2000, function () { V.classList.add('ap-on'); });
+      dopo(t + 200, function () { A.classList.remove('scrive'); Go.classList.add('si'); });
+      // qui ci sono più cose da leggere: le pause salgono a 900 ms
+      dopo(t + 900, function () { Go.classList.add('premi'); });
+      dopo(t + 1100, function () { Go.classList.remove('premi'); V.classList.add('on'); });
+      dopo(t + 2400, function () { V.classList.add('ap-on'); });
       // 2. si crea un tipo di domanda nuovo
-      var c = t + 5600;
+      var c = t + 3800;
       dopo(c, function () { Nw.classList.add('premi'); });
       dopo(c + 250, function () { Nw.classList.remove('premi'); F.classList.add('on'); });
       var f = scrivi(F1, 'Caso clinico', c + 600, 45);
       f = scrivi(F2, 'Patologia generale', f + 200, 30);
       f = scrivi(F3, 'Presenta un paziente con i sintomi dell’unità e chiedi cosa sta succedendo e perché.', f + 200, 22);
-      dopo(f + 500, function () { Fok.classList.add('premi'); });
-      dopo(f + 700, function () { F.classList.remove('on'); rp.classList.add('creato'); M.classList.remove('on'); });
-      scena(f + 900, { u: 'Fisiopatologia della febbre', l: 'CASO CLINICO · unità 1.3 · domanda 1', q: 'Giulia, 34 anni, ha 39,5 °C e brividi intensi da questa mattina. Che cosa sta facendo il suo ipotalamo?', a: 'Ha alzato il set point: il corpo si sente freddo e produce calore con i brividi.' });
+      dopo(f + 900, function () { Fok.classList.add('premi'); });
+      dopo(f + 1100, function () { F.classList.remove('on'); rp.classList.add('creato'); M.classList.remove('on'); });
+      var e = scena(f + 1300, { u: 'Fisiopatologia della febbre', l: 'CASO CLINICO · unità 1.3 · domanda 1', q: 'Giulia, 34 anni, ha 39,5 °C e brividi intensi da questa mattina. Che cosa sta facendo il suo ipotalamo?', a: 'Ha alzato il set point: il corpo si sente freddo e produce calore con i brividi.' });
       // 3. lo stesso spazio vale per ogni materia
-      var e = f + 900 + 5400;
-      scena(e, { tipo: 'Esercizio', u: 'Trasformata di Laplace', l: 'ESERCIZIO · unità 2.2 · domanda 3', q: 'Calcola la trasformata di Laplace di f(t) = t · e^(−2t).', a: 'F(s) = 1 / (s + 2)²', mono: true, passo: 70 });
-      var g = e + 4600;
-      scena(g, { tipo: 'Query SQL', u: 'Join e aggregazioni', l: 'QUERY SQL · unità 4.1 · domanda 2', q: 'Scrivi la query che restituisce, per ogni corso, il numero di studenti iscritti.', a: 'SELECT corso, COUNT(*) FROM iscrizioni GROUP BY corso;', mono: true, passo: 38 });
-      dopo(g + 5600, function () { rp.classList.add('reset'); });
-      dopo(g + 6100, function () { if (visibile) ciclo(); else stop(); });
+      e += 1200;
+      var g = scena(e, { tipo: 'Esercizio', u: 'Trasformata di Laplace', l: 'ESERCIZIO · unità 2.2 · domanda 3', q: 'Calcola la trasformata di Laplace di f(t) = t · e^(−2t).', a: 'F(s) = 1 / (s + 2)²', mono: true, passo: 70 });
+      g += 1200;
+      var h = scena(g, { tipo: 'Query SQL', u: 'Join e aggregazioni', l: 'QUERY SQL · unità 4.1 · domanda 2', q: 'Scrivi la query che restituisce, per ogni corso, il numero di studenti iscritti.', a: 'SELECT corso, COUNT(*) FROM iscrizioni GROUP BY corso;', mono: true, passo: 38 });
+      dopo(h + 1200, function () { rp.classList.add('reset'); });
+      dopo(h + 1700, function () { if (visibile) ciclo(); else stop(); });
     }
     function finale() { stop(); pulisci(); A.textContent = 'Se il prezzo sale compro meno: il bene costa di più rispetto agli altri e il mio reddito vale meno.'; Go.className = 'go si'; V.className = 'rp-val on ap-on'; rp.classList.add('creato'); }
     if (riduci) finale();
@@ -2109,24 +2152,24 @@ a { color: inherit; }
       dopo(300, function () { cl.classList.add('on'); });
       dopo(1500, function () { cl.classList.add('studio'); });
       // le lezioni che mancano
-      dopo(3600, function () { cl.classList.add('avviso'); });
-      dopo(4400, function () { P.classList.add('on'); });
-      dopo(7400, function () { P.classList.remove('on'); });
+      dopo(3400, function () { cl.classList.add('avviso'); });
+      dopo(4250, function () { P.classList.add('on'); });
+      dopo(5350, function () { P.classList.remove('on'); });
       // la registrazione di lunedì va al suo blocco
-      dopo(7900, function () {
+      dopo(5850, function () {
         var b = rel(Fz), W = win.clientWidth;
         audio = document.createElement('div'); audio.className = 'cl-audio';
         audio.innerHTML = '<span class="w"><i style="height:40%"></i><i style="height:90%"></i><i style="height:60%"></i><i style="height:100%"></i><i style="height:45%"></i></span>fisica-16nov.m4a';
         audio.style.transition = 'none'; audio.style.left = (W + 10) + 'px'; audio.style.top = (b.y + 10) + 'px'; win.appendChild(audio); void audio.offsetWidth; audio.style.transition = '';
         audio.classList.add('su'); audio.style.left = Math.max(6, b.x + 6) + 'px'; audio.style.top = (b.y + b.h / 2 - 17) + 'px';
       });
-      dopo(9200, function () { audio.classList.add('cade'); Fz.classList.add('preso', 'lavora'); N.textContent = '2'; P1.className = 'fatto'; });
-      dopo(10800, function () { Fz.classList.remove('lavora'); });
+      dopo(6950, function () { audio.classList.add('cade'); Fz.classList.add('preso', 'lavora'); N.textContent = '2'; P1.className = 'fatto'; });
+      dopo(8150, function () { Fz.classList.remove('lavora'); });
       // la giornata di oggi
-      dopo(11600, function () { cl.classList.add('oggi'); });
-      dopo(11800, function () { Now.style.setProperty('--y', '40%'); });
-      dopo(16200, function () { cl.classList.add('reset'); });
-      dopo(16700, function () { if (visibile) ciclo(); else stop(); });
+      dopo(8650, function () { cl.classList.add('oggi'); });
+      dopo(8850, function () { Now.style.setProperty('--y', '40%'); });
+      dopo(12350, function () { cl.classList.add('reset'); });
+      dopo(12850, function () { if (visibile) ciclo(); else stop(); });
     }
     function finale() { stop(); pulisci(); cl.className = 'cl on studio avviso oggi'; Now.style.setProperty('--y', '40%'); }
     if (riduci) finale();
@@ -2153,7 +2196,7 @@ a { color: inherit; }
     if (riduci) return;
     new IntersectionObserver(function (v) {
       visibile = v[0].isIntersecting; clearInterval(giro);
-      if (visibile) giro = setInterval(avanti, 2800); else clearInterval(rs);
+      if (visibile) giro = setInterval(avanti, 1100); else clearInterval(rs);
     }, { threshold: 0.35 }).observe(ip);
   })();
   /* Atto 08: chiavi e costi */
