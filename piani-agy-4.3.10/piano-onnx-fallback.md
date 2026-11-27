@@ -36,6 +36,12 @@ Chi ha macparakeet-cli continua a usarlo (è più veloce, Neural Engine).
    (circa 700 MB, solo la prima volta)…» arriva già a `on_progress`. Verificare che nel job di setup arrivi
    all'avanzamento della lezione (fase Trascrizione) e aggiungere, se manca, la percentuale del download
    (dimensione scaricata / totale) con lo stesso callback, al massimo un aggiornamento al secondo.
+   Dal test sul Pro (rete lenta, ~0,2 MB/s): il download arriva a blocchi da ~67 MB ogni 8-10 minuti e per mezz'ora il job
+   mostra solo «Lezione creata». Quindi:
+   - percentuale **e stima del tempo rimanente** («Scarico il modello di trascrizione: 410 di 652 MB, circa 20 minuti»), calcolata sui byte
+     scaricati di tutti i file del modello (encoder + decoder + vocab), mostrata come fase del job;
+   - download **riprendibile**: file temporaneo `.part` e header `Range` se il server lo supporta (Hugging Face sì), così un'interruzione o
+     un riavvio del worker non riparte da zero; il file finale si rinomina solo a download completo e verificato (dimensione attesa).
    Se il download fallisce (rete assente): errore umano chiaro «Serve internet la prima volta per scaricare il
    modello di trascrizione (circa 700 MB). Riprova quando sei connesso.» (`rt/services/human_error.py`).
 
@@ -45,6 +51,10 @@ Chi ha macparakeet-cli continua a usarlo (è più veloce, Neural Engine).
      che funziona senza installare nulla. Per la massima velocità puoi installare macparakeet-cli con Homebrew.»
      (niente comando brew in evidenza: un link «Come?» alla guida va bene);
    - aggiornare `frontend/src/api/schema.d.ts` e `testSettings.ts`.
+
+4b. **Lezione senza trascritto dopo un errore** (test A sul Pro): quando la trascrizione fallisce subito (motore mancante) la lezione resta
+   creata e vuota. Va bene che resti (l'utente può riprovare), ma l'elenco e la pagina della lezione devono mostrare l'errore con «Riprova»,
+   non una lezione apparentemente pronta. Verifica che sia già così; se no, il minimo per mostrarlo.
 
 5. **Diagnostica** (`rt/services/doctor_service.py` 66-75): senza macparakeet ma con ONNX → OK
    «Parakeet ONNX (macparakeet-cli non installato)», con nota «modello da scaricare al primo uso» se `model_ready()` è falso.
