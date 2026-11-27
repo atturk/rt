@@ -354,14 +354,45 @@ def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
         os.remove(dmg)
     settings_path = os.path.join(ROOT, "packaging", "dmg", "settings.py")
     say("💿 Creo il .dmg con dmgbuild...")
+    rw_dmg = os.path.join(work, "RT-rw.dmg")
+    if os.path.exists(rw_dmg):
+        os.remove(rw_dmg)
     subprocess.run([
         sys.executable, "-m", "dmgbuild",
         "-s", settings_path,
         "-D", f"app={app}",
         "-D", f"dir={os.path.dirname(settings_path)}",
-        "RT", dmg,
+        "-D", "format=UDRW",
+        "RT", rw_dmg,
     ], check=True)
+    hide_dmg_service_files(rw_dmg, work)
+    subprocess.run(["hdiutil", "convert", rw_dmg, "-format", "UDZO", "-imagekey", "zlib-level=9",
+                    "-o", dmg], check=True)
+    if os.path.exists(rw_dmg):
+        os.remove(rw_dmg)
     return dmg
+
+
+DMG_SERVICE_FILES = (".background.tiff", ".background.png", ".VolumeIcon.icns", ".DS_Store", ".fseventsd")
+
+
+def hide_dmg_service_files(rw_dmg: str, work: str) -> None:
+    """Chi ha «Mostra file nascosti» attivo nel Finder vedeva sfondo, icona e .DS_Store nel .dmg:
+    il flag hidden li nasconde anche lì. Se qualcosa va storto il .dmg resta valido com'è."""
+    mount = os.path.join(work, "dmg-mnt")
+    os.makedirs(mount, exist_ok=True)
+    try:
+        subprocess.run(["hdiutil", "attach", "-nobrowse", "-noautoopen", "-mountpoint", mount, rw_dmg],
+                       check=True, capture_output=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        say(f"⚠️  Non riesco a montare il .dmg per nascondere i file di servizio: {exc}")
+        return
+    try:
+        targets = [os.path.join(mount, n) for n in DMG_SERVICE_FILES if os.path.lexists(os.path.join(mount, n))]
+        if targets:
+            subprocess.run(["chflags", "-h", "hidden", *targets], check=False)
+    finally:
+        subprocess.run(["hdiutil", "detach", mount, "-force"], check=False, capture_output=True)
 
 
 # ------------------------------------------------------------------ Windows

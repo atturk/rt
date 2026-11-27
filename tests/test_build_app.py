@@ -138,7 +138,14 @@ def test_build_macos_signs_macho_then_bundle_and_runs_dmgbuild(tmp_path, monkeyp
     dmgbuild_call = next(c for c in calls if "dmgbuild" in c)
     assert "-s" in dmgbuild_call
     assert f"app={work / 'dmg' / 'RT.app'}" in dmgbuild_call
-    assert dmgbuild_call[-2:] == ["RT", dmg]
+    rw_dmg = str(work / "RT-rw.dmg")
+    assert dmgbuild_call[-2:] == ["RT", rw_dmg]
+    assert "format=UDRW" in dmgbuild_call
+    # 5. file di servizio nascosti, poi compressione nel .dmg finale
+    names = [c[0] for c in calls]
+    assert names.index("hdiutil") > calls.index(dmgbuild_call)
+    convert = next(c for c in calls if c[:2] == ["hdiutil", "convert"])
+    assert convert[2] == rw_dmg and convert[-2:] == ["-o", dmg]
 
 
 def test_info_plist_contains_rt_types():

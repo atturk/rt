@@ -19,7 +19,8 @@ icon_locations = {
     "Applications": (500, 150),
 }
 
-format = "UDZO"
+# build_app.py crea prima un .dmg scrivibile per nascondere i file di servizio, poi lo comprime.
+format = defines.get("format", "UDZO")
 volume_name = "RT"
 show_status_bar = False
 show_toolbar = False
