@@ -475,6 +475,7 @@ def run_menubar(base_url: Optional[str] = None) -> int:
         return 0
 
     import AppKit
+    import objc
     from Foundation import NSMakeSize, NSObject
     from PyObjCTools import AppHelper
 
@@ -514,6 +515,9 @@ def run_menubar(base_url: Optional[str] = None) -> int:
             self._populate(menu)
             wake_event.set()
 
+        # Metodo solo Python: senza decoratore PyObjC lo prende per un selettore senza argomenti
+        # e la classe non si crea (BadPrototypeError, icona mai mostrata: 4.3.10b1).
+        @objc.python_method
         def _populate(self, menu):
             menu.removeAllItems()
             with state_lock:

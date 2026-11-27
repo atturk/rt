@@ -287,3 +287,22 @@ def test_install_macos_dock_menu_registers_selector_and_builds_menu(monkeypatch)
     result_menu = fn(None, None)
     assert result_menu is not None
     fake_appkit.NSMenu.alloc.return_value.init.return_value.setAutoenablesItems_.assert_called_with(False)
+
+
+def test_delegate_methods_are_valid_objc_selectors():
+    """PyObjC: un metodo con argomenti deve finire con «_» o essere @objc.python_method."""
+    import ast
+    import inspect
+    from rt import menubar
+    tree = ast.parse(inspect.getsource(menubar))
+    classes = [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)
+               and any(getattr(b, "id", "") == "NSObject" for b in n.bases)]
+    assert classes
+    for cls in classes:
+        for fn in cls.body:
+            if not isinstance(fn, ast.FunctionDef):
+                continue
+            python_only = any("python_method" in ast.unparse(d) for d in fn.decorator_list)
+            args = len(fn.args.args) - 1
+            colons = fn.name.count("_") if fn.name.endswith("_") else 0
+            assert python_only or args == colons or (args == 0 and not fn.name.endswith("_")), fn.name

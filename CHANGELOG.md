@@ -13,6 +13,7 @@ Seconda beta della 4.3.10: aggiornamenti dentro Impostazioni senza popup, instal
 
 ### Correzioni
 
+- **Icona nella barra dei menu**: nella b1 non compariva mai (il servizio si riavviava ogni 10 secondi per un errore).
 - **Aggiornamento di un'app installata da un altro utente del Mac**: lo dice subito, invece di fermarsi a metà.
 
 ## 4.3.10b1 — 2026-11-27
