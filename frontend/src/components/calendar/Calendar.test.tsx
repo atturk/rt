@@ -556,7 +556,18 @@ describe('CalendarPage: intervallo di settimane', () => {
     while (Number(screen.getByTestId('calendar-range-year').textContent) < 2026) fireEvent.click(screen.getByRole('button', { name: 'Anno successivo' }))
     const popup = screen.getByTestId('calendar-range-popup')
     fireEvent.click(popup.querySelector('[data-week="2026-10-19"]')!)
+    fireEvent.click(popup.querySelector('[data-week="2026-10-12"]')!, { shiftKey: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Modifica queste settimane' }))
+  }
+  function chooseMultipleRuns() {
+    fireEvent.click(screen.getByRole('button', { name: 'Modifica la settimana tipo in un intervallo di settimane' }))
+    while (Number(screen.getByTestId('calendar-range-year').textContent) > 2026) fireEvent.click(screen.getByRole('button', { name: 'Anno precedente' }))
+    while (Number(screen.getByTestId('calendar-range-year').textContent) < 2026) fireEvent.click(screen.getByRole('button', { name: 'Anno successivo' }))
+    const popup = screen.getByTestId('calendar-range-popup')
     fireEvent.click(popup.querySelector('[data-week="2026-10-12"]')!)
+    fireEvent.click(popup.querySelector('[data-week="2026-10-19"]')!, { shiftKey: true })
+    fireEvent.click(popup.querySelector('[data-week="2026-11-02"]')!, { metaKey: true })
+    fireEvent.click(popup.querySelector('[data-week="2026-11-09"]')!, { shiftKey: true })
     fireEvent.click(screen.getByRole('button', { name: 'Modifica queste settimane' }))
   }
   it('conferma il modo range, va alla prima settimana e aggiunge solo nelle date scelte', () => {
@@ -620,6 +631,48 @@ describe('CalendarPage: intervallo di settimane', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
     fireEvent.click(screen.getByRole('button', { name: 'Riepilogo della settimana' }))
     expect(screen.getByTestId('calendar-week-popup')).toHaveTextContent('Settimana 42 · 12–16 ottobre 2026')
+  })
+  it('applica aggiunta, modifica e rimozione a ogni corsa in sequenza e segna i buchi come fuori intervallo', async () => {
+    renderPage(); chooseMultipleRuns()
+    expect(calendarMocks.currentDate).toBe('2026-10-12')
+    expect(screen.getByRole('button', { name: 'Cambia intervallo di settimane' })).toHaveTextContent('Settimane 42–43, Settimane 45–46')
+
+    // Aggiunta su due corse in sequenza
+    fireEvent.click(screen.getAllByRole('button', { name: 'Aggiungi alle 08:30' })[0])
+    const addPopup = screen.getByRole('dialog', { name: 'Aggiungi ora' })
+    expect(addPopup).toHaveTextContent('Settimane 42–43, Settimane 45–46')
+    fireEvent.change(within(addPopup).getByLabelText('Materia'), { target: { value: 'Fisica' } })
+    fireEvent.click(within(addPopup).getByRole('button', { name: 'Aggiungi' }))
+    await waitFor(() => expect(calendarMocks.createTemplate).toHaveBeenCalledTimes(2))
+    expect(calendarMocks.createTemplate).toHaveBeenNthCalledWith(1, expect.objectContaining({ materia: 'Fisica', valid_from: '2026-10-12', valid_to: '2026-10-26' }))
+    expect(calendarMocks.createTemplate).toHaveBeenNthCalledWith(2, expect.objectContaining({ materia: 'Fisica', valid_from: '2026-11-02', valid_to: '2026-11-16' }))
+
+    // Modifica su due corse in sequenza
+    calendarMocks.createTemplate.mockClear()
+    fireEvent.click(screen.getByTestId('calendar-event-tpl_7'))
+    const editPopup = screen.getByRole('dialog', { name: 'Modifica ora' })
+    expect(editPopup).toHaveTextContent('Settimane 42–43, Settimane 45–46')
+    fireEvent.change(within(editPopup).getByLabelText('Fine'), { target: { value: '12:00' } })
+    fireEvent.click(within(editPopup).getByRole('button', { name: 'Salva' }))
+    await waitFor(() => expect(calendarMocks.deleteTemplate).toHaveBeenCalledTimes(2))
+    expect(calendarMocks.createTemplate).toHaveBeenNthCalledWith(1, expect.objectContaining({ end_time: '12:00', valid_from: '2026-10-12', valid_to: '2026-10-26' }))
+    expect(calendarMocks.deleteTemplate).toHaveBeenNthCalledWith(1, { id: 7, from: '2026-10-12', to: '2026-10-26' })
+    expect(calendarMocks.createTemplate).toHaveBeenNthCalledWith(2, expect.objectContaining({ end_time: '12:00', valid_from: '2026-11-02', valid_to: '2026-11-16' }))
+    expect(calendarMocks.deleteTemplate).toHaveBeenNthCalledWith(2, { id: 7, from: '2026-11-02', to: '2026-11-16' })
+
+    // Rimozione su due corse in sequenza
+    calendarMocks.deleteTemplate.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: "Togli quest'ora" }))
+    await waitFor(() => expect(calendarMocks.deleteTemplate).toHaveBeenCalledTimes(2))
+    expect(calendarMocks.deleteTemplate).toHaveBeenNthCalledWith(1, { id: 7, from: '2026-10-12', to: '2026-10-26' })
+    expect(calendarMocks.deleteTemplate).toHaveBeenNthCalledWith(2, { id: 7, from: '2026-11-02', to: '2026-11-16' })
+
+    // Buco tra le due corse (2026-10-26) è fuori intervallo; riapertura conserva le 4 settimane
+    calendarMocks.week = { ...week, start_date: '2026-10-26' }
+    fireEvent.click(screen.getByRole('button', { name: 'Settimana successiva' }))
+    expect(screen.getByText("Fuori dall'intervallo scelto")).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Cambia intervallo di settimane' }))
+    expect(screen.getByText('4 settimane selezionate')).toBeVisible()
   })
 })
 
