@@ -375,6 +375,7 @@ class UiConfig(BaseModel):
     study_statuses: List[CustomStudyStatus] = Field(default_factory=list, description="Stati di studio personalizzati")
     study_status_order: List[str] = Field(default_factory=list, description="Ordine di tutti gli stati di studio")
     close_action: Literal["background", "quit"] = Field(default="background", description="Azione alla chiusura della finestra con la X nell'app desktop: 'background' | 'quit'")
+    start_at_login: bool = Field(default=True, description="Avvia RT all'accesso su macOS (RunAtLoad nei LaunchAgent)")
 
     @model_validator(mode="before")
     @classmethod

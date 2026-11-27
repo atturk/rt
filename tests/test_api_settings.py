@@ -203,6 +203,7 @@ def test_preferences_persist(api_client, api_token, ws):
         "sfondo_gruppi": "colori",
         "modalita_arricchimento": "manuale",
         "chiusura_x": "background",
+        "avvia_all_accesso": True,
     }
 
     # Update preferences
@@ -214,6 +215,7 @@ def test_preferences_persist(api_client, api_token, ws):
             "sfondo_gruppi": "grigi",
             "modalita_arricchimento": "automatica",
             "chiusura_x": "esci",
+            "avvia_all_accesso": False,
         },
     )
     assert res.status_code == 200, res.text
@@ -223,6 +225,7 @@ def test_preferences_persist(api_client, api_token, ws):
         "sfondo_gruppi": "grigi",
         "modalita_arricchimento": "automatica",
         "chiusura_x": "esci",
+        "avvia_all_accesso": False,
     }
 
     # Persists to fresh app
@@ -233,7 +236,28 @@ def test_preferences_persist(api_client, api_token, ws):
         "sfondo_gruppi": "grigi",
         "modalita_arricchimento": "automatica",
         "chiusura_x": "esci",
+        "avvia_all_accesso": False,
     }
+
+
+def test_preferences_start_at_login_rewrites_plists(api_client, ws, tmp_path, monkeypatch):
+    import plistlib
+    from rt.services import service_manager as sm
+
+    agents = tmp_path / "LaunchAgents"
+    monkeypatch.setenv("RT_LAUNCH_AGENTS_DIR", str(agents))
+    monkeypatch.setattr(sm, "supported", lambda: True)
+    agents.mkdir()
+    for name in sm.SERVICES:
+        with open(sm.plist_path(name), "wb") as f:
+            f.write(sm.render_plist(name, start_at_login=True))
+
+    res = api_client.put("/api/v1/settings/preferences", json={"avvia_all_accesso": False})
+    assert res.status_code == 200, res.text
+    assert res.json()["preferences"]["avvia_all_accesso"] is False
+    for name in sm.SERVICES:
+        with open(sm.plist_path(name), "rb") as f:
+            assert plistlib.load(f)["RunAtLoad"] is False
 
 
 def test_save_single_preference_preserves_other_settings(api_client, ws):

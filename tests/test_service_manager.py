@@ -51,6 +51,13 @@ def test_render_plist(tmp_path, monkeypatch):
     # Background faceva rallentare a macOS export e trascrizioni: il worker cede solo un po' di CPU.
     worker = plistlib.loads(sm.render_plist("worker"))
     assert worker["ProcessType"] == spec["ProcessType"] == "Standard" and worker["Nice"] == 5 and "Nice" not in spec
+    menubar = plistlib.loads(sm.render_plist("menubar"))
+    assert menubar["Label"] == "com.atturk.rt.menubar"
+    assert menubar["ProgramArguments"][-1:] == ["menubar"]
+    assert menubar["RunAtLoad"] is True and menubar["KeepAlive"] == {"SuccessfulExit": False}
+    assert plistlib.loads(sm.render_plist("api", start_at_login=False))["RunAtLoad"] is False
+    assert plistlib.loads(sm.render_plist("worker", start_at_login=False))["RunAtLoad"] is False
+    assert plistlib.loads(sm.render_plist("menubar", start_at_login=False))["RunAtLoad"] is False
     with pytest.raises(sm.ServiceError):
         sm.render_plist("bot")  # il bot sempre acceso non c'è più
 
@@ -58,18 +65,57 @@ def test_render_plist(tmp_path, monkeypatch):
 @pytest.mark.skipif(os.name == "nt", reason="launchd esiste solo sul Mac")
 def test_install_status_stop_uninstall(launchd, tmp_path):
     calls, loaded = launchd
-    assert sm.install(["api", "worker"], say=lambda _m: None) == ["api", "worker"]
-    assert sm.installed() == ["api", "worker"]
-    assert loaded == {"com.atturk.rt.api", "com.atturk.rt.worker"}
+    assert sm.install(["api", "worker", "menubar"], say=lambda _m: None) == ["api", "worker", "menubar"]
+    assert sm.installed() == ["api", "worker", "menubar"]
+    assert loaded == {"com.atturk.rt.api", "com.atturk.rt.worker", "com.atturk.rt.menubar"}
     st = sm.status("api")
     assert (st.installed, st.loaded, st.running, st.pid) == (True, True, True, 4242)
-    assert sm.stop(["worker"]) == ["worker"] and "com.atturk.rt.worker" not in loaded
-    assert sm.start(["worker"]) == ["worker"] and "com.atturk.rt.worker" in loaded
+    assert sm.stop(["worker", "menubar"]) == ["worker", "menubar"]
+    assert "com.atturk.rt.worker" not in loaded and "com.atturk.rt.menubar" not in loaded
+    assert sm.start(["worker", "menubar"]) == ["worker", "menubar"]
+    assert "com.atturk.rt.worker" in loaded and "com.atturk.rt.menubar" in loaded
     assert sm.restart(["api"]) == ["api"] and ["kickstart", "-k", "gui/501/com.atturk.rt.api"] in calls
     # reinstallare riscrive il plist e ricarica senza errori (idempotente)
     sm.install(["api"], say=lambda _m: None)
-    assert sm.uninstall(say=lambda _m: None) == ["api", "worker"]
+    assert sm.uninstall(say=lambda _m: None) == ["api", "worker", "menubar"]
     assert sm.installed() == [] and not loaded
+
+
+@pytest.mark.skipif(os.name == "nt", reason="launchd esiste solo sul Mac")
+def test_sync_start_at_login_rewrites_all_plists_without_restart(launchd, tmp_path):
+    calls, loaded = launchd
+    sm.install(say=lambda _m: None)
+    calls.clear()
+    updated = sm.sync_start_at_login(False)
+    assert updated == ["api", "worker", "menubar"]
+    assert calls == []
+    for name in ("api", "worker", "menubar"):
+        with open(sm.plist_path(name), "rb") as f:
+            assert plistlib.load(f)["RunAtLoad"] is False
+    sm.sync_start_at_login(True)
+    for name in ("api", "worker", "menubar"):
+        with open(sm.plist_path(name), "rb") as f:
+            assert plistlib.load(f)["RunAtLoad"] is True
+
+
+def test_stop_uses_detached_bootout_when_stopping_self(launchd, monkeypatch):
+    calls, loaded = launchd
+    sm.install(["api", "menubar"], say=lambda _m: None)
+    calls.clear()
+    monkeypatch.setattr(
+        sm,
+        "status",
+        lambda name: sm.ServiceStatus(
+            name, True, True, True,
+            pid=os.getpid() if name == "menubar" else 4242,
+        ),
+    )
+    popen_calls = []
+    monkeypatch.setattr(sm.subprocess, "Popen", lambda cmd, **kw: popen_calls.append(cmd))
+    assert sm.stop() == ["api", "menubar"]
+    assert ["bootout", "gui/501/com.atturk.rt.api"] in calls
+    assert not any("com.atturk.rt.menubar" in c for c in calls)
+    assert popen_calls == [["launchctl", "bootout", "gui/501/com.atturk.rt.menubar"]]
 
 
 def test_old_bot_agents_are_removed_on_install(launchd, tmp_path):
