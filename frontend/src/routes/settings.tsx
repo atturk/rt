@@ -27,6 +27,7 @@ import { DeviceAccessSection } from '@/components/settings/device-access'
 import { CloseActionSection, StartAtLoginSection, TranscriptionSection } from '@/components/settings/general'
 import { NotificationsCard, TelegramConnectScreen, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
+import { UpdateNoticeDot } from '@/components/settings/UpdateNoticeDot'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
 import { AppearanceSection, OutlineSettingsSection, SourceDefaultsSection, SpeedSection } from '@/components/settings/preferences'
 import { WebSearchSection } from '@/components/settings/websearch'
@@ -112,7 +113,10 @@ export function SettingsLayout() {
                     {phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">{s.description}</span>}
                   </span>
                 </span>
-                {phone && <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
+                <span className="flex shrink-0 items-center gap-2">
+                  {s.path === 'info-aggiornamenti' && <UpdateNoticeDot />}
+                  {phone && <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
+                </span>
               </NavLink>
             )
           })}
@@ -347,8 +351,8 @@ export function InfoSettingsPage() {
     <SettingsPage title="Info e aggiornamenti" description="Versione di RT, aggiornamenti, novità, spazio su disco e sessione.">
       <InfoSection />
       <InfoActions />
+      <ScrollToHash />
     </SettingsPage>
   )
 }
-export { UpdatePopup } from '@/components/settings/UpdatePopup'
 

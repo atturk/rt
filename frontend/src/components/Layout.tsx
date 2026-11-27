@@ -21,7 +21,7 @@ import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { useUploadGuard } from '@/lib/uploadQueue'
 import { StudyZenContext, ZenContext, RsvpLayoutContext, IRLEN_COLORS, type RsvpLayoutState } from '@/lib/zen'
-import { useUpdatePopup } from '@/components/settings/useAppUpdate'
+import { UpdateNoticeDot } from '@/components/settings/UpdateNoticeDot'
 import { cn } from '@/lib/utils'
 
 // Il riquadro di Salva/Condividi serve solo dopo un'esportazione: fuori dal JavaScript iniziale.
@@ -32,7 +32,7 @@ const FileStatusBar = lazy(() => import('@/components/ui/file-status').then((m) 
 // Il popup si scarica quando lo si apre: non serve per mostrare la prima pagina.
 const NewLessonDialog = lazy(() => import('@/components/lessons/NewLessonDialog').then((m) => ({ default: m.NewLessonDialog })))
 
-type Section = { to: string; label: string; icon: LucideIcon; match: (path: string) => boolean; badge?: boolean }
+type Section = { to: string; label: string; icon: LucideIcon; match: (path: string) => boolean; badge?: 'jobs' | 'settings' }
 
 /** Le quattro voci del design 4.2.5; le pagine di prima restano raggiungibili dai link. */
 const LESSONS: Section = {
@@ -47,13 +47,13 @@ const CALENDAR: Section = {
   icon: Calendar,
   match: (path) => /^\/calendario(\/|$)/.test(path),
 }
-const JOBS: Section = { to: '/job', label: 'Job in corso', icon: Activity, match: (path) => /^\/(job|importa)(\/|$)/.test(path), badge: true }
-const SETTINGS: Section = { to: '/impostazioni', label: 'Impostazioni', icon: Settings, match: (path) => /^\/(impostazioni|bot)(\/|$)/.test(path) }
+const JOBS: Section = { to: '/job', label: 'Job in corso', icon: Activity, match: (path) => /^\/(job|importa)(\/|$)/.test(path), badge: 'jobs' }
+const SETTINGS: Section = { to: '/impostazioni', label: 'Impostazioni', icon: Settings, match: (path) => /^\/(impostazioni|bot)(\/|$)/.test(path), badge: 'settings' }
 
-function Badge() {
+function Badge({ kind }: { kind: 'jobs' | 'settings' }) {
   return (
     <span className="pointer-events-none absolute -right-1 -top-1">
-      <JobsNavBadge />
+      {kind === 'jobs' ? <JobsNavBadge /> : <UpdateNoticeDot className="ring-2 ring-background" />}
     </span>
   )
 }
@@ -69,7 +69,7 @@ function NavItem({ section, path, side, variant }: { section: Section; path: str
       side={side}
       variant={variant}
       active={active}
-      badge={section.badge ? <Badge /> : undefined}
+      badge={section.badge ? <Badge kind={section.badge} /> : undefined}
     />
   )
 }
@@ -148,7 +148,6 @@ export function Layout() {
   }, [navigate])
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
-  useUpdatePopup()
   useDesktopJobSignals()
   const { error: openedFileError, clearError: clearOpenedFileError } = useOpenedFiles(openNewLesson)
 

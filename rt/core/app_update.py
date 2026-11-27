@@ -219,6 +219,18 @@ def _updates_dir() -> str:
     return target
 
 
+def installing_file() -> str:
+    return os.path.join(_updates_dir(), "installing.json")
+
+
+def last_error_file() -> str:
+    return os.path.join(_updates_dir(), "last_error.txt")
+
+
+def clear_last_error() -> None:
+    _remove(os.path.join(paths.data_dir(), "updates", "last_error.txt"))
+
+
 def expected_sha256(sums_text: str, name: str) -> Optional[str]:
     for line in sums_text.splitlines():
         parts = line.split()
@@ -240,14 +252,42 @@ def _interrupted(done: int, total: Optional[int]) -> AppUpdateError:
     """Errore chiaro quando la rete cade o cambia durante il download."""
     progress = f" dopo {_megabytes(done)}" + (f" su {_megabytes(total)}" if total else "") if done else ""
     return AppUpdateError(f"La connessione si è interrotta durante il download dell'aggiornamento{progress}. "
-                          "Controlla la rete e riprova: il download riparte da capo.")
+                          "Controlla la rete e riprova: il download riprende da dove si era fermato.")
+
+
+def _sha256_file(path: str):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            digest.update(chunk)
+    return digest
+
+
+def _finalize_download(partial: str, target: str, info: UpdateCheck, hex_digest: str, expected: str) -> str:
+    if hex_digest != expected:
+        _remove(partial)
+        raise AppUpdateError("Il file scaricato non corrisponde a SHA256SUMS: aggiornamento annullato.")
+    os.replace(partial, target)
+    ready_data = {
+        "version": info.latest,
+        "asset_name": info.asset_name,
+        "sha256": hex_digest,
+        "size": os.path.getsize(target),
+    }
+    with open(os.path.join(_updates_dir(), "ready.json"), "w", encoding="utf-8") as f:
+        json.dump(ready_data, f)
+    with STATE.lock:
+        if STATE.phase == "verifying":
+            STATE.phase = "ready"
+    return target
 
 
 def download(info: UpdateCheck, on_progress: Callable[[int, Optional[int]], None] = lambda done, total: None,
              opener: Callable = urllib.request.urlopen) -> str:
-    """Scarica l'installer e lo verifica con SHA256SUMS; restituisce il percorso del file."""
+    """Scarica l'installer (con ripresa via Range su .part) e lo verifica con SHA256SUMS."""
     if not (info.asset_url and info.asset_name and info.sums_url):
         raise AppUpdateError("Nessun aggiornamento da scaricare.")
+    cleanup(info.asset_name)
     headers = {"User-Agent": "RT-Updater"}
     try:
         with opener(urllib.request.Request(info.sums_url, headers=headers), timeout=READ_TIMEOUT) as resp:
@@ -260,46 +300,80 @@ def download(info: UpdateCheck, on_progress: Callable[[int, Optional[int]], None
         raise AppUpdateError(f"SHA256SUMS non elenca {info.asset_name}.")
     target = os.path.join(_updates_dir(), info.asset_name)
     partial = target + ".part"
-    digest = hashlib.sha256()
-    done = 0
     total = info.asset_size or None
+    resume_from = os.path.getsize(partial) if os.path.isfile(partial) else 0
+    if total is not None and resume_from > total:
+        _remove(partial)
+        resume_from = 0
+    if total is not None and resume_from == total and resume_from > 0:
+        with STATE.lock:
+            STATE.phase = "verifying"
+        digest = _sha256_file(partial)
+        return _finalize_download(partial, target, info, digest.hexdigest(), expected)
+
+    done = resume_from
+
+    def _open_asset(offset: int):
+        req_headers = dict(headers)
+        if offset > 0:
+            req_headers["Range"] = f"bytes={offset}-"
+        return opener(urllib.request.Request(info.asset_url, headers=req_headers), timeout=READ_TIMEOUT)
+
     try:
-        with opener(urllib.request.Request(info.asset_url, headers=headers), timeout=READ_TIMEOUT) as resp, \
-                open(partial, "wb") as out:
-            total = info.asset_size or int(resp.headers.get("Content-Length") or 0) or None
-            while True:
-                chunk = resp.read(1 << 20)
-                if not chunk:
-                    break
-                out.write(chunk)
-                digest.update(chunk)
-                done += len(chunk)
+        try:
+            resp = _open_asset(resume_from)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 416 and resume_from > 0:
+                _remove(partial)
+                resume_from = 0
+                done = 0
+                resp = _open_asset(0)
+            else:
+                raise
+        with resp:
+            status = getattr(resp, "status", None)
+            if status is None and hasattr(resp, "getcode"):
+                status = resp.getcode()
+            if status is None:
+                status = 200
+            resp_headers = getattr(resp, "headers", None) or {}
+            if status == 206 and resume_from > 0:
+                content_range = resp_headers.get("Content-Range", "")
+                if content_range and not content_range.startswith(f"bytes {resume_from}-"):
+                    resume_from = 0
+            elif resume_from > 0:
+                resume_from = 0
+
+            cl = int(resp_headers.get("Content-Length") or 0)
+            if resume_from > 0:
+                digest = _sha256_file(partial)
+                done = resume_from
+                total = info.asset_size or ((resume_from + cl) if cl else None)
                 on_progress(done, total)
+                mode = "ab"
+            else:
+                digest = hashlib.sha256()
+                done = 0
+                total = info.asset_size or (cl or None)
+                mode = "wb"
+
+            with open(partial, mode) as out:
+                while True:
+                    chunk = resp.read(1 << 20)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    digest.update(chunk)
+                    done += len(chunk)
+                    on_progress(done, total)
         with STATE.lock:
             STATE.phase = "verifying"
     except (urllib.error.URLError, OSError, http.client.HTTPException):
-        _remove(partial)
         raise _interrupted(done, total) from None
     if total and done < total:
-        # Il server ha chiuso la connessione prima della fine: non è un file alterato.
-        _remove(partial)
+        # Il server ha chiuso la connessione prima della fine: conserva .part per riprendere.
         raise _interrupted(done, total)
-    if digest.hexdigest() != expected:
-        _remove(partial)
-        raise AppUpdateError("Il file scaricato non corrisponde a SHA256SUMS: aggiornamento annullato.")
-    os.replace(partial, target)
-    ready_data = {
-        "version": info.latest,
-        "asset_name": info.asset_name,
-        "sha256": digest.hexdigest(),
-        "size": os.path.getsize(target),
-    }
-    with open(os.path.join(_updates_dir(), "ready.json"), "w", encoding="utf-8") as f:
-        json.dump(ready_data, f)
-    with STATE.lock:
-        if STATE.phase == "verifying":
-            STATE.phase = "ready"
-    return target
+    return _finalize_download(partial, target, info, digest.hexdigest(), expected)
 
 
 def ready_file(info: Optional[UpdateCheck]) -> Optional[str]:
@@ -402,18 +476,17 @@ def copy_app_from_dmg(dmg: str, target: str) -> None:
             if not os.path.isdir(source):
                 raise AppUpdateError("Il .dmg non contiene RT.app.")
             install_log("copio RT.app")
-            _run(["ditto", source, target])
+            _run(["ditto", "--noqtn", source, target])
             install_log("RT.app copiata")
         finally:
             subprocess.run(["hdiutil", "detach", mount, "-force"], capture_output=True, check=False)
     finally:
         shutil.rmtree(mount, ignore_errors=True)
-    subprocess.run(["xattr", "-dr", "com.apple.quarantine", target], capture_output=True, check=False)
 
 
 def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
-    """Copia la nuova RT.app accanto a quella in uso; un processo separato le scambia e riapre
-    RT (che riavvia i servizi con il codice nuovo)."""
+    """Lancia un helper staccato che chiude subito la finestra, monta il .dmg, copia RT.app
+    senza quarantena (ditto --noqtn), scambia le app e riapre RT."""
     app = bundle.app_path(project_root)
     if not app:
         raise AppUpdateError("Non trovo RT.app: scarica l'aggiornamento dalla pagina delle release.")
@@ -421,27 +494,68 @@ def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
     if not os.access(parent, os.W_OK):
         raise AppUpdateError(f"Non posso scrivere in {parent}: scarica l'aggiornamento dalla pagina delle release.")
     staging = app + ".update"
-    shutil.rmtree(staging, ignore_errors=True)
-    copy_app_from_dmg(dmg, staging)
     old = app + ".old"
-    # La finestra va chiusa davvero prima di riaprire: con la vecchia ancora viva "open"
+    # La finestra va chiusa subito e prima di riaprire: con la vecchia ancora viva "open"
     # riporterebbe davanti quella invece di avviare la nuova RT.app.
-    script = ('sleep 1; '
-              'if [ -f "$WINDOW_PID" ]; then '
-              'PID=$(cat "$WINDOW_PID"); '
-              'case "$PID" in ""|*[!0-9]*) ;; *) kill "$PID" 2>/dev/null || true; '
-              'i=0; while kill -0 "$PID" 2>/dev/null && [ $i -lt 20 ]; do sleep 0.5; i=$((i+1)); done ;; esac; '
-              'rm -f "$WINDOW_PID"; fi; '
-              'echo "$(date "+%Y-%m-%d %H:%M:%S") scambio le app"; '
-              'rm -rf "$OLD"; mv "$APP" "$OLD" && mv "$NEW" "$APP" && rm -rf "$OLD" && '
-              'echo "$(date "+%Y-%m-%d %H:%M:%S") riapro RT" && '
-              'open "$APP" --args --after-update')
-    install_log("chiudo RT e scambio le app")
+    script = (
+        'rm -f "$LAST_ERROR"; '
+        'printf \'{"pid": %s}\\n\' "$$" > "$INSTALLING_JSON"; '
+        'MOUNT=""; '
+        'cleanup_mount() { '
+        '  if [ -n "$MOUNT" ]; then '
+        '    hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true; '
+        '    rmdir "$MOUNT" 2>/dev/null || true; '
+        '    MOUNT=""; '
+        '  fi; '
+        '}; '
+        'fail() { '
+        '  MSG="$1"; '
+        '  echo "$(date "+%Y-%m-%d %H:%M:%S") errore: $MSG"; '
+        '  cleanup_mount; '
+        '  rm -rf "$NEW"; '
+        '  printf \'%s\\n\' "$MSG" > "$LAST_ERROR"; '
+        '  rm -f "$INSTALLING_JSON"; '
+        '  open "$APP" --args --update-failed; '
+        '  exit 1; '
+        '}; '
+        'trap \'rm -f "$INSTALLING_JSON"; cleanup_mount\' EXIT; '
+        'sleep 1; '
+        'if [ -f "$WINDOW_PID" ]; then '
+        '  PID=$(cat "$WINDOW_PID"); '
+        '  case "$PID" in ""|*[!0-9]*) ;; *) kill "$PID" 2>/dev/null || true; '
+        '  i=0; while kill -0 "$PID" 2>/dev/null && [ $i -lt 20 ]; do sleep 0.5; i=$((i+1)); done ;; esac; '
+        '  rm -f "$WINDOW_PID"; '
+        'fi; '
+        'MOUNT=$(mktemp -d "${TMPDIR:-/tmp}/rt-update.XXXXXX") || fail "Impossibile preparare il montaggio del .dmg."; '
+        'echo "$(date "+%Y-%m-%d %H:%M:%S") monto il .dmg"; '
+        'ERR=$(hdiutil attach -nobrowse -readonly -noautoopen -noverify -noautofsck -mountpoint "$MOUNT" "$DMG" 2>&1) '
+        '|| fail "Impossibile montare il .dmg: $ERR"; '
+        '[ -d "$MOUNT/RT.app" ] || fail "Il .dmg non contiene RT.app."; '
+        'echo "$(date "+%Y-%m-%d %H:%M:%S") copio RT.app"; '
+        'rm -rf "$NEW"; '
+        'ERR=$(ditto --noqtn "$MOUNT/RT.app" "$NEW" 2>&1) || fail "Impossibile copiare RT.app: $ERR"; '
+        'echo "$(date "+%Y-%m-%d %H:%M:%S") RT.app copiata"; '
+        'cleanup_mount; '
+        'echo "$(date "+%Y-%m-%d %H:%M:%S") scambio le app"; '
+        'rm -rf "$OLD"; '
+        'if ! mv "$APP" "$OLD" || ! mv "$NEW" "$APP"; then '
+        '  [ ! -d "$APP" ] && [ -d "$OLD" ] && mv "$OLD" "$APP" 2>/dev/null || true; '
+        '  fail "Impossibile sostituire RT.app."; '
+        'fi; '
+        'rm -rf "$OLD"; '
+        'rm -f "$INSTALLING_JSON"; '
+        'echo "$(date "+%Y-%m-%d %H:%M:%S") riapro RT"; '
+        'open "$APP" --args --after-update'
+    )
+    install_log("avvio aggiornamento in background e chiudo RT")
     log = open(os.path.join(_updates_dir(), "install.log"), "a", encoding="utf-8")
     try:
         subprocess.Popen(["/bin/sh", "-c", script],
                          env={**os.environ, "APP": app, "NEW": staging, "OLD": old,
-                              "WINDOW_PID": os.path.join(paths.data_dir(), "run", "window.pid")},
+                              "DMG": dmg,
+                              "WINDOW_PID": os.path.join(paths.data_dir(), "run", "window.pid"),
+                              "INSTALLING_JSON": installing_file(),
+                              "LAST_ERROR": last_error_file()},
                          stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                          **_detached())
     finally:
@@ -474,6 +588,7 @@ def install(installer: str, project_root: Optional[str] = None) -> None:
 
 def start_install(info: UpdateCheck) -> None:
     """Verifica di nuovo lo SHA256 del file su disco contro ready.json, poi phase = 'installing' e install(path)."""
+    clear_last_error()
     with STATE.lock:
         if STATE.phase == "installing":
             raise AppUpdateError("Un aggiornamento è già in corso.")
@@ -575,8 +690,48 @@ def cached_check(refresh: bool = False) -> UpdateCheck:
     return result
 
 
+def is_installing(pid_alive: Optional[Callable[[int], bool]] = None) -> bool:
+    """True se updates/installing.json indica un helper con PID ancora vivo; altrimenti lo cancella."""
+    path = os.path.join(paths.data_dir(), "updates", "installing.json")
+    if not os.path.isfile(path):
+        return False
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        pid = int(data.get("pid", 0)) if isinstance(data, dict) else 0
+    except (OSError, ValueError, TypeError):
+        pid = 0
+    if pid_alive is None:
+        from rt.window import _pid_alive as pid_alive
+    if pid > 0 and pid_alive(pid):
+        return True
+    _remove(path)
+    return False
+
+
+def sync_last_error(target: Optional[str] = None) -> None:
+    """Se l'helper staccato ha lasciato updates/last_error.txt e non sta più lavorando,
+    porta lo stato in fase 'error' e rimuove il file."""
+    err_path = os.path.join(paths.data_dir(), "updates", "last_error.txt")
+    if not os.path.isfile(err_path) or is_installing():
+        return
+    try:
+        with open(err_path, encoding="utf-8") as f:
+            message = f.read().strip() or "Aggiornamento non riuscito."
+    except OSError:
+        return
+    _remove(err_path)
+    with STATE.lock:
+        if STATE.phase in ("idle", "installing"):
+            STATE.phase = "error"
+            STATE.error = message
+            if not STATE.target and target:
+                STATE.target = target
+
+
 def start_download(info: UpdateCheck) -> bool:
     """Scarica in un thread; False se un download o aggiornamento è già in corso."""
+    clear_last_error()
     with STATE.lock:
         if STATE.phase in ("downloading", "installing"):
             return False

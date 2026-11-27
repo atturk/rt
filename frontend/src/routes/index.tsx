@@ -154,10 +154,6 @@ const calendarArea: Area = {
   routes: [{ path: 'calendario', Component: page(calendar, (m) => m.CalendarPage), handle: bare }],
 }
 
-const appArea: Area = {
-  routes: [{ path: 'app/aggiornamento', Component: page(settings, (m) => m.UpdatePopup), handle: bare }],
-}
-
 const guideArea: Area = {
   routes: [
     { path: 'guida', Component: page(guide, (m) => m.GuidePage), handle: bare },
@@ -171,7 +167,7 @@ const permissionsArea: Area = {
   ],
 }
 
-export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea, appArea, guideArea, permissionsArea]
+export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea, guideArea, permissionsArea]
 
 const LoginPage = page(() => import('./auth'), (m) => m.LoginPage)
 

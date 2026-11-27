@@ -132,6 +132,7 @@ def test_internal_serve_cleans_pid(data, monkeypatch):
 @pytest.mark.parametrize("flags, show, browser, serve", [
     ([], True, False, False), (["--browser"], True, True, False),
     (["--no-browser"], False, False, False), (["--after-update"], True, False, False),
+    (["--update-failed"], True, False, False),
     (["--serve"], True, False, True),
 ])
 def test_desktop_options(monkeypatch, flags, show, browser, serve):
@@ -142,6 +143,36 @@ def test_desktop_options(monkeypatch, flags, show, browser, serve):
     desktop.cmd_desktop(parser.parse_args(flags))
     run.assert_called_once_with(port=None, open_browser=show, browser=browser, serve=serve)
     assert "--serve" not in parser.format_help()
+
+
+def test_desktop_exits_with_alert_when_installing_pid_is_alive(data, monkeypatch):
+    updates = data / "updates"
+    updates.mkdir()
+    inst = updates / "installing.json"
+    inst.write_text(json.dumps({"pid": os.getpid()}), encoding="utf-8")
+    alerts = []
+    monkeypatch.setattr(desktop, "_alert", alerts.append)
+    monkeypatch.setattr(desktop, "check_folder_access", Mock(side_effect=AssertionError("Non deve continuare l'avvio")))
+
+    assert desktop.run() == 0
+    assert alerts == ["RT si sta aggiornando: si riapre da solo tra poco."]
+    assert inst.exists()
+
+
+def test_desktop_ignores_and_cleans_dead_installing_pid(data, monkeypatch):
+    from rt.core import app_update
+    updates = data / "updates"
+    updates.mkdir()
+    inst = updates / "installing.json"
+    inst.write_text(json.dumps({"pid": 999999}), encoding="utf-8")
+    monkeypatch.setattr(window, "_pid_alive", lambda pid: False)
+    alerts = []
+    monkeypatch.setattr(desktop, "_alert", alerts.append)
+
+    assert app_update.is_installing() is False
+    assert not inst.exists()
+    assert desktop.check_installing() is False
+    assert alerts == []
 
 
 def test_window_settings_session_menu_and_pid(data, monkeypatch, webview):
@@ -162,10 +193,11 @@ def test_window_settings_session_menu_and_pid(data, monkeypatch, webview):
             "Ingrandisci", "Riduci", "Dimensioni reali", "Esci da RT"]
         assert kwargs["menu"][1].title == "Aiuto"
         update_item = next(x for x in items if getattr(x, "title", None) == "Controlla aggiornamenti…")
+        main_win = webview.create_window.return_value
+        main_win.evaluate_js.return_value = True
         update_item.function()
-        webview.create_window.assert_called_with(
-            "Aggiornamento di RT", "http://127.0.0.1:8765/app/aggiornamento",
-            width=420, height=240, resizable=False, on_top=True)
+        assert webview.create_window.call_count == 1
+        assert 'window.rtNavigate("/impostazioni/info-aggiornamenti#aggiornamenti")' in main_win.evaluate_js.call_args[0][0]
         # Azioni di zoom
         zoom_in = next(x for x in items if getattr(x, "title", None) == "Ingrandisci")
         zoom_in.function()
@@ -680,31 +712,22 @@ def test_desktop_api_salva_copia_backup_starts_stream(data, monkeypatch, webview
     assert "/chiavetta/copia.rtdb" in args[1]
 
 
-def test_desktop_api_apri_aggiornamento_creates_single_window(webview):
-    popup = Mock()
-    popup.events = SimpleNamespace(closed=Event())
-    popup.show = Mock()
-    webview.create_window.return_value = popup
+def test_desktop_api_apri_aggiornamento_navigates_to_settings(webview):
+    main_win = Mock()
+    main_win.evaluate_js.return_value = True
+    api = window.DesktopApi(main_win, base_url="http://127.0.0.1:8765")
 
-    api = window.DesktopApi(Mock(), base_url="http://127.0.0.1:8765")
-    win1 = api.apri_aggiornamento()
-    assert win1 is popup
-    assert webview.create_window.call_count == 1
-    assert webview.create_window.call_args.args[0] == "Aggiornamento di RT"
-    assert webview.create_window.call_args.args[1] == "http://127.0.0.1:8765/app/aggiornamento"
-    assert webview.create_window.call_args.kwargs == {"width": 420, "height": 240, "resizable": False, "on_top": True}
+    res = api.apri_aggiornamento()
+    assert res is main_win
+    webview.create_window.assert_not_called()
+    main_win.show.assert_called_once()
+    assert 'window.rtNavigate("/impostazioni/info-aggiornamenti#aggiornamenti")' in main_win.evaluate_js.call_args[0][0]
+    main_win.load_url.assert_not_called()
 
-    # Seconda chiamata: non crea un'altra finestra, chiama show()
-    win2 = api.apri_aggiornamento()
-    assert win2 is popup
-    assert webview.create_window.call_count == 1
-    popup.show.assert_called_once()
-
-    # Chiusura della finestra: azzera il riferimento
-    for cb in popup.events.closed.callbacks:
-        cb()
-    win3 = api.apri_aggiornamento()
-    assert webview.create_window.call_count == 2
+    # Ripiega su load_url se l'app non è ancora pronta
+    main_win.evaluate_js.return_value = False
+    api.apri_aggiornamento()
+    main_win.load_url.assert_called_once_with("http://127.0.0.1:8765/impostazioni/info-aggiornamenti#aggiornamenti")
 
 
 def test_menu_calls_apri_aggiornamento(webview):
