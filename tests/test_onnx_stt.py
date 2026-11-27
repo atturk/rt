@@ -158,17 +158,44 @@ def test_mac_without_macparakeet_uses_parakeet_fallback(monkeypatch, tmp_path):
     assert len(called) == 1
     assert res["lesson_dir"]
 
-    # Mac senza binario e senza ONNX -> motivo non disponibile + SetupError come oggi
+    # Mac senza binario e senza ONNX -> motivo non disponibile + SetupError prima di creare la lezione
     monkeypatch.setattr(onnx_stt, "available", lambda: False)
     assert transcription_unavailable_reason() is not None
+    lessons_dir = tmp_path / "lezioni_vuote"
     with pytest.raises(setup.SetupError, match="macparakeet-cli non trovato"):
         setup.run_setup(
             audio=str(audio),
             date="2026-10-11",
             materia="FISIOLOGIA",
-            dest_dir=str(tmp_path / "lezioni"),
+            dest_dir=str(lessons_dir),
             interactive=False,
         )
+    assert not lessons_dir.exists()
+
+    # Audio già trascritto in archivio -> riusato anche senza binario/ONNX
+    from rt.core import archive
+    from rt.core.idempotency import compute_file_sha256
+
+    cached_audio = tmp_path / "cached.m4a"
+    cached_audio.write_bytes(b"cached-audio")
+    archive.register_file(str(cached_audio), nome="cached.m4a", tipo="audio")
+    sha = compute_file_sha256(str(cached_audio))
+    archive.store_transcript(
+        sha,
+        "macparakeet",
+        {
+            "duration": 1.0,
+            "segments": [{"id": "s1", "start_seconds": 0.0, "end_seconds": 1.0, "text_raw": "Già trascritto."}],
+        },
+    )
+    cached_res = setup.run_setup(
+        audio=str(cached_audio),
+        date="2026-10-12",
+        materia="FISIOLOGIA",
+        dest_dir=str(lessons_dir),
+        interactive=False,
+    )
+    assert cached_res["status"] == "setup_completato"
 
 
 def test_resumable_download_uses_part_and_range_and_reports_eta(tmp_path, monkeypatch):
@@ -285,3 +312,69 @@ def test_resumable_download_keeps_part_on_network_failure(tmp_path, monkeypatch)
     part = tmp_path / f"{onnx_stt.MODEL_NAME}.partial" / "encoder.bin.part"
     assert part.is_file() and part.stat().st_size == 350
     assert not (tmp_path / onnx_stt.MODEL_NAME).exists()
+
+
+def test_models_loaded_once_across_ensure_and_transcribe(tmp_path, monkeypatch):
+    import onnx_asr
+
+    monkeypatch.setenv("RT_STT_MODELS_DIR", str(tmp_path))
+    monkeypatch.setattr(onnx_stt, "_loaded", {})
+    monkeypatch.setattr(onnx_stt, "_download_resumable", lambda name, *a, **kw: str(tmp_path / name))
+    monkeypatch.setattr(onnx_stt, "_decode", lambda path: np.zeros(16_000 * 2, dtype=np.float32))
+
+    loads = {"model": 0, "vad": 0}
+
+    class FakeModel:
+        def with_vad(self, vad, **kw):
+            return self
+
+        def with_timestamps(self):
+            return FakeAsr([_seg(0.0, 1.0, "Ciao", [" Ciao"], [0.0], [0.9])])
+
+    def fake_load_model(*a, **kw):
+        loads["model"] += 1
+        return FakeModel()
+
+    def fake_load_vad(*a, **kw):
+        loads["vad"] += 1
+        return object()
+
+    monkeypatch.setattr(onnx_asr, "load_model", fake_load_model)
+    monkeypatch.setattr(onnx_asr, "load_vad", fake_load_vad)
+
+    onnx_stt.ensure_model()
+    onnx_stt.transcribe_onnx("a.m4a")
+    onnx_stt.transcribe_onnx("b.m4a")
+    assert loads == {"model": 1, "vad": 1}
+
+
+def test_vad_tail_padding_and_end_extension():
+    from onnx_asr.vad import BaseVad
+
+    sr = 16_000
+    total_len = 3 * sr  # 3.0 s
+
+    class FakeInnerVad(BaseVad):
+        def segment_batch(self, waveforms, waveforms_len, sample_rate, **kwargs):
+            yield iter([(0, 8_000), (16_000, 40_000)])
+
+    padded = onnx_stt._wrap_vad(FakeInnerVad(), end_pad_ms=400, tail_extend_s=1.0)
+    seen_lengths = []
+
+    class RecordingAsr:
+        def recognize_batch(self, waveforms, waveforms_len, **kwargs):
+            for wlen in waveforms_len:
+                seen_lengths.append(int(wlen))
+            return [SimpleNamespace(text="ok", timestamps=[0.0], tokens=[" ok"], logprobs=[-0.1]) for _ in waveforms_len]
+
+    wave = np.zeros((1, total_len), dtype=np.float32)
+    results = list(next(padded.recognize_batch(RecordingAsr(), wave, np.array([total_len], dtype=np.int64), sr, {})))
+    # Primo segmento (0..8000) allungato di 400 ms (6400 campioni) -> 14400
+    # Secondo segmento (16000..40000) finisce a 2.5s (< 1s dalla fine 3.0s) -> esteso fino a 48000 (lunghezza 32000)
+    assert seen_lengths == [14_400, 32_000]
+    assert (results[0].start, results[0].end) == (0.0, 14_400 / sr)
+    assert (results[1].start, results[1].end) == (1.0, 3.0)
+
+    # Se l'ultimo segmento finisce oltre 1s prima della fine, prende solo il padding di 400ms
+    padded_short = onnx_stt._pad_vad_segments([(0, 10_000)], total_len, sr, end_pad_ms=400, tail_extend_s=1.0)
+    assert padded_short == [(0, 16_400)]

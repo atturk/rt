@@ -71,6 +71,15 @@ def check_transcription() -> Check:
     from rt.pipeline.setup import find_macparakeet_binary
     if find_macparakeet_binary():
         return Check("Trascrizione", OK, "macparakeet-cli installato")
+    from rt.core import onnx_stt
+    if onnx_stt.available():
+        if not onnx_stt.model_ready():
+            return Check(
+                "Trascrizione",
+                OK,
+                "Parakeet ONNX (macparakeet-cli non installato) — modello da scaricare al primo uso",
+            )
+        return Check("Trascrizione", OK, "Parakeet ONNX (macparakeet-cli non installato)")
     return Check("Trascrizione", WARN, "macparakeet-cli non trovato: le lezioni da audio non si trascrivono.",
                  "brew install moona3k/tap/macparakeet-cli (serve un Mac Apple Silicon)")
 

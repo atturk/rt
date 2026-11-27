@@ -326,6 +326,56 @@ def _download(load, name: str, quantization: Optional[str]) -> str:
     return final
 
 
+def _pad_vad_segments(
+    segments: Any,
+    waveform_len: int,
+    sample_rate: int,
+    *,
+    end_pad_ms: int = 400,
+    tail_extend_s: float = 1.0,
+) -> List[Tuple[int, int]]:
+    """Allunga la coda dei segmenti VAD (di solito Silero chiude troppo presto le sillabe finali)
+    e aggancia l'ultimo segmento alla fine dell'audio se finisce entro `tail_extend_s`."""
+    raw = list(segments)
+    if not raw or waveform_len <= 0:
+        return []
+    end_pad = int(end_pad_ms * sample_rate // 1000)
+    tail_extend = int(tail_extend_s * sample_rate)
+    out: List[Tuple[int, int]] = []
+    last_idx = len(raw) - 1
+    for i, (start, end) in enumerate(raw):
+        limit = raw[i + 1][0] if i + 1 < len(raw) else waveform_len
+        padded_end = min(end + end_pad, limit, waveform_len)
+        if i == last_idx and waveform_len - padded_end <= tail_extend:
+            padded_end = waveform_len
+        out.append((start, max(start, padded_end)))
+    return out
+
+
+def _wrap_vad(vad: Any, *, end_pad_ms: int = 400, tail_extend_s: float = 1.0) -> Any:
+    """Wrapper attorno a un VAD onnx-asr che aggiunge padding finale ai segmenti."""
+    from onnx_asr.vad import BaseVad
+
+    class _PaddedVad(BaseVad):
+        def __init__(self, inner: Any):
+            self._inner = inner
+
+        def segment_batch(self, waveforms, waveforms_len, sample_rate, **kwargs):
+            raw_batch = self._inner.segment_batch(waveforms, waveforms_len, sample_rate, **kwargs)
+            for segs, wlen in zip(raw_batch, waveforms_len, strict=True):
+                yield iter(
+                    _pad_vad_segments(
+                        segs,
+                        int(wlen),
+                        sample_rate,
+                        end_pad_ms=end_pad_ms,
+                        tail_extend_s=tail_extend_s,
+                    )
+                )
+
+    return _PaddedVad(vad)
+
+
 def _models(on_progress: Optional[Callable[[str], None]] = None, cancel_token: Optional[Any] = None):
     """ASR con VAD e timestamp, caricato una volta per processo."""
     with _lock:
@@ -342,7 +392,7 @@ def _models(on_progress: Optional[Callable[[str], None]] = None, cancel_token: O
         )
         vad_path = _download_resumable(VAD_NAME, None, vad=True, cancel_token=cancel_token)
         model = onnx_asr.load_model(MODEL_NAME, model_path, quantization=QUANTIZATION)
-        vad = onnx_asr.load_vad(VAD_NAME, vad_path)
+        vad = _wrap_vad(onnx_asr.load_vad(VAD_NAME, vad_path))
         _loaded["asr"] = model.with_vad(vad, batch_size=4, max_speech_duration_s=25).with_timestamps()
         return _loaded["asr"]
 

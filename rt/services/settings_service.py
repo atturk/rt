@@ -281,13 +281,15 @@ def transcription_engines(cfg: Any = None) -> Dict[str, Any]:
     resolved = effective_engine(cfg)
     mac_available = sys.platform == "darwin"
     mac_installed = mac_available and bool(find_macparakeet_binary())
+    parakeet_available = onnx_stt.available()
+    recommended = "parakeet" if (mac_available and not mac_installed and parakeet_available) else default_engine()
     return {
-        "recommended": default_engine(),
+        "recommended": recommended,
         "effective_engine": resolved,
         "macparakeet_fallback": configured == "macparakeet" and resolved == "parakeet",
         "macparakeet_available": mac_available,
         "macparakeet_installed": mac_installed,
-        "parakeet_available": onnx_stt.available(),
+        "parakeet_available": parakeet_available,
         "parakeet_model_ready": onnx_stt.model_ready(),
     }
 
