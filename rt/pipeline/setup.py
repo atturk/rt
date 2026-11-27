@@ -148,16 +148,22 @@ def clean_input_path(raw_path: str) -> str:
     return os.path.expanduser(p.strip())
 
 
+_MACPARAKEET_SYSTEM_PATHS = (
+    "/usr/local/bin/macparakeet-cli",
+    "/opt/homebrew/bin/macparakeet-cli",
+)
+
+
 def find_macparakeet_binary() -> str:
-    """Individua il binario macparakeet-cli."""
+    """Individua il binario macparakeet-cli: prima <dati>/bin, poi PATH/Homebrew."""
+    from rt.core import paths
+    local_bin = os.path.join(paths.data_dir(), "bin", "macparakeet-cli")
+    if fs.exists(local_bin) and os.access(local_bin, os.X_OK):
+        return local_bin
     which_bin = shutil.which("macparakeet-cli")
     if which_bin:
         return which_bin
-    candidates = [
-        "/usr/local/bin/macparakeet-cli",
-        "/opt/homebrew/bin/macparakeet-cli",
-    ]
-    for c in candidates:
+    for c in _MACPARAKEET_SYSTEM_PATHS:
         if fs.exists(c) and os.access(c, os.X_OK):
             return c
     return ""
@@ -595,11 +601,11 @@ def run_setup(
     # Controllo motore prima di creare la lezione, così un fallimento iniziale non lascia una lezione vuota.
     # Se l'audio è già nell'archivio per il motore attivo, la trascrizione si riusa senza controllare il binario.
     if not mock_asr and not skip_transcribe and not cached:
-        from rt.core.config import effective_engine, load_config
+        from rt.core.config import effective_engine, is_apple_silicon, load_config
         stt_cfg = load_config().transcription
-        if effective_engine(stt_cfg) == "macparakeet" and not find_macparakeet_binary():
+        if effective_engine(stt_cfg) == "macparakeet" and not is_apple_silicon() and not find_macparakeet_binary():
             raise SetupError(
-                "macparakeet-cli non trovato. Installalo con 'brew install moona3k/tap/macparakeet-cli' "
+                "macparakeet-cli non trovato. Scarica il motore da Impostazioni → Componenti "
                 "oppure scegli il motore Parakeet ONNX in Impostazioni."
             )
 
@@ -700,12 +706,21 @@ def run_setup(
         use_custom_stt = resolved_engine == "custom"
         use_onnx = resolved_engine == "parakeet"
         macparakeet_fallback = use_onnx and stt.engine == "macparakeet"
-        parakeet_bin = None if use_custom_stt or use_onnx else find_macparakeet_binary()
-        if not use_custom_stt and not use_onnx and not parakeet_bin:
-            raise SetupError(
-                "macparakeet-cli non trovato. Installalo con 'brew install moona3k/tap/macparakeet-cli' "
-                "oppure scegli il motore Parakeet ONNX in Impostazioni."
-            )
+        parakeet_bin = None
+        if not use_custom_stt and not use_onnx:
+            from rt.core import components
+            try:
+                parakeet_bin = components.ensure_macparakeet(
+                    on_progress=on_progress,
+                    cancel_token=cancel_token,
+                )
+            except RuntimeError as exc:
+                raise SetupError(str(exc)) from None
+            if not parakeet_bin:
+                raise SetupError(
+                    "macparakeet-cli non trovato. Scarica il motore da Impostazioni → Componenti "
+                    "oppure scegli il motore Parakeet ONNX in Impostazioni."
+                )
         if use_custom_stt:
             model = stt.model or ""
             load_env_file()

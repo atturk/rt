@@ -98,7 +98,12 @@ function renderUpdate(data: Schemas['AppUpdate'], initialPrefs: Record<string, u
 
 function renderAppShell(
   updateData: Schemas['AppUpdate'],
-  { initialPath = '/', phone = false, initialPrefs = {} }: { initialPath?: string; phone?: boolean; initialPrefs?: Record<string, unknown> } = {},
+  {
+    initialPath = '/',
+    phone = false,
+    initialPrefs = {},
+    componentsData,
+  }: { initialPath?: string; phone?: boolean; initialPrefs?: Record<string, unknown>; componentsData?: unknown } = {},
 ) {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: phone && query.includes('max-width'),
@@ -109,6 +114,7 @@ function renderAppShell(
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
     if (path === '/api/v1/auth/me') return Promise.resolve(result({ actor: 'test' }))
     if (path === '/api/v1/system/update') return Promise.resolve(result(updateData))
+    if (path === '/api/v1/components' && componentsData !== undefined) return Promise.resolve(result(componentsData))
     if (path === '/api/v1/preferences') return Promise.resolve(result({ ...prefs }))
     if (path === '/api/v1/jobs') return Promise.resolve(result([]))
     if (path === '/api/v1/workers') return Promise.resolve(result([{ id: 'w1' }]))
@@ -157,6 +163,7 @@ function renderAppShell(
             element: <SettingsLayout />,
             children: [
               { path: 'aspetto', element: <p>Aspetto</p> },
+              { path: 'lavorazione', element: <p>Lavorazione</p> },
               { path: 'info-aggiornamenti', element: <InfoSettingsPage /> },
             ],
           },
@@ -313,5 +320,64 @@ describe('Avviso e pallino aggiornamenti', () => {
     await waitFor(() => {
       expect(screen.queryAllByTestId('update-notice-dot')).toHaveLength(0)
     })
+  })
+
+  it('mostra il pallino su Impostazioni e Lavorazione delle lezioni quando manca il componente richiesto e clic porta a #componenti', async () => {
+    const noUpdate = { ...base, available: false, ready: false, progress: idle }
+    const missingMac = {
+      id: 'macparakeet',
+      name: 'Motore di trascrizione',
+      description: "necessario per trascrivere l'audio",
+      detail: 'macparakeet + modello parakeet-v3',
+      required: true,
+      state: 'not_downloaded',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      approx_bytes: 500 * 1024 * 1024,
+      percent: null,
+      eta_seconds: null,
+      eta_label: null,
+      error: null,
+      available: true,
+      unavailable_reason: null,
+    }
+    const { router } = renderAppShell(noUpdate, { initialPath: '/impostazioni/aspetto', componentsData: [missingMac] })
+
+    const settingsNavLink = await screen.findByRole('link', { name: 'Impostazioni' })
+    expect(await within(settingsNavLink).findByLabelText('Motore di trascrizione da scaricare')).toBeInTheDocument()
+
+    const sectionsNav = screen.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
+    const workLink = within(sectionsNav).getByRole('link', { name: /Lavorazione delle lezioni/ })
+    expect(await within(workLink).findByLabelText('Motore di trascrizione da scaricare')).toBeInTheDocument()
+    expect(workLink).toHaveAttribute('href', '/impostazioni/lavorazione#componenti')
+
+    await userEvent.click(workLink)
+    expect(router.state.location.pathname).toBe('/impostazioni/lavorazione')
+    expect(router.state.location.hash).toBe('#componenti')
+  })
+
+  it('nasconde il pallino del componente quando è in download o pronto', async () => {
+    const noUpdate = { ...base, available: false, ready: false, progress: idle }
+    const downloadingMac = {
+      id: 'macparakeet',
+      name: 'Motore di trascrizione',
+      description: "necessario per trascrivere l'audio",
+      detail: 'macparakeet + modello parakeet-v3',
+      required: true,
+      state: 'downloading',
+      downloaded_bytes: 100 * 1024 * 1024,
+      total_bytes: 500 * 1024 * 1024,
+      approx_bytes: 500 * 1024 * 1024,
+      percent: 20,
+      eta_seconds: 60,
+      eta_label: 'circa 1 min',
+      error: null,
+      available: true,
+      unavailable_reason: null,
+    }
+    renderAppShell(noUpdate, { initialPath: '/impostazioni/aspetto', componentsData: [downloadingMac] })
+    await screen.findByRole('link', { name: 'Impostazioni' })
+    await new Promise((r) => setTimeout(r, 30))
+    expect(screen.queryAllByTestId('component-notice-dot')).toHaveLength(0)
   })
 })

@@ -12,7 +12,7 @@ router = APIRouter(tags=["componenti"])
 
 
 class ComponentStatus(BaseModel):
-    id: Literal["transcription", "browser"]
+    id: Literal["transcription", "macparakeet", "browser"]
     name: str
     description: str
     detail: str

@@ -353,6 +353,82 @@ describe('SetupWizard: passo Pronto', () => {
         params: { path: { component_id: 'transcription' } },
       }),
     )
-    expect(await screen.findByTestId('wizard-transcription-download')).toHaveTextContent('Modello di trascrizione')
+    expect(await screen.findByTestId('wizard-transcription-download')).toHaveTextContent('Trascrizione')
+    expect(screen.getByTestId('wizard-transcription-download')).toHaveTextContent('Modello di trascrizione')
+  })
+
+  it('sul Mac scheda Trascrizione avvia macparakeet e «Usa un altro motore» apre la scelta', async () => {
+    const macSettings: Settings = {
+      ...unassignedSettings,
+      transcription: {
+        ...unassignedSettings.transcription,
+        engine: 'macparakeet',
+        recommended: 'macparakeet',
+        effective_engine: 'macparakeet',
+        macparakeet_available: true,
+      },
+    }
+    const macComp = {
+      id: 'macparakeet',
+      name: 'Motore di trascrizione',
+      description: "necessario per trascrivere l'audio",
+      detail: 'macparakeet + modello parakeet-v3',
+      required: true,
+      state: 'not_downloaded',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      approx_bytes: 500 * 1024 * 1024,
+      percent: null,
+      eta_seconds: null,
+      eta_label: null,
+      error: null,
+      available: true,
+      unavailable_reason: null,
+    }
+    const onnxComp = {
+      id: 'transcription',
+      name: 'Modello di trascrizione',
+      description: "necessario per trascrivere l'audio",
+      detail: 'Parakeet ONNX + VAD',
+      required: false,
+      state: 'not_downloaded',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      approx_bytes: 670 * 1024 * 1024,
+      percent: null,
+      eta_seconds: null,
+      eta_label: null,
+      error: null,
+      available: true,
+      unavailable_reason: null,
+    }
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+      if (path === '/api/v1/components') return Promise.resolve(ok([macComp, onnxComp]))
+      if (path === '/api/v1/settings/connections/{name}/catalog') return Promise.resolve(ok(catalogModels.slice(0, 2)))
+      return Promise.resolve(ok({}))
+    }) as never)
+    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ ...macComp, state: 'downloading', percent: 25, eta_label: 'circa 2 min' }))
+    const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(macSettings))
+
+    renderWizard('/impostazioni/configurazione?passo=2', macSettings)
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/api/v1/components/{component_id}/download', {
+        params: { path: { component_id: 'macparakeet' } },
+      }),
+    )
+    const card = await screen.findByTestId('wizard-transcription-download')
+    expect(card).toHaveTextContent('Trascrizione')
+    expect(card).toHaveTextContent('Motore di trascrizione')
+
+    const user = userEvent.setup()
+    await user.click(within(card).getByRole('button', { name: 'Usa un altro motore' }))
+    expect(within(card).getByRole('radio', { name: 'macparakeet · consigliato' })).toBeChecked()
+    expect(within(card).getByRole('radio', { name: 'Parakeet ONNX' })).toBeVisible()
+    expect(within(card).getByRole('radio', { name: 'Server OpenAI-compatible' })).toBeVisible()
+
+    await user.click(within(card).getByRole('radio', { name: 'Parakeet ONNX' }))
+    expect(put).toHaveBeenCalledWith('/api/v1/settings/transcription', {
+      body: expect.objectContaining({ engine: 'parakeet' }),
+    })
   })
 })

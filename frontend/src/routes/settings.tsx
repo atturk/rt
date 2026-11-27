@@ -28,7 +28,8 @@ import { ComponentsSection } from '@/components/settings/components'
 import { CloseActionSection, StartAtLoginSection, TranscriptionSection } from '@/components/settings/general'
 import { NotificationsCard, TelegramConnectScreen, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
-import { UpdateNoticeDot } from '@/components/settings/UpdateNoticeDot'
+import { ComponentNoticeDot, UpdateNoticeDot } from '@/components/settings/UpdateNoticeDot'
+import { useComponentNotice } from '@/components/settings/useComponentNotice'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
 import { AppearanceSection, OutlineSettingsSection, SourceDefaultsSection, SpeedSection } from '@/components/settings/preferences'
 import { WebSearchSection } from '@/components/settings/websearch'
@@ -80,6 +81,7 @@ export function SettingsLayout() {
   const returnAddress = useReturnAddress()
   const phone = useIsPhone()
   const { pathname, hash } = useLocation()
+  const { missing: missingComponent } = useComponentNotice()
   const index = pathname === '/impostazioni'
   const targets: Record<string, string> = { telegram: 'telegram', cartella: 'info-aggiornamenti', 'job-paralleli': 'lavorazione', trascrizione: 'lavorazione', componenti: 'lavorazione', presentazioni: 'lavorazione', preferenze: 'aspetto' }
   if (index && targets[hash.slice(1)]) return <SettingsRedirect section={targets[hash.slice(1)]} />
@@ -93,10 +95,14 @@ export function SettingsLayout() {
         {(!phone || index) && <nav aria-label="Sezioni delle impostazioni" className={cn('shrink-0', phone ? 'w-full' : 'sticky top-20 h-fit max-h-[calc(100vh-6rem)] w-64 overflow-y-auto flex flex-col gap-0.5')}>
           {SETTINGS_SECTIONS.map((s) => {
             const Icon = SECTION_ICONS[s.path]
+            const targetTo =
+              s.path === 'lavorazione' && missingComponent
+                ? '/impostazioni/lavorazione#componenti'
+                : `/impostazioni/${s.path}`
             return (
               <NavLink
                 key={s.path}
-                to={`/impostazioni/${s.path}`}
+                to={targetTo}
                 className={({ isActive }) =>
                   cn(
                     'flex items-center justify-between gap-2.5 rounded-lg px-3 py-2.5 text-body transition-colors',
@@ -115,6 +121,7 @@ export function SettingsLayout() {
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
+                  {s.path === 'lavorazione' && <ComponentNoticeDot />}
                   {s.path === 'info-aggiornamenti' && <UpdateNoticeDot />}
                   {phone && <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
                 </span>

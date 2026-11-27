@@ -9,7 +9,7 @@ import os
 import re
 import shutil
 import time
-from typing import Optional
+from typing import List, Optional
 import uuid
 
 import requests
@@ -96,6 +96,59 @@ class VisualizationValidationError(ValueError):
         self.reason = reason
 
 
+def _find_headless_shell_executable(p) -> Optional[str]:
+    """Individua chrome-headless-shell installato con `playwright install chromium --only-shell`."""
+    roots: List[str] = []
+    explicit = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
+    if explicit:
+        roots.append(explicit)
+    try:
+        exec_path = p.chromium.executable_path
+        if exec_path:
+            cur = os.path.dirname(exec_path)
+            while cur and cur != os.path.dirname(cur):
+                base = os.path.basename(cur)
+                if base.startswith("chromium"):
+                    roots.append(os.path.dirname(cur))
+                    break
+                cur = os.path.dirname(cur)
+    except Exception:
+        pass
+    try:
+        from rt.core.components import browsers_dir
+        roots.append(browsers_dir())
+    except Exception:
+        pass
+
+    shell_names = ("chrome-headless-shell.exe", "chrome-headless-shell")
+    seen = set()
+    for root_dir in roots:
+        if not root_dir or root_dir in seen or not os.path.isdir(root_dir):
+            continue
+        seen.add(root_dir)
+        try:
+            entries = sorted(os.listdir(root_dir), reverse=True)
+        except OSError:
+            continue
+        for entry in entries:
+            if not entry.startswith("chromium_headless_shell"):
+                continue
+            entry_path = os.path.join(root_dir, entry)
+            if not os.path.isdir(entry_path):
+                continue
+            try:
+                subs = os.listdir(entry_path)
+            except OSError:
+                continue
+            for sub in subs:
+                sub_dir = os.path.join(entry_path, sub)
+                for name in shell_names:
+                    cand = os.path.join(sub_dir, name)
+                    if os.path.isfile(cand):
+                        return cand
+    return None
+
+
 def find_capture_browser_executable(p) -> Optional[str]:
     executable = os.environ.get("RT_ENRICHMENT_CHROMIUM") or shutil.which("chromium") or shutil.which("google-chrome")
     if executable:
@@ -105,6 +158,9 @@ def find_capture_browser_executable(p) -> Optional[str]:
             return p.chromium.executable_path
     except Exception:
         pass
+    shell = _find_headless_shell_executable(p)
+    if shell:
+        return shell
     return next((path for path in _MAC_BROWSERS if os.path.isfile(path)), None)
 
 

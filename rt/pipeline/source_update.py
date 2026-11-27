@@ -86,9 +86,14 @@ def _transcribe(path, mock=False, ctx=None, duration=None):
             with open(raw_path, "w", encoding="utf-8") as stream:
                 json.dump(data, stream)
         else:
-            binary = find_macparakeet_binary()
+            from rt.core import components
+            from rt.services.pipeline_service import emit_stt_progress
+            binary = components.ensure_macparakeet(
+                on_progress=(lambda msg: emit_stt_progress(ctx, 'prepare', msg)) if ctx else None,
+                cancel_token=ctx.cancel_token if ctx else None,
+            )
             if not binary:
-                raise ValueError("macparakeet-cli non disponibile")
+                raise ValueError("macparakeet-cli non disponibile: scarica il motore da Impostazioni → Componenti.")
             from rt.core.stt_slot import local_transcription_slot
             with local_transcription_slot(
                 on_wait=(lambda msg: ctx.progress('prepare', message=msg)) if ctx else None,

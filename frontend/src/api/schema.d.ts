@@ -5499,7 +5499,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "transcription" | "browser";
+            id: "transcription" | "macparakeet" | "browser";
             /** Name */
             name: string;
             /** Percent */

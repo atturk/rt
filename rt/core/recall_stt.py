@@ -25,7 +25,7 @@ def transcribe_voice_answer(audio_path: str, stt_engine: str = "macparakeet") ->
         parakeet_bin = find_macparakeet_binary()
         if not parakeet_bin:
             raise RuntimeError(
-                "macparakeet-cli non trovato. Assicurati che sia installato con 'brew install moona3k/tap/macparakeet-cli'."
+                "macparakeet-cli non trovato. Scarica il motore da Impostazioni → Componenti."
             )
 
         temp_dir = tempfile.mkdtemp(prefix="recall_stt_")

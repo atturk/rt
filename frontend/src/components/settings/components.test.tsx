@@ -28,16 +28,34 @@ const baseTranscription: ComponentStatus = {
   unavailable_reason: null,
 }
 
+const baseMacparakeet: ComponentStatus = {
+  id: 'macparakeet',
+  name: 'Motore di trascrizione',
+  description: "necessario per trascrivere l'audio",
+  detail: 'macparakeet + modello parakeet-v3',
+  required: true,
+  state: 'not_downloaded',
+  downloaded_bytes: 0,
+  total_bytes: null,
+  approx_bytes: 500 * 1024 * 1024,
+  percent: null,
+  eta_seconds: null,
+  eta_label: null,
+  error: null,
+  available: true,
+  unavailable_reason: null,
+}
+
 const baseBrowser: ComponentStatus = {
   id: 'browser',
-  name: 'Browser per le catture',
-  description: 'facoltativo',
+  name: 'Browser per PDF e catture',
+  description: 'serve per esportare in PDF e per le visualizzazioni',
   detail: 'Chromium Playwright',
   required: false,
   state: 'not_downloaded',
   downloaded_bytes: 0,
   total_bytes: null,
-  approx_bytes: 170 * 1024 * 1024,
+  approx_bytes: 110 * 1024 * 1024,
   percent: null,
   eta_seconds: null,
   eta_label: null,
@@ -49,10 +67,14 @@ const baseBrowser: ComponentStatus = {
 function renderComponents(
   components: ComponentStatus[],
   pptx: ConvertersInfo['pptx'] = { available: true, methods: ['LibreOffice'], quicklook_available: false, platform: 'darwin' },
+  transcriptionSettings?: Record<string, unknown>,
 ) {
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
     if (path === '/api/v1/components') return Promise.resolve(ok(components))
     if (path === '/api/v1/system/converters') return Promise.resolve(ok({ pptx }))
+    if (path === '/api/v1/settings' && transcriptionSettings) {
+      return Promise.resolve(ok({ transcription: transcriptionSettings }))
+    }
     return Promise.resolve(ok({}))
   }) as never)
 
@@ -104,7 +126,7 @@ describe('ComponentsSection', () => {
     expect(post).toHaveBeenCalledWith('/api/v1/components/{component_id}/cancel', { params: { path: { component_id: 'transcription' } } })
 
     const browserRow = screen.getByTestId('component-row-browser')
-    expect(browserRow).toHaveTextContent('Browser per le catture — facoltativo')
+    expect(browserRow).toHaveTextContent('Browser per PDF e catture — serve per esportare in PDF e per le visualizzazioni')
     expect(within(browserRow).getByTestId('component-badge-browser')).toHaveTextContent('Pronto')
     await user.click(within(browserRow).getByRole('button', { name: 'Elimina' }))
     const dialog = screen.getByRole('dialog')
@@ -165,5 +187,37 @@ describe('ComponentsSection', () => {
     const row = await screen.findByTestId('presentations-row')
     await waitFor(() => expect(row).toHaveTextContent(expected))
     expect(row).toHaveTextContent(badge)
+  })
+
+  it('sul Mac con macparakeet mostra Motore di trascrizione e nasconde ONNX; con ONNX mostra entrambi; su Windows solo ONNX', async () => {
+    // Mac con macparakeet
+    renderComponents([baseMacparakeet, baseTranscription, baseBrowser], undefined, {
+      engine: 'macparakeet',
+      effective_engine: 'macparakeet',
+      macparakeet_available: true,
+    })
+    expect(await screen.findByTestId('component-row-macparakeet')).toHaveTextContent('Motore di trascrizione')
+    expect(screen.getByTestId('component-row-browser')).toBeVisible()
+    expect(screen.queryByTestId('component-row-transcription')).toBeNull()
+
+    // Mac con Parakeet ONNX selezionato
+    cleanup(); vi.restoreAllMocks()
+    renderComponents([baseMacparakeet, baseTranscription, baseBrowser], undefined, {
+      engine: 'parakeet',
+      effective_engine: 'parakeet',
+      macparakeet_available: true,
+    })
+    expect(await screen.findByTestId('component-row-macparakeet')).toBeVisible()
+    expect(screen.getByTestId('component-row-transcription')).toBeVisible()
+
+    // Windows: macparakeet non disponibile -> solo ONNX + browser
+    cleanup(); vi.restoreAllMocks()
+    renderComponents(
+      [{ ...baseMacparakeet, available: false, required: false }, baseTranscription, baseBrowser],
+      undefined,
+      { engine: 'parakeet', effective_engine: 'parakeet', macparakeet_available: false },
+    )
+    expect(await screen.findByTestId('component-row-transcription')).toBeVisible()
+    expect(screen.queryByTestId('component-row-macparakeet')).toBeNull()
   })
 })

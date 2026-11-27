@@ -140,6 +140,7 @@ def test_retry_after_setup_transcription_failure_reruns_setup(api_client, ws, wo
     from tests.golden_support import AUDIO_FIXTURE
 
     monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: False)
     monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "")
     monkeypatch.setattr("rt.core.onnx_stt.available", lambda: True)
     # il worker calcola il motore STT quando nasce: va creato dopo aver simulato il Mac senza macparakeet

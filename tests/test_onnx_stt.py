@@ -108,12 +108,15 @@ def test_effective_engine_macparakeet_fallback(monkeypatch):
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "")
     monkeypatch.setattr(onnx_stt, "available", lambda: True)
-    assert effective_engine(TranscriptionConfig(engine="macparakeet")) == "parakeet"
 
-    monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "/opt/homebrew/bin/macparakeet-cli")
+    # Su Apple Silicon non ricade più su ONNX: il job scarica macparakeet
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
     assert effective_engine(TranscriptionConfig(engine="macparakeet")) == "macparakeet"
 
-    monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "")
+    # Su Mac Intel senza binario ricade su Parakeet ONNX se disponibile
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: False)
+    assert effective_engine(TranscriptionConfig(engine="macparakeet")) == "parakeet"
+
     monkeypatch.setattr(onnx_stt, "available", lambda: False)
     assert effective_engine(TranscriptionConfig(engine="macparakeet")) == "macparakeet"
 
@@ -126,6 +129,7 @@ def test_effective_engine_macparakeet_fallback(monkeypatch):
 
 
 def test_mac_without_macparakeet_uses_parakeet_fallback(monkeypatch, tmp_path):
+    from rt.core import components
     from rt.pipeline import setup
     from rt.services import jobs
     from rt.services.pipeline_service import transcription_unavailable_reason
@@ -135,19 +139,50 @@ def test_mac_without_macparakeet_uses_parakeet_fallback(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("sys.platform", "darwin")
 
-    # Mac con binario -> macparakeet
+    # Mac Apple Silicon con binario -> macparakeet
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
     monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "/opt/homebrew/bin/macparakeet-cli")
     monkeypatch.setattr(onnx_stt, "available", lambda: True)
     assert jobs.detect_stt_capability("auto") == "macparakeet"
     assert transcription_unavailable_reason() is None
 
-    # Mac senza binario + ONNX -> fallback a parakeet, setup non solleva
+    # Mac Apple Silicon senza binario -> resta macparakeet e il setup scarica il componente
     monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "")
-    assert jobs.detect_stt_capability("auto") == "parakeet"
+    assert jobs.detect_stt_capability("auto") == "macparakeet"
     assert transcription_unavailable_reason() is None
+
+    downloaded = []
+    fake_bin = tmp_path / "bin" / "macparakeet-cli"
+    fake_bin.parent.mkdir(parents=True, exist_ok=True)
+    fake_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(components, "ensure_macparakeet", lambda **kw: downloaded.append(kw) or str(fake_bin))
 
     audio = tmp_path / "lezione.m4a"
     audio.write_bytes(b"fake-audio")
+
+    def fake_spinner(cmd, label, **kw):
+        out_dir = cmd[cmd.index("--output-dir") + 1]
+        import json
+        with open(f"{out_dir}/out.json", "w", encoding="utf-8") as f:
+            json.dump({"transcriptSegments": [{"startMs": 0.0, "endMs": 1000.0, "text": "Lezione Apple Silicon."}], "wordTimestamps": []}, f)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(setup, "_run_transcribe_with_spinner", fake_spinner)
+    res_mac = setup.run_setup(
+        audio=str(audio),
+        date="2026-10-09",
+        materia="FISIOLOGIA",
+        dest_dir=str(tmp_path / "lezioni_mac"),
+        interactive=False,
+    )
+    assert len(downloaded) == 1
+    assert res_mac["lesson_dir"]
+
+    # Mac Intel senza binario + ONNX -> fallback a parakeet, setup non solleva
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: False)
+    assert jobs.detect_stt_capability("auto") == "parakeet"
+    assert transcription_unavailable_reason() is None
+
     called = []
 
     def fake_transcribe_onnx(path, on_percent=None, on_progress=None):
@@ -171,13 +206,15 @@ def test_mac_without_macparakeet_uses_parakeet_fallback(monkeypatch, tmp_path):
     assert len(called) == 1
     assert res["lesson_dir"]
 
-    # Mac senza binario e senza ONNX -> motivo non disponibile + SetupError prima di creare la lezione
+    # Mac Intel senza binario e senza ONNX -> motivo non disponibile + SetupError prima di creare la lezione
     monkeypatch.setattr(onnx_stt, "available", lambda: False)
     assert transcription_unavailable_reason() is not None
     lessons_dir = tmp_path / "lezioni_vuote"
+    audio_unavail = tmp_path / "lezione_unavail.m4a"
+    audio_unavail.write_bytes(b"fake-audio-unavail")
     with pytest.raises(setup.SetupError, match="macparakeet-cli non trovato"):
         setup.run_setup(
-            audio=str(audio),
+            audio=str(audio_unavail),
             date="2026-10-11",
             materia="FISIOLOGIA",
             dest_dir=str(lessons_dir),

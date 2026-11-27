@@ -24,39 +24,53 @@ def test_doctor_finds_macparakeet_outside_path(monkeypatch):
 
 def test_settings_finds_macparakeet_outside_path(monkeypatch):
     _homebrew_only(monkeypatch)
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
     engines = settings_service.transcription_engines()
     assert engines["macparakeet_installed"] is True
-    assert engines["recommended"] == "parakeet"
+    assert engines["recommended"] == "macparakeet"
 
 
-def test_doctor_and_settings_fallback_on_mac_without_binary(monkeypatch):
+def test_doctor_and_settings_on_mac_without_binary(monkeypatch):
     from rt.core import onnx_stt
 
     monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
     monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "")
     config = SimpleNamespace(transcription=SimpleNamespace(engine="macparakeet"))
     monkeypatch.setattr("rt.core.config.load_config", lambda: config)
 
-    # Senza macparakeet-cli ma con ONNX e modello non ancora scaricato -> OK con nota
+    # Apple Silicon senza binario: NON ricade su ONNX; dice che si scarica al primo uso o da Componenti
     monkeypatch.setattr(onnx_stt, "available", lambda: True)
     monkeypatch.setattr(onnx_stt, "model_ready", lambda: False)
     check = doctor_service.check_transcription()
     assert check.status == doctor_service.OK
-    assert "Parakeet ONNX (macparakeet-cli non installato)" in check.message
-    assert "modello da scaricare al primo uso" in check.message
+    assert "Componenti" in check.message
+    assert "brew install" not in check.message and "brew install" not in check.fix
 
     engines = settings_service.transcription_engines(config.transcription)
-    assert engines["effective_engine"] == "parakeet"
-    assert engines["macparakeet_fallback"] is True
-    assert engines["recommended"] == "parakeet"
+    assert engines["effective_engine"] == "macparakeet"
+    assert engines["macparakeet_fallback"] is False
+    assert engines["recommended"] == "macparakeet"
 
-    # Con modello già scaricato -> OK senza nota download
+    # Mac Intel senza binario -> ricade su Parakeet ONNX se disponibile
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: False)
+    check_intel = doctor_service.check_transcription()
+    assert check_intel.status == doctor_service.OK
+    assert "Parakeet ONNX" in check_intel.message
+    assert "modello da scaricare al primo uso" in check_intel.message
+
+    engines_intel = settings_service.transcription_engines(config.transcription)
+    assert engines_intel["effective_engine"] == "parakeet"
+    assert engines_intel["macparakeet_fallback"] is True
+    assert engines_intel["recommended"] == "parakeet"
+
     monkeypatch.setattr(onnx_stt, "model_ready", lambda: True)
     check_ready = doctor_service.check_transcription()
     assert check_ready.status == doctor_service.OK
-    assert check_ready.message == "Parakeet ONNX (macparakeet-cli non installato)"
+    assert "Parakeet ONNX" in check_ready.message
 
-    # Senza né macparakeet-cli né ONNX -> WARN
+    # Mac Intel senza ONNX -> WARN senza brew install
     monkeypatch.setattr(onnx_stt, "available", lambda: False)
     check_warn = doctor_service.check_transcription()
     assert check_warn.status == doctor_service.WARN
+    assert "Homebrew" not in check_warn.fix

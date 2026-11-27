@@ -30,15 +30,26 @@ def isolated_data(tmp_path, monkeypatch):
 def test_components_api_initial_and_404(api_client, isolated_data, monkeypatch):
     monkeypatch.setattr(onnx_stt, "available", lambda: True)
     monkeypatch.setattr(components, "browser_available", lambda: True)
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
+    monkeypatch.setattr("rt.core.config.effective_engine", lambda cfg=None: "macparakeet")
 
     res = api_client.get("/api/v1/components")
     assert res.status_code == 200
     items = {c["id"]: c for c in res.json()}
-    assert set(items) == {"transcription", "browser"}
+    assert set(items) == {"macparakeet", "transcription", "browser"}
+    assert items["macparakeet"]["state"] == "not_downloaded"
+    assert items["macparakeet"]["required"] is True
     assert items["transcription"]["state"] == "not_downloaded"
-    assert items["transcription"]["required"] is True
+    assert items["transcription"]["required"] is False
     assert items["browser"]["state"] == "not_downloaded"
     assert items["browser"]["required"] is False
+    assert items["browser"]["name"] == "Browser per PDF e catture"
+    assert "esportare in PDF" in items["browser"]["description"]
+
+    monkeypatch.setattr("rt.core.config.effective_engine", lambda cfg=None: "parakeet")
+    items_onnx = {c["id"]: c for c in api_client.get("/api/v1/components").json()}
+    assert items_onnx["macparakeet"]["required"] is False
+    assert items_onnx["transcription"]["required"] is True
 
     assert api_client.post("/api/v1/components/unknown/download").status_code == 404
     assert api_client.post("/api/v1/components/unknown/cancel").status_code == 404
@@ -125,14 +136,16 @@ def test_transcription_download_progress_lock_pause_resume_and_delete(api_client
 
 def test_browser_download_parses_progress_logs_and_deletes(api_client, isolated_data, monkeypatch):
     monkeypatch.setattr(components, "browser_available", lambda: True)
+    commands = []
 
     class FakeProc:
-        def __init__(self, *a, **kw):
+        def __init__(self, cmd, *a, **kw):
+            commands.append(cmd)
             self.pid = 424242
             self.stdout = io.BytesIO(
                 b"Downloading Chromium\r"
-                b"|====      |  45% of 165.4 MiB\r"
-                b"|==========| 100% of 165.4 MiB\n"
+                b"|====      |  45% of 105.4 MiB\r"
+                b"|==========| 100% of 105.4 MiB\n"
             )
             self.returncode = 0
 
@@ -140,9 +153,9 @@ def test_browser_download_parses_progress_logs_and_deletes(api_client, isolated_
             return self.returncode
 
         def wait(self):
-            target = isolated_data / "browsers" / "chromium-1234"
+            target = isolated_data / "browsers" / "chromium_headless_shell-1243"
             target.mkdir(parents=True, exist_ok=True)
-            (target / "chrome").write_bytes(b"binary")
+            (target / "chrome-headless-shell").write_bytes(b"binary")
             return 0
 
     monkeypatch.setattr(components.subprocess, "Popen", FakeProc)
@@ -156,8 +169,9 @@ def test_browser_download_parses_progress_logs_and_deletes(api_client, isolated_
             break
         time.sleep(0.02)
     assert b["state"] == "ready"
+    assert commands == [[sys.executable, "-m", "playwright", "install", "chromium", "--only-shell"]]
     log_text = (isolated_data / "logs" / "browser-install.log").read_text(encoding="utf-8")
-    assert "45% of 165.4 MiB" in log_text
+    assert "45% of 105.4 MiB" in log_text
 
     deleted = api_client.delete("/api/v1/components/browser")
     assert deleted.status_code == 200
@@ -202,7 +216,7 @@ def test_ensure_capture_browser_uses_component_manager(isolated_data, monkeypatc
 
     assert len(spawned) == 1
     assert spawned[0] == [sys.executable, "-m", "rt.core.components", "--install-browser"]
-    assert any("browser per le catture" in m for m in messages)
+    assert any("browser per PDF e catture" in m for m in messages)
     status = components.get_component(components.BROWSER_ID)
     assert status["state"] in ("downloading", "paused") or (isolated_data / "models" / "components.json").is_file()
 
@@ -281,3 +295,228 @@ def test_cancel_never_kills_other_process_downloading_model(isolated_data, monke
     components._write_component_state(components.BROWSER_ID, {"state": "downloading", "pid": 424243, "helper_pid": 424244})
     components.cancel_download(components.BROWSER_ID)
     assert killed == []
+
+
+def _make_macparakeet_tarball(script_bytes: bytes, *, extra_files: dict[str, bytes] | None = None, member_name: str = components.MACPARAKEET_TARBALL_MEMBER) -> bytes:
+    import io as _io
+    import tarfile as _tarfile
+
+    buf = _io.BytesIO()
+    with _tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        if extra_files:
+            for name, content in extra_files.items():
+                info = _tarfile.TarInfo(name)
+                info.size = len(content)
+                tar.addfile(info, _io.BytesIO(content))
+        info = _tarfile.TarInfo(member_name)
+        info.size = len(script_bytes)
+        info.mode = 0o644
+        tar.addfile(info, _io.BytesIO(script_bytes))
+    return buf.getvalue()
+
+
+def _serve_bytes(payload: bytes):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            rng = self.headers.get("Range")
+            if rng and rng.startswith("bytes="):
+                start = int(rng.removeprefix("bytes=").split("-", 1)[0] or "0")
+                chunk = payload[start:]
+                self.send_response(206)
+                self.send_header("Content-Range", f"bytes {start}-{len(payload) - 1}/{len(payload)}")
+                self.send_header("Content-Length", str(len(chunk)))
+                self.end_headers()
+                self.wfile.write(chunk)
+                return
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    return srv, f"http://127.0.0.1:{srv.server_address[1]}/macparakeet-cli.tar.gz"
+
+
+def test_macparakeet_download_verifies_sha256_extracts_member_and_deletes(api_client, isolated_data, monkeypatch):
+    import hashlib
+    import os as _os
+    import stat as _stat
+    from rt.pipeline import setup
+
+    fake_home = isolated_data / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("RT_MACPARAKEET_MODELS_DIR", raising=False)
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
+    monkeypatch.setattr("rt.core.config.effective_engine", lambda cfg=None: "macparakeet")
+    monkeypatch.setattr(setup.shutil, "which", lambda _n: None)
+    monkeypatch.setattr(setup, "_MACPARAKEET_SYSTEM_PATHS", ())
+
+    script = (
+        f"#!{sys.executable}\n"
+        "import os, sys, time\n"
+        "if sys.argv[1:4] == ['models', 'download', 'parakeet-v3']:\n"
+        "    models = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'FluidAudio', 'Models', 'parakeet-v3')\n"
+        "    os.makedirs(models, exist_ok=True)\n"
+        "    with open(os.path.join(models, 'model.bin'), 'wb') as f:\n"
+        "        f.write(b'M' * 4096)\n"
+        "    print('Downloading parakeet-v3 60%', flush=True)\n"
+        "    time.sleep(0.05)\n"
+        "    print('100%', flush=True)\n"
+        "    sys.exit(0)\n"
+        "sys.exit(1)\n"
+    ).encode("utf-8")
+
+    tarball = _make_macparakeet_tarball(script, extra_files={"macparakeet-cli-5.1.0-darwin-arm64/README.txt": b"ignore"})
+    tar_sha = hashlib.sha256(tarball).hexdigest()
+    bin_sha = hashlib.sha256(script).hexdigest()
+
+    srv, url = _serve_bytes(tarball)
+    try:
+        monkeypatch.setattr(components, "MACPARAKEET_URL", url)
+        monkeypatch.setattr(components, "MACPARAKEET_TARBALL_BYTES", len(tarball))
+        monkeypatch.setattr(components, "MACPARAKEET_MODEL_APPROX_BYTES", 8192)
+
+        # 1. SHA256 del .tar.gz errato -> errore e nessun binario installato
+        monkeypatch.setattr(components, "MACPARAKEET_TARBALL_SHA256", "0" * 64)
+        monkeypatch.setattr(components, "MACPARAKEET_BINARY_SHA256", bin_sha)
+        with pytest.raises(components.ComponentError, match="SHA256"):
+            components.ensure_macparakeet()
+        assert not components.macparakeet_bin_path().endswith(".part")
+        assert not _os.path.exists(components.macparakeet_bin_path())
+
+        # 2. SHA256 del binario errato -> errore e nessun binario installato
+        monkeypatch.setattr(components, "MACPARAKEET_TARBALL_SHA256", tar_sha)
+        monkeypatch.setattr(components, "MACPARAKEET_BINARY_SHA256", "f" * 64)
+        with pytest.raises(components.ComponentError, match="SHA256"):
+            components.ensure_macparakeet()
+        assert not _os.path.exists(components.macparakeet_bin_path())
+
+        # 3. Tutto valido -> scarica via API, verifica entrambi gli SHA256, estrae solo il membro, scarica modello
+        monkeypatch.setattr(components, "MACPARAKEET_BINARY_SHA256", bin_sha)
+        res = api_client.post("/api/v1/components/macparakeet/download")
+        assert res.status_code == 202
+
+        deadline = time.monotonic() + 5.0
+        item = {}
+        while time.monotonic() < deadline:
+            item = {c["id"]: c for c in api_client.get("/api/v1/components").json()}["macparakeet"]
+            if item["state"] == "ready":
+                break
+            assert item["state"] != "error", item.get("error")
+            time.sleep(0.02)
+
+        assert item["state"] == "ready"
+        assert item["percent"] == 100
+        bin_path = isolated_data / "bin" / "macparakeet-cli"
+        assert bin_path.is_file()
+        assert _stat.S_IMODE(bin_path.stat().st_mode) == 0o755
+        assert not (isolated_data / "bin" / "README.txt").exists()
+        assert not (isolated_data / "bin" / "macparakeet-cli.tar.gz.part").exists()
+        assert setup.find_macparakeet_binary() == str(bin_path)
+        model_dir = fake_home / "Library" / "Application Support" / "FluidAudio" / "Models" / "parakeet-v3"
+        assert (model_dir / "model.bin").is_file()
+
+        # 4. Elimina -> rimuove binario e cartella del modello
+        deleted = api_client.delete("/api/v1/components/macparakeet")
+        assert deleted.status_code == 200
+        assert deleted.json()["state"] == "not_downloaded"
+        assert not bin_path.exists()
+        assert not model_dir.exists()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_macparakeet_rejects_path_traversal_member(isolated_data, monkeypatch):
+    import hashlib
+    from rt.pipeline import setup
+
+    script = b"#!/bin/sh\nexit 0\n"
+    tarball = _make_macparakeet_tarball(script, member_name="../evil")
+    srv, url = _serve_bytes(tarball)
+    try:
+        monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
+        monkeypatch.setattr(setup.shutil, "which", lambda _n: None)
+        monkeypatch.setattr(setup, "_MACPARAKEET_SYSTEM_PATHS", ())
+        monkeypatch.setattr(components, "MACPARAKEET_URL", url)
+        monkeypatch.setattr(components, "MACPARAKEET_TARBALL_MEMBER", "../evil")
+        monkeypatch.setattr(components, "MACPARAKEET_TARBALL_SHA256", hashlib.sha256(tarball).hexdigest())
+        monkeypatch.setattr(components, "MACPARAKEET_BINARY_SHA256", hashlib.sha256(script).hexdigest())
+        with pytest.raises(components.ComponentError, match="Percorso non sicuro"):
+            components.ensure_macparakeet()
+        assert not (isolated_data / "evil").exists()
+        assert not (isolated_data / "bin" / "macparakeet-cli").exists()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_macparakeet_folder_growth_progress_and_pause_resume(isolated_data, monkeypatch):
+    import hashlib
+    from rt.pipeline import setup
+
+    fake_home = isolated_data / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("RT_MACPARAKEET_MODELS_DIR", raising=False)
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
+    monkeypatch.setattr(setup.shutil, "which", lambda _n: None)
+    monkeypatch.setattr(setup, "_MACPARAKEET_SYSTEM_PATHS", ())
+    monkeypatch.setattr(components, "MACPARAKEET_MODEL_APPROX_BYTES", 10_000)
+
+    # Script che NON stampa percentuali: l'avanzamento viene calcolato dalla crescita della cartella.
+    script = (
+        f"#!{sys.executable}\n"
+        "import os, sys, time\n"
+        "models = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'FluidAudio', 'Models', 'parakeet-v3')\n"
+        "os.makedirs(models, exist_ok=True)\n"
+        "with open(os.path.join(models, 'weights.bin'), 'wb') as f:\n"
+        "    f.write(b'W' * 5000)\n"
+        "    f.flush()\n"
+        "    time.sleep(0.3)\n"
+        "    f.write(b'W' * 5000)\n"
+        "    f.flush()\n"
+    ).encode("utf-8")
+
+    tarball = _make_macparakeet_tarball(script)
+    srv, url = _serve_bytes(tarball)
+    try:
+        monkeypatch.setattr(components, "MACPARAKEET_URL", url)
+        monkeypatch.setattr(components, "MACPARAKEET_TARBALL_BYTES", len(tarball))
+        monkeypatch.setattr(components, "MACPARAKEET_TARBALL_SHA256", hashlib.sha256(tarball).hexdigest())
+        monkeypatch.setattr(components, "MACPARAKEET_BINARY_SHA256", hashlib.sha256(script).hexdigest())
+
+        seen = []
+        bin_path = components.ensure_macparakeet(on_progress=seen.append)
+        assert bin_path == str(isolated_data / "bin" / "macparakeet-cli")
+        assert any("Scarico il motore di trascrizione:" in m and "%" in m for m in seen)
+        assert components.get_component("macparakeet")["state"] == "ready"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_find_capture_browser_executable_finds_headless_shell(tmp_path, monkeypatch):
+    from rt.llm.enrichment_media import find_capture_browser_executable
+
+    browsers = tmp_path / "browsers"
+    shell_bin = browsers / "chromium_headless_shell-1243" / "chrome-headless-shell-mac-arm64" / "chrome-headless-shell"
+    shell_bin.parent.mkdir(parents=True)
+    shell_bin.write_bytes(b"shell")
+
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(browsers))
+    monkeypatch.delenv("RT_ENRICHMENT_CHROMIUM", raising=False)
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+
+    fake_playwright = SimpleNamespace(
+        chromium=SimpleNamespace(executable_path=str(browsers / "chromium-1243" / "chrome-mac-arm64" / "Google Chrome"))
+    )
+    assert find_capture_browser_executable(fake_playwright) == str(shell_bin)

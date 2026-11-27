@@ -287,9 +287,24 @@ class TelegramRuntimeConfig(BaseModel):
         return self
 
 
+def is_apple_silicon() -> bool:
+    """True su macOS Apple Silicon (anche sotto Rosetta 2); False su Intel o altri sistemi."""
+    import platform
+    import subprocess
+    import sys
+    if sys.platform != "darwin":
+        return False
+    if platform.machine() == "arm64":
+        return True
+    try:  # Python x86_64 sotto Rosetta su un Mac Apple Silicon
+        res = subprocess.run(["sysctl", "-n", "hw.optional.arm64"], capture_output=True, text=True, timeout=5)
+        return res.stdout.strip() == "1"
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def default_engine() -> str:
-    """macparakeet su Mac (più preciso e ~20x più veloce di ONNX; se manca, effective_engine
-    ricade su Parakeet ONNX); Parakeet ONNX sugli altri sistemi.
+    """macparakeet su Mac (più preciso e veloce di ONNX); Parakeet ONNX sugli altri sistemi.
     RT_DEFAULT_STT_ENGINE lo fissa (la suite di test lo usa per avere lo stesso default su ogni sistema)."""
     import sys
     forced = os.environ.get("RT_DEFAULT_STT_ENGINE", "").strip()
@@ -301,12 +316,10 @@ def default_engine() -> str:
 def effective_engine(cfg: Any = None) -> str:
     """Motore STT usato davvero a runtime.
 
-    Con ``macparakeet`` sul Mac (scelta avanzata salvata o impostata), se ``macparakeet-cli``
-    non è installato ma Parakeet ONNX è disponibile, ricade su ``parakeet`` senza modificare
-    il valore salvato in configurazione.
+    Con ``macparakeet`` su Apple Silicon resta ``macparakeet`` (se il binario manca, il job lo
+    scarica); su Mac Intel ricade su ``parakeet`` se Parakeet ONNX è disponibile.
     """
     import sys
-
     if cfg is None:
         engine = load_config().transcription.engine
     elif isinstance(cfg, str):
@@ -319,10 +332,7 @@ def effective_engine(cfg: Any = None) -> str:
     if engine != "macparakeet":
         return engine
 
-    if sys.platform == "darwin":
-        from rt.pipeline.setup import find_macparakeet_binary
-        if find_macparakeet_binary():
-            return "macparakeet"
+    if sys.platform == "darwin" and not is_apple_silicon():
         from rt.core import onnx_stt
         if onnx_stt.available():
             return "parakeet"
@@ -330,9 +340,9 @@ def effective_engine(cfg: Any = None) -> str:
 
 
 class TranscriptionConfig(BaseModel):
-    """Motore ASR usato dal setup delle lezioni e, se scelto, dal recall vocale: parakeet
-    (Parakeet ONNX locale, predefinito ovunque), macparakeet (solo macOS, scelta avanzata se
-    installato con Homebrew) o custom (server compatibile OpenAI)."""
+    """Motore ASR usato dal setup delle lezioni e, se scelto, dal recall vocale: macparakeet
+    (predefinito su macOS Apple Silicon), parakeet (Parakeet ONNX locale) o custom (server
+    compatibile OpenAI)."""
     engine: Literal["macparakeet", "parakeet", "custom"] = Field(default_factory=lambda: default_engine())
     base_url: Optional[str] = None
     model: Optional[str] = None

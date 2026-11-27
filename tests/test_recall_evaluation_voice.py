@@ -139,10 +139,12 @@ class TestTranscribeVoiceAnswer:
         with open(audio_path, "wb") as f:
             f.write(b"FAKE_AUDIO")
 
-        with patch("rt.pipeline.setup.find_macparakeet_binary", return_value=""), \
+        with patch("rt.core.config.is_apple_silicon", return_value=True), \
+             patch("rt.pipeline.setup.find_macparakeet_binary", return_value=""), \
              patch("rt.core.onnx_stt.available", return_value=False):
-            with pytest.raises(RuntimeError):
+            with pytest.raises(RuntimeError, match="Componenti") as exc_info:
                 transcribe_voice_answer(audio_path)
+            assert "brew install" not in str(exc_info.value)
 
     def test_falls_back_to_parakeet_when_macparakeet_not_found(self, tmp_path):
         audio_path = str(tmp_path / "voice.oga")
@@ -150,6 +152,7 @@ class TestTranscribeVoiceAnswer:
             f.write(b"FAKE_AUDIO")
 
         with patch("sys.platform", "darwin"), \
+             patch("rt.core.config.is_apple_silicon", return_value=False), \
              patch("rt.pipeline.setup.find_macparakeet_binary", return_value=""), \
              patch("rt.core.onnx_stt.available", return_value=True), \
              patch("rt.core.onnx_stt.transcribe_onnx", return_value={"rawTranscript": "Risposta vocale."}) as mock_onnx:
