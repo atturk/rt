@@ -6346,6 +6346,17 @@
             ],
             "title": "Lesson Path"
           },
+          "lesson_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lesson Title"
+          },
           "payload": {
             "additionalProperties": true,
             "default": {},
@@ -8732,6 +8743,12 @@
       },
       "PreferencesSettings": {
         "properties": {
+          "avvia_all_accesso": {
+            "default": true,
+            "description": "Avvia RT all'accesso su macOS",
+            "title": "Avvia All Accesso",
+            "type": "boolean"
+          },
           "chiusura_x": {
             "default": "background",
             "description": "Azione chiudendo la finestra dell'app con la X",
