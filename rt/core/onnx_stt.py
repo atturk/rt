@@ -69,11 +69,28 @@ def _format_eta(seconds: float) -> str:
     return "pochi secondi"
 
 
+def _format_eta_short(seconds: float) -> str:
+    if seconds >= 90:
+        mins = max(1, round(seconds / 60))
+        return f"circa {mins} min"
+    if seconds >= 10:
+        secs = max(10, round(seconds / 10) * 10)
+        return f"circa {secs} s"
+    return "pochi secondi"
+
+
 class _DownloadProgressReporter:
     """Emette avanzamento in MB, percentuale e stima tempo rimanente (al massimo 1/s)."""
 
-    def __init__(self, on_progress: Optional[Callable[[str], None]], total_bytes: int, initial_bytes: int):
+    def __init__(
+        self,
+        on_progress: Optional[Callable[[str], None]],
+        total_bytes: int,
+        initial_bytes: int,
+        on_stats: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ):
         self._on_progress = on_progress
+        self._on_stats = on_stats
         self._total = total_bytes
         self._initial = initial_bytes
         self._started = time.monotonic()
@@ -81,7 +98,7 @@ class _DownloadProgressReporter:
         self._last_pct = -1
 
     def update(self, downloaded_bytes: int, *, force: bool = False) -> None:
-        if not self._on_progress or self._total <= 0:
+        if (not self._on_progress and not self._on_stats) or self._total <= 0:
             return
         now = time.monotonic()
         pct = min(100, max(0, int(downloaded_bytes * 100 / self._total)))
@@ -100,14 +117,27 @@ class _DownloadProgressReporter:
         elapsed = now - self._started
         session_bytes = downloaded_bytes - self._initial
         remaining = max(0, self._total - downloaded_bytes)
+        eta_seconds: Optional[float] = None
         eta_part = ""
+        eta_short: Optional[str] = None
         if elapsed >= 2.0 and session_bytes > 0 and remaining > 0:
             speed = session_bytes / elapsed
             if speed > 0:
-                eta_part = f", {_format_eta(remaining / speed)}"
-        self._on_progress(
-            f"Scarico il modello di trascrizione: {pct}% ({done_mb} di {total_mb} MB{eta_part})"
-        )
+                eta_seconds = remaining / speed
+                eta_part = f", {_format_eta(eta_seconds)}"
+                eta_short = _format_eta_short(eta_seconds)
+        if self._on_stats:
+            self._on_stats({
+                "downloaded_bytes": downloaded_bytes,
+                "total_bytes": self._total,
+                "percent": pct,
+                "eta_seconds": eta_seconds,
+                "eta_label": eta_short,
+            })
+        if self._on_progress:
+            self._on_progress(
+                f"Scarico il modello di trascrizione: {pct}% ({done_mb} di {total_mb} MB{eta_part})"
+            )
 
 
 def _model_patterns(name: str, quantization: Optional[str], *, vad: bool = False) -> Tuple[str, List[str]]:
@@ -231,6 +261,7 @@ def _download_resumable(
     *,
     vad: bool = False,
     on_progress: Optional[Callable[[str], None]] = None,
+    on_stats: Optional[Callable[[Dict[str, Any]], None]] = None,
     cancel_token: Optional[Any] = None,
 ) -> str:
     """Scarica il modello da Hugging Face con file .part riprendibili e verifica della dimensione."""
@@ -270,7 +301,7 @@ def _download_resumable(
                     downloaded_bytes += part_size
             pending.append((rel_path, expected_size, dest_file))
 
-        reporter = _DownloadProgressReporter(on_progress, total_bytes, downloaded_bytes)
+        reporter = _DownloadProgressReporter(on_progress, total_bytes, downloaded_bytes, on_stats=on_stats)
         if pending and downloaded_bytes > 0:
             reporter.update(downloaded_bytes, force=True)
 
@@ -376,6 +407,12 @@ def _wrap_vad(vad: Any, *, end_pad_ms: int = 400, tail_extend_s: float = 1.0) ->
     return _PaddedVad(vad)
 
 
+def clear_loaded() -> None:
+    """Svuota il modello caricato in memoria (es. dopo l'eliminazione da Impostazioni)."""
+    with _lock:
+        _loaded.clear()
+
+
 def _models(on_progress: Optional[Callable[[str], None]] = None, cancel_token: Optional[Any] = None):
     """ASR con VAD e timestamp, caricato una volta per processo."""
     with _lock:
@@ -386,11 +423,12 @@ def _models(on_progress: Optional[Callable[[str], None]] = None, cancel_token: O
         except ImportError:
             raise OnnxSttUnavailable("Motore Parakeet ONNX non installato (pacchetto onnx-asr).") from None
         if not model_ready() and on_progress:
-            on_progress("Scarico il modello di trascrizione (circa 700 MB, solo la prima volta)...")
-        model_path = _download_resumable(
-            MODEL_NAME, QUANTIZATION, on_progress=on_progress, cancel_token=cancel_token
+            on_progress("Scarico il modello di trascrizione (circa 670 MB, solo la prima volta)...")
+        from rt.core import components
+        model_path, vad_path = components.ensure_transcription_model(
+            on_progress=on_progress,
+            cancel_token=cancel_token,
         )
-        vad_path = _download_resumable(VAD_NAME, None, vad=True, cancel_token=cancel_token)
         model = onnx_asr.load_model(MODEL_NAME, model_path, quantization=QUANTIZATION)
         vad = _wrap_vad(onnx_asr.load_vad(VAD_NAME, vad_path))
         _loaded["asr"] = model.with_vad(vad, batch_size=4, max_speech_duration_s=25).with_timestamps()

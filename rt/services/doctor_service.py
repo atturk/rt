@@ -62,7 +62,7 @@ def check_transcription() -> Check:
             return Check("Trascrizione", FAIL, "Parakeet ONNX scelto ma il pacchetto onnx-asr non è installato.",
                          "Reinstalla RT oppure scegli un altro motore in Impostazioni.")
         if not onnx_stt.model_ready():
-            return Check("Trascrizione", OK, "Parakeet ONNX: il modello si scarica alla prima trascrizione (circa 700 MB)")
+            return Check("Trascrizione", OK, "Parakeet ONNX: il modello si scarica alla prima trascrizione o da Impostazioni (~670 MB)")
         return Check("Trascrizione", OK, "Parakeet ONNX pronto")
     if sys.platform != "darwin":
         return Check("Trascrizione", WARN, "macparakeet funziona solo su macOS.",
@@ -70,7 +70,7 @@ def check_transcription() -> Check:
     # L'app aperta dal Finder non ha /opt/homebrew/bin nel PATH: si cerca come fa la trascrizione.
     from rt.pipeline.setup import find_macparakeet_binary
     if find_macparakeet_binary():
-        return Check("Trascrizione", OK, "macparakeet-cli installato")
+        return Check("Trascrizione", OK, "macparakeet-cli installato (scelta avanzata)")
     from rt.core import onnx_stt
     if onnx_stt.available():
         if not onnx_stt.model_ready():
@@ -80,8 +80,8 @@ def check_transcription() -> Check:
                 "Parakeet ONNX (macparakeet-cli non installato) — modello da scaricare al primo uso",
             )
         return Check("Trascrizione", OK, "Parakeet ONNX (macparakeet-cli non installato)")
-    return Check("Trascrizione", WARN, "macparakeet-cli non trovato: le lezioni da audio non si trascrivono.",
-                 "brew install moona3k/tap/macparakeet-cli (serve un Mac Apple Silicon)")
+    return Check("Trascrizione", WARN, "macparakeet-cli non trovato e Parakeet ONNX non disponibile.",
+                 "Reinstalla RT oppure installa macparakeet-cli con Homebrew.")
 
 
 def check_data_dir() -> Check:

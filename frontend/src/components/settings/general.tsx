@@ -1,5 +1,4 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { Link } from 'react-router'
 
 import { useSaveTranscription, type Settings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
@@ -20,32 +19,25 @@ export function TranscriptionSection({ settings }: { settings: Settings }) {
 type Engine = 'macparakeet' | 'parakeet' | 'custom'
 
 const ENGINE_LABEL: Record<Engine, string> = {
-  macparakeet: 'macparakeet',
   parakeet: 'Parakeet ONNX',
+  macparakeet: 'macparakeet (avanzato)',
   custom: 'Server OpenAI-compatible',
 }
 
 function engineHint(t: Settings['transcription'], engine: Engine): ReactNode {
   if (engine === 'macparakeet') {
-    if (!t.macparakeet_available) return 'macparakeet funziona solo su macOS: qui scegli Parakeet ONNX.'
-    if (t.macparakeet_installed) return 'Usa il Neural Engine del Mac: il più veloce.'
+    if (!t.macparakeet_available) return 'macparakeet funziona solo su macOS: scegli Parakeet ONNX.'
+    if (t.macparakeet_installed) return 'Scelta avanzata (installato con Homebrew): usa il Neural Engine del Mac.'
     if (t.macparakeet_fallback || t.parakeet_available) {
-      return (
-        <>
-          macparakeet-cli non è installato: RT usa Parakeet ONNX, che funziona senza installare nulla. Per la massima velocità puoi installare macparakeet-cli con Homebrew.{' '}
-          <Link to="/guida/installazione" className="underline">
-            Come?
-          </Link>
-        </>
-      )
+      return 'Scelta avanzata (se installato con Homebrew). Non è installato su questo Mac: RT usa Parakeet ONNX.'
     }
-    return 'macparakeet-cli non è installato su questo Mac.'
+    return 'Scelta avanzata (se installato con Homebrew): non trovato su questo Mac.'
   }
   if (engine === 'parakeet') {
     if (!t.parakeet_available) return 'Il motore non è installato: reinstalla RT.'
     return t.parakeet_model_ready
       ? 'Gira su questo computer, senza internet.'
-      : 'Gira su questo computer. Il modello (circa 700 MB) si scarica alla prima trascrizione, poi funziona senza internet.'
+      : 'Gira su questo computer. Il modello (~670 MB) si scarica qui sotto in «Componenti di RT» oppure alla prima trascrizione.'
   }
   return 'Un tuo server di trascrizione, con risposta verbose_json e segmenti temporizzati.'
 }
@@ -76,7 +68,7 @@ function TranscriptionFields({
   const model = modelDraft && modelDraft.base === savedModel ? modelDraft.value : savedModel
 
   const custom = engine === 'custom'
-  const engines: Engine[] = t.macparakeet_available || t.engine === 'macparakeet' ? ['macparakeet', 'parakeet', 'custom'] : ['parakeet', 'custom']
+  const engines: Engine[] = t.macparakeet_available || t.engine === 'macparakeet' ? ['parakeet', 'macparakeet', 'custom'] : ['parakeet', 'custom']
 
   const urlAuto = useAutoSave(
     save,

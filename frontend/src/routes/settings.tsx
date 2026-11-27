@@ -24,6 +24,7 @@ import { api, errorMessage } from '@/api/client'
 import { useLogout } from '@/api/hooks'
 import { useSettings, useSystemInfo, type Settings } from '@/api/settings'
 import { DeviceAccessSection } from '@/components/settings/device-access'
+import { ComponentsSection } from '@/components/settings/components'
 import { CloseActionSection, StartAtLoginSection, TranscriptionSection } from '@/components/settings/general'
 import { NotificationsCard, TelegramConnectScreen, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
@@ -80,7 +81,7 @@ export function SettingsLayout() {
   const phone = useIsPhone()
   const { pathname, hash } = useLocation()
   const index = pathname === '/impostazioni'
-  const targets: Record<string, string> = { telegram: 'telegram', cartella: 'info-aggiornamenti', 'job-paralleli': 'lavorazione', trascrizione: 'lavorazione', preferenze: 'aspetto' }
+  const targets: Record<string, string> = { telegram: 'telegram', cartella: 'info-aggiornamenti', 'job-paralleli': 'lavorazione', trascrizione: 'lavorazione', componenti: 'lavorazione', presentazioni: 'lavorazione', preferenze: 'aspetto' }
   if (index && targets[hash.slice(1)]) return <SettingsRedirect section={targets[hash.slice(1)]} />
   const isSupport = pathname === '/impostazioni/supporta'
   const current = SETTINGS_SECTIONS.find(s => pathname === `/impostazioni/${s.path}`) ?? SETTINGS_SECTIONS[0]
@@ -238,7 +239,7 @@ function ScrollToHash() {
 
 export function SettingsIndexPage() {
   const { hash } = useLocation()
-  const targets: Record<string, string> = { telegram: 'telegram', cartella: 'info-aggiornamenti', 'job-paralleli': 'lavorazione', trascrizione: 'lavorazione', preferenze: 'aspetto' }
+  const targets: Record<string, string> = { telegram: 'telegram', cartella: 'info-aggiornamenti', 'job-paralleli': 'lavorazione', trascrizione: 'lavorazione', componenti: 'lavorazione', presentazioni: 'lavorazione', preferenze: 'aspetto' }
   if (targets[hash.slice(1)]) return <SettingsRedirect section={targets[hash.slice(1)]} />
   return <AppearanceSettingsPage />
 }
@@ -273,6 +274,7 @@ export function ProcessingSettingsPage() {
           description="Trascrizione, scaletta, fonti predefinite, arricchimento, ricerca web e parallelismo."
         >
           <TranscriptionSection settings={s} />
+          <ComponentsSection />
           <OutlineSettingsSection settings={s} />
           <SourceDefaultsSection />
           <EnrichmentSettingsSection settings={s} />

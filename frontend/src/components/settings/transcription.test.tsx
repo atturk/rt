@@ -34,16 +34,16 @@ describe('Trascrizione: motori per sistema', () => {
   it('su Windows niente macparakeet, Parakeet ONNX consigliato e campi server nascosti', async () => {
     renderSection({ engine: 'parakeet', recommended: 'parakeet', macparakeet_available: false, macparakeet_installed: false })
     expect(await engineChoices()).toEqual(['Parakeet ONNX · consigliato', 'Server OpenAI-compatible'])
-    expect(screen.getByTestId('stt-engine-hint')).toHaveTextContent('si scarica alla prima trascrizione')
+    expect(screen.getByTestId('stt-engine-hint')).toHaveTextContent('Componenti di RT')
     expect(screen.queryByLabelText('Base URL del server')).toBeNull()
     expect(screen.queryByLabelText('Modello')).toBeNull()
     expect(screen.queryByLabelText('Chiave API (facoltativa)')).toBeNull()
   })
 
-  it('sul Mac macparakeet consigliato, cambio motore salva subito e custom mostra URL, modello e chiave', async () => {
+  it('sul Mac Parakeet ONNX consigliato, macparakeet scelta avanzata, cambio motore salva subito', async () => {
     const put = vi.spyOn(api, 'PUT').mockResolvedValue({ data: testSettings, response: new Response('{}', { status: 200 }) } as never)
     renderSection({})
-    expect(await engineChoices()).toEqual(['macparakeet · consigliato', 'Parakeet ONNX', 'Server OpenAI-compatible'])
+    expect(await engineChoices()).toEqual(['Parakeet ONNX · consigliato', 'macparakeet (avanzato)', 'Server OpenAI-compatible'])
     await userEvent.setup().click(screen.getByRole('menuitemradio', { name: 'Server OpenAI-compatible' }))
     expect(screen.getByTestId('stt-engine')).toHaveAttribute('data-value', 'custom')
     expect(put).toHaveBeenCalledWith('/api/v1/settings/transcription', {
@@ -61,10 +61,10 @@ describe('Trascrizione: motori per sistema', () => {
     expect(screen.getByRole('button', { name: 'Salva chiave' })).toBeDisabled()
   })
 
-  it('sul Mac senza macparakeet-cli mostra il messaggio di fallback a Parakeet ONNX con link alla guida', () => {
+  it('sul Mac senza macparakeet-cli non chiede Homebrew e spiega il ripiego su Parakeet ONNX', () => {
     renderSection({
       engine: 'macparakeet',
-      recommended: 'macparakeet',
+      recommended: 'parakeet',
       effective_engine: 'parakeet',
       macparakeet_fallback: true,
       macparakeet_available: true,
@@ -73,8 +73,8 @@ describe('Trascrizione: motori per sistema', () => {
     })
     const hint = screen.getByTestId('stt-engine-hint')
     expect(hint).toHaveTextContent(
-      'macparakeet-cli non è installato: RT usa Parakeet ONNX, che funziona senza installare nulla. Per la massima velocità puoi installare macparakeet-cli con Homebrew.',
+      'Scelta avanzata (se installato con Homebrew). Non è installato su questo Mac: RT usa Parakeet ONNX.',
     )
-    expect(screen.getByRole('link', { name: 'Come?' })).toHaveAttribute('href', '/guida/installazione')
+    expect(screen.queryByRole('link', { name: 'Come?' })).toBeNull()
   })
 })

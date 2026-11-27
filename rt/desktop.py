@@ -104,23 +104,15 @@ def _browsers_dir() -> Optional[str]:
 
 
 def ensure_capture_browser(say: Callable[[str], None]) -> None:
-    """Chromium per le catture delle visualizzazioni: si scarica in background la prima volta."""
+    """Chromium per le catture delle visualizzazioni: si scarica in background la prima volta
+    usando il gestore componenti (stato visibile in Impostazioni, log in browser-install.log)."""
     target = _browsers_dir()
     if not target:
         return
-    if os.path.isdir(target) and any(name.startswith("chromium") for name in os.listdir(target)):
+    from rt.core import components
+    if components.browser_ready(target):
         return
-    os.makedirs(target, exist_ok=True)
-    log = open(os.path.join(paths.default_data_dir(), "logs", "browser-install.log"), "a", encoding="utf-8")
-    kwargs = {"creationflags": 0x08000000} if sys.platform == "win32" else {"start_new_session": True}
-    try:
-        subprocess.Popen([sys.executable, "-m", "playwright", "install", "chromium"],
-                         stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **kwargs)
-        say("🌐 Scarico in background il browser per le catture delle visualizzazioni.")
-    except OSError as exc:
-        say(f"⚠️  Browser per le catture non scaricato: {exc}")
-    finally:
-        log.close()
+    components.ensure_browser_detached(say)
 
 
 def _services_match_app() -> bool:

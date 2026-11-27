@@ -92,6 +92,12 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
         except Exception:
             import logging
             logging.getLogger(__name__).exception("Avvio riscaldamento elenco lezioni")
+        try:
+            from rt.core.components import resume_interrupted_downloads
+            resume_interrupted_downloads()
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Ripresa dei componenti interrotti all'avvio")
         yield
     app.router.lifespan_context = lifespan
     if serve_spa:
@@ -133,8 +139,8 @@ class UploadTimingMiddleware:
 
 
 def _domain_routers() -> list:
-    from rt.api.routers import archive, cloud, subjects, calendar, enrichment, folders, highlights, images, jobs, lessons, lesson_sources, readonly, recall, review, settings, study_chat, study_notes, study_progress
+    from rt.api.routers import archive, cloud, components, subjects, calendar, enrichment, folders, highlights, images, jobs, lessons, lesson_sources, readonly, recall, review, settings, study_chat, study_notes, study_progress
     return [archive.router, lessons.router, review.router, jobs.router, recall.router, settings.router, images.router,
             folders.router, enrichment.router, highlights.router, study_progress.router,
             study_notes.router, study_chat.router, subjects.router, calendar.router, lesson_sources.router, cloud.router,
-            readonly.router]
+            readonly.router, components.router]

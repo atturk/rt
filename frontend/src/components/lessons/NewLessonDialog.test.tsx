@@ -828,3 +828,50 @@ it('file aperti dal Finder con la finestra già aperta sostituiscono quelli most
   )
   expect(await screen.findByText(/seconda\.pdf/)).toBeInTheDocument()
 })
+
+it('con audio e modello in download mostra la riga informativa con % e tempo stimato', async () => {
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+    if (path === '/api/v1/components') {
+      return Promise.resolve({
+        data: [
+          {
+            id: 'transcription',
+            name: 'Modello di trascrizione',
+            description: "necessario per trascrivere l'audio",
+            detail: 'Parakeet ONNX + VAD',
+            required: true,
+            state: 'downloading',
+            downloaded_bytes: 281 * 1024 * 1024,
+            total_bytes: 670 * 1024 * 1024,
+            approx_bytes: 670 * 1024 * 1024,
+            percent: 42,
+            eta_seconds: 360,
+            eta_label: 'circa 6 min',
+            error: null,
+            available: true,
+            unavailable_reason: null,
+          },
+        ],
+        error: undefined,
+        response: new Response('[]', { status: 200 }),
+      })
+    }
+    if (path === '/api/v1/settings') {
+      return Promise.resolve({
+        data: { transcription: { effective_engine: 'parakeet' } },
+        error: undefined,
+        response: new Response('{}', { status: 200 }),
+      })
+    }
+    return Promise.resolve({ data: { hours: [] }, error: undefined, response: new Response('{}', { status: 200 }) })
+  }) as never)
+
+  const audioFile = new File(['audio'], 'lezione.mp3', { type: 'audio/mpeg' })
+  renderDialog(true, vi.fn(), '2026-10-21', undefined, [audioFile])
+
+  const notice = await screen.findByTestId('transcription-download-notice')
+  expect(notice).toHaveTextContent(
+    'Il modello di trascrizione si sta scaricando (42%, circa 6 min): la lezione partirà appena è pronto.',
+  )
+  expect(screen.getByRole('button', { name: 'Avvia' })).toBeEnabled()
+})

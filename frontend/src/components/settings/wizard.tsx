@@ -24,6 +24,8 @@ import { SettingsDisclosure, SettingsInfoButton, SettingsRow, SettingsSelect as 
 import { NewConnectionForm, PhaseRows } from './models'
 import { CloudPanel } from './cloud'
 import { useCloudStatus } from '@/api/cloud'
+import { useComponents, useDownloadComponent } from '@/api/components'
+import { ComponentActions, ComponentProgressDetails } from './components'
 
 /** Configurazione guidata del primo avvio (RT4-F5): ogni passo salva subito sul backend e
  * il passo corrente sta nell'URL, così una ricarica riprende da dove si era. */
@@ -377,6 +379,50 @@ const OPTIONAL_MODEL_ROWS: ReadonlyArray<{ job: 'image_description' | 'enrichmen
   },
 ]
 
+function WizardTranscriptionDownload({ settings }: { settings: Settings }) {
+  const components = useComponents()
+  const download = useDownloadComponent()
+  const startedRef = useRef(false)
+  const items = Array.isArray(components.data) ? components.data : []
+  const transcription = items.find((c) => c.id === 'transcription')
+  const usesParakeet = settings.transcription.effective_engine === 'parakeet'
+
+  useEffect(() => {
+    if (
+      usesParakeet &&
+      transcription &&
+      transcription.available &&
+      transcription.state === 'not_downloaded' &&
+      !startedRef.current &&
+      !download.isPending
+    ) {
+      startedRef.current = true
+      download.mutate('transcription')
+    }
+  }, [usesParakeet, transcription, download])
+
+  if (!usesParakeet || !transcription) return null
+
+  if (transcription.state === 'ready') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-meta" data-testid="wizard-transcription-download">
+        <span className="font-semibold text-success">✓</span>
+        <span>Modello di trascrizione pronto</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3" data-testid="wizard-transcription-download">
+      <div className="min-w-0 flex-1 flex flex-col gap-1">
+        <span className="text-body font-medium text-foreground">Modello di trascrizione</span>
+        <ComponentProgressDetails component={transcription} />
+      </div>
+      <ComponentActions component={transcription} allowDelete={false} />
+    </div>
+  )
+}
+
 function ModelsStep({ settings, onBack, onDone }: { settings: Settings; onBack: () => void; onDone: () => void }) {
   const [params, setParams] = useSearchParams()
   const [perPhase, setPerPhase] = useState(params.get('modelli') === 'per-fase')
@@ -623,6 +669,8 @@ function ModelsStep({ settings, onBack, onDone }: { settings: Settings; onBack: 
         </div>
       </section>
 
+      <WizardTranscriptionDownload settings={settings} />
+
       {mutationError && <Alert tone="danger">{mutationError}</Alert>}
 
       <div className="flex items-center justify-between gap-3 pt-1">
@@ -738,6 +786,8 @@ function ProntoStep({ settings, onComplete }: { settings: Settings; onComplete: 
           Collega Telegram →
         </Link>
       </div>
+
+      <WizardTranscriptionDownload settings={settings} />
 
       <ul className="flex flex-col gap-1.5 rounded-lg bg-muted/30 px-4 py-3 text-meta" data-testid="wizard-summary">
         <li className="flex items-center gap-2">

@@ -288,20 +288,24 @@ class TelegramRuntimeConfig(BaseModel):
 
 
 def default_engine() -> str:
-    """macparakeet sul Mac, Parakeet ONNX altrove (Windows, Linux). RT_DEFAULT_STT_ENGINE lo
-    fissa (la suite di test lo usa per avere lo stesso default su ogni sistema)."""
+    """Parakeet ONNX ovunque se onnx-asr è disponibile; altrimenti macparakeet su Mac.
+    RT_DEFAULT_STT_ENGINE lo fissa (la suite di test lo usa per avere lo stesso default su ogni sistema)."""
     import sys
     forced = os.environ.get("RT_DEFAULT_STT_ENGINE", "").strip()
     if forced in ("macparakeet", "parakeet", "custom"):
         return forced
+    from rt.core import onnx_stt
+    if onnx_stt.available():
+        return "parakeet"
     return "macparakeet" if sys.platform == "darwin" else "parakeet"
 
 
 def effective_engine(cfg: Any = None) -> str:
     """Motore STT usato davvero a runtime.
 
-    Con ``macparakeet`` sul Mac, se ``macparakeet-cli`` non è installato ma Parakeet ONNX è
-    disponibile, ricade su ``parakeet`` senza modificare il valore salvato in configurazione.
+    Con ``macparakeet`` sul Mac (scelta avanzata salvata o impostata), se ``macparakeet-cli``
+    non è installato ma Parakeet ONNX è disponibile, ricade su ``parakeet`` senza modificare
+    il valore salvato in configurazione.
     """
     import sys
 
@@ -312,7 +316,7 @@ def effective_engine(cfg: Any = None) -> str:
     elif hasattr(cfg, "transcription"):
         engine = cfg.transcription.engine
     else:
-        engine = getattr(cfg, "engine", None) or "macparakeet"
+        engine = getattr(cfg, "engine", None) or default_engine()
 
     if engine != "macparakeet":
         return engine
@@ -328,9 +332,9 @@ def effective_engine(cfg: Any = None) -> str:
 
 
 class TranscriptionConfig(BaseModel):
-    """Motore ASR usato dal setup delle lezioni e, se scelto, dal recall vocale: macparakeet
-    (solo macOS, consigliato sul Mac), parakeet (Parakeet ONNX locale, ovunque) o custom (server
-    compatibile OpenAI)."""
+    """Motore ASR usato dal setup delle lezioni e, se scelto, dal recall vocale: parakeet
+    (Parakeet ONNX locale, predefinito ovunque), macparakeet (solo macOS, scelta avanzata se
+    installato con Homebrew) o custom (server compatibile OpenAI)."""
     engine: Literal["macparakeet", "parakeet", "custom"] = Field(default_factory=lambda: default_engine())
     base_url: Optional[str] = None
     model: Optional[str] = None
