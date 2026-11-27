@@ -6657,6 +6657,8 @@ export interface components {
             lesson_id?: number | null;
             /** Lesson Path */
             lesson_path?: string | null;
+            /** Lesson Title */
+            lesson_title?: string | null;
             /**
              * Payload
              * @default {}
