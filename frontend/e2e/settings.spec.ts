@@ -164,8 +164,9 @@ test('Telegram: interruttore, token e chat trovata dopo /start', async ({ page }
   const tg = region(page, 'Collegamento')
   await tg.getByLabel('Token del bot', { exact: true }).fill('123456789:AAE2E-token-422-xyz')
   // la Bot API finta ha ricevuto /start dalla chat personale di Ada Rossi
-  await tg.getByRole('button', { name: 'Collega la chat' }).click()
-  await expect(tg.getByTestId('telegram-chat-result')).toHaveText('Chat collegata: Ada Rossi.')
+  // primo collegamento: schermata guidata con «Collega», poi la sezione mostra la chat trovata
+  await tg.getByRole('button', { name: 'Collega', exact: true }).click()
+  await expect(tg.getByTestId('telegram-chat')).toContainText('Chat collegata')
   await page.reload()
   await expect(tg.getByLabel('Token del bot', { exact: true })).toHaveValue('')
   await expect(tg.getByTestId('telegram-chat')).toContainText('Chat collegata')
@@ -191,15 +192,15 @@ test('wizard: il modello comune lascia intatte le fasi delle immagini', async ({
   await loginViaLink(page)
   await page.goto('/impostazioni/configurazione?passo=2')
   const before = await apiGet<{ phases: { job: string; connection: string | null; model: string | null }[] }>(page.request, '/settings')
-  const form = page.getByRole('form', { name: 'Stesso modello per tutte le fasi' })
-  await choose(form, 'Connessione', CONNECTION)
-  await form.getByLabel('Modello', { exact: true }).fill('test/422')
-  await form.getByRole('button', { name: 'Usa per tutte le fasi' }).click()
+  const connections = page.locator('#wizard-connection')
+  if (await connections.count()) await connections.selectOption(CONNECTION)
+  // il catalogo del server finto non risponde: si torna al campo libero con i modelli già noti
+  await page.getByLabel('Modello principale').fill('test/422')
+  await page.getByRole('button', { name: 'Continua', exact: true }).click()
   await expect.poll(async () => (await apiGet<{ phases: { job: string; model: string }[] }>(page.request, '/settings')).phases.find(p => p.job === 'rewrite')?.model).toBe('test/422')
   const after = await apiGet<typeof before>(page.request, '/settings')
   for (const job of ['image_description', 'enrichment_image']) expect(after.phases.find(p => p.job === job)).toEqual(before.phases.find(p => p.job === job))
-  await expect(page).toHaveURL(/passo=2/)
-  await expect(page.getByTestId('phase-row')).toHaveCount(2)
+  await expect(page).toHaveURL(/passo=3/)
 })
 
 // Le etichette delle scorciatoie dipendono dalla tastiera (⌘ sul Mac della CI): questi test fissano quella PC.
