@@ -1,5 +1,5 @@
-import { Plus, Trash2 } from 'lucide-react'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { ExternalLink, Eye, EyeOff, Plus, Trash2 } from 'lucide-react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 
@@ -16,6 +16,7 @@ import {
   useSaveRoute,
   useTestCredential,
   useTestModel,
+  useVerifyConnectionKey,
   type RouteOut,
   type Settings,
 } from '@/api/settings'
@@ -24,8 +25,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
 import { SecretInput } from '@/components/ui/secret-input'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import { optionRevealClass, useOptionKey } from '@/lib/optionKey'
 import { PROVIDERS, ROUTE_ROLES, defaultBaseUrl, providerLabel, type Provider } from '@/lib/settings'
 import { SecretsSection, PricingSection } from './keys'
@@ -485,24 +488,391 @@ function ConnectionItem({ connection, settings }: { connection: Connection; sett
   )
 }
 
+const WIZARD_SERVICES: ReadonlyArray<{
+  value: Provider
+  label: string
+  badge?: { text: string; tone: 'success' | 'warning' }
+}> = [
+  { value: 'openrouter', label: 'OpenRouter', badge: { text: 'Consigliato', tone: 'success' } },
+  { value: 'google', label: 'Google AI Studio' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'openai_compatible', label: 'Altro', badge: { text: 'Per esperti', tone: 'warning' } },
+]
+
+const KEY_HELP: Record<
+  Exclude<Provider, 'openai_compatible'>,
+  { title: string; steps: string[]; note: string; linkLabel: string; href: string }
+> = {
+  openrouter: {
+    title: 'Come ottenere una chiave OpenRouter',
+    steps: [
+      'Accedi o registrati su openrouter.ai.',
+      'Apri la pagina Keys e premi «Create API key».',
+      'Dai un nome alla chiave (es. «RT») e, se vuoi, un limite di spesa: è consigliato.',
+      'Copia la chiave (inizia con sk-or-v1-) e incollala qui. Conservala: non la rivedrai per intero.',
+    ],
+    note: 'Per i modelli a pagamento serve aggiungere credito al tuo account (pagina Credits). Con un limite sulla chiave non spendi mai più di quanto decidi.',
+    linkLabel: 'Apri openrouter.ai/keys ↗',
+    href: 'https://openrouter.ai/keys',
+  },
+  google: {
+    title: 'Come ottenere una chiave Google AI Studio',
+    steps: [
+      'Vai su aistudio.google.com/apikey e accedi con il tuo account Google.',
+      'Accetta i Termini di servizio: al primo accesso Google crea un progetto per te.',
+      'Premi «Create API key».',
+      'Copia la chiave e incollala qui.',
+    ],
+    note: "C'è un livello gratuito con limiti di uso; per usi intensi si collega la fatturazione dal progetto Google.",
+    linkLabel: 'Apri aistudio.google.com/apikey ↗',
+    href: 'https://aistudio.google.com/apikey',
+  },
+  deepseek: {
+    title: 'Come ottenere una chiave DeepSeek',
+    steps: [
+      'Registrati su platform.deepseek.com con email o telefono.',
+      'Apri «Top up» e ricarica il credito: senza credito la chiave non funziona.',
+      'Nel menu a sinistra apri «API keys» e premi «Create new API key».',
+      'Dai un nome e copia subito la chiave: DeepSeek la mostra una volta sola.',
+    ],
+    note: 'Si paga a consumo dal credito ricaricato.',
+    linkLabel: 'Apri platform.deepseek.com/api_keys ↗',
+    href: 'https://platform.deepseek.com/api_keys',
+  },
+}
+
+function uniqueConnectionName(provider: Provider, existingNames: string[]): string {
+  const base = provider === 'openai_compatible' ? 'Altro' : providerLabel(provider)
+  const taken = new Set(existingNames.map((n) => n.trim().toLowerCase()))
+  if (!taken.has(base.toLowerCase())) return base
+  let index = 2
+  while (taken.has(`${base} ${index}`.toLowerCase())) index += 1
+  return `${base} ${index}`
+}
+
 /** Nuova connessione: nome, provider, base URL, una o più chiavi (solo in scrittura). */
-export function NewConnectionForm({ onCreated, submitLabel = 'Crea connessione' }: { onCreated?: (name: string) => void; submitLabel?: string }) {
+export function NewConnectionForm({
+  onCreated,
+  submitLabel = 'Crea connessione',
+  variant = 'default',
+  existingNames = [],
+}: {
+  onCreated?: (name: string) => void
+  submitLabel?: string
+  variant?: 'default' | 'wizard'
+  existingNames?: string[]
+}) {
   const create = useCreateConnection()
+  const verify = useVerifyConnectionKey()
   const [name, setName] = useState('')
   const [provider, setProvider] = useState<Provider>('openrouter')
   const [baseUrl, setBaseUrl] = useState(defaultBaseUrl('openrouter'))
   const [keys, setKeys] = useState([''])
+  const [revealed, setRevealed] = useState<Record<number, boolean>>({})
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [confirmTrash, setConfirmTrash] = useState<number | null>(null)
+  const [verifyState, setVerifyState] = useState<{ index: number; status: 'pending' | 'ok' | 'error'; message?: string } | null>(null)
+  const pastePendingRef = useRef<number | null>(null)
+
+  const defaultName = uniqueConnectionName(provider, existingNames)
+  const effectiveName = variant === 'wizard' ? (name.trim() || (provider === 'openai_compatible' ? '' : defaultName)) : name.trim()
+
+  function selectProvider(next: Provider) {
+    if (!baseUrl.trim() || baseUrl === defaultBaseUrl(provider)) setBaseUrl(defaultBaseUrl(next))
+    setProvider(next)
+    setVerifyState(null)
+    verify.reset()
+  }
+
+  function runVerify(index: number, rawKey: string) {
+    const clean = rawKey.trim()
+    if (!clean) {
+      setVerifyState(null)
+      return
+    }
+    setVerifyState({ index, status: 'pending' })
+    verify.mutate(
+      { provider, base_url: baseUrl.trim(), api_key: clean },
+      {
+        onSuccess: (res) => {
+          setVerifyState({
+            index,
+            status: res.ok ? 'ok' : 'error',
+            message: res.ok ? '✓ Chiave valida · elenco dei modelli scaricato' : res.message,
+          })
+        },
+        onError: (err) => {
+          setVerifyState({ index, status: 'error', message: errorMessage(err) })
+        },
+      },
+    )
+  }
+
+  function removeOrClearKey(index: number) {
+    if (keys.length > 1) {
+      setKeys((c) => c.filter((_, j) => j !== index))
+      setRevealed({})
+    } else {
+      setKeys([''])
+      setRevealed({})
+    }
+    if (verifyState?.index === index) setVerifyState(null)
+    setConfirmTrash(null)
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault()
-    const body = { name: name.trim(), provider, base_url: baseUrl.trim(), api_keys: keys.map((k) => k.trim()).filter(Boolean) }
+    const body = { name: effectiveName, provider, base_url: baseUrl.trim(), api_keys: keys.map((k) => k.trim()).filter(Boolean) }
     create.mutate(body, {
       onSuccess: () => {
         setName('')
         setKeys([''])
+        setVerifyState(null)
         onCreated?.(body.name)
       },
     })
+  }
+
+  if (variant === 'wizard') {
+    const help = provider !== 'openai_compatible' ? KEY_HELP[provider] : null
+    const showAdvancedFields = provider === 'openai_compatible' || advancedOpen
+    const hasKey = keys.some((k) => k.trim().length > 0)
+    const canSubmit = Boolean(effectiveName) && hasKey && (provider !== 'openai_compatible' || Boolean(baseUrl.trim())) && !create.isPending
+
+    return (
+      <form className="flex flex-col gap-4" onSubmit={submit} aria-label="Nuova connessione">
+        <div className="flex flex-col gap-2">
+          <span className="text-body font-medium text-foreground">Servizio</span>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4" role="radiogroup" aria-label="Servizio">
+            {WIZARD_SERVICES.map((svc) => {
+              const selected = provider === svc.value
+              return (
+                <button
+                  key={svc.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => selectProvider(svc.value)}
+                  className={cn(
+                    'flex min-h-16 flex-col items-start justify-center gap-1 rounded-lg border px-3 py-2 text-left transition-colors cursor-pointer',
+                    selected ? 'border-foreground bg-muted/60 font-semibold' : 'border-border bg-card hover:bg-muted/30',
+                  )}
+                >
+                  <span className="text-body leading-tight text-foreground">{svc.label}</span>
+                  {svc.badge && <Badge tone={svc.badge.tone}>{svc.badge.text}</Badge>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {showAdvancedFields && (
+          <div className="divide-y divide-border/60 rounded-lg border">
+            <SettingsRow
+              label="Nome connessione"
+              htmlFor="conn-name"
+              control={
+                <Input
+                  id="conn-name"
+                  className="w-full @sm:w-60"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={provider === 'openai_compatible' ? 'es. Server locale' : defaultName}
+                  required={provider === 'openai_compatible'}
+                />
+              }
+            />
+            <SettingsRow
+              label="Base URL"
+              htmlFor="conn-base-url"
+              control={
+                <Input
+                  id="conn-base-url"
+                  className="w-full @sm:w-60"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="https://…/v1"
+                  required={provider === 'openai_compatible'}
+                />
+              }
+            />
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3">
+          {keys.map((key, i) => {
+            const label = i === 0 ? 'Chiave API' : `Chiave API ${i + 1}`
+            const isShown = !!revealed[i]
+            const statusForRow = verifyState?.index === i ? verifyState : null
+            return (
+              <div key={i} className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor={`conn-key-${i}`} className="text-body font-medium text-foreground">
+                    {label}
+                  </label>
+                  {i === 0 && help && (
+                    <button
+                      type="button"
+                      aria-label="Come ottenere una chiave API"
+                      onClick={() => setHelpOpen(true)}
+                      className="inline-flex size-5 items-center justify-center rounded-full border border-border text-meta font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                    >
+                      ?
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="relative flex-1">
+                    <Input
+                      id={`conn-key-${i}`}
+                      name={`conn-key-${i}`}
+                      type="text"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      data-secret=""
+                      data-1p-ignore=""
+                      data-lpignore="true"
+                      data-bwignore=""
+                      data-form-type="other"
+                      className={cn('h-11 pr-10', !isShown && 'secret-mask')}
+                      value={key}
+                      required={i === 0}
+                      placeholder={provider === 'openrouter' ? 'sk-or-v1-…' : 'Incolla la tua chiave API'}
+                      onPaste={(e) => {
+                        pastePendingRef.current = i
+                        const pastedText = e.clipboardData?.getData('text')
+                        queueMicrotask(() => {
+                          if (pastePendingRef.current === i && pastedText) {
+                            pastePendingRef.current = null
+                            runVerify(i, pastedText)
+                          }
+                        })
+                      }}
+                      onChange={(e) => {
+                        const nextVal = e.target.value
+                        setKeys((c) => c.map((k, j) => (j === i ? nextVal : k)))
+                        if (pastePendingRef.current === i) {
+                          pastePendingRef.current = null
+                          runVerify(i, nextVal)
+                        } else if (verifyState?.index === i) {
+                          setVerifyState(null)
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      aria-label={isShown ? `Nascondi ${label}` : `Mostra ${label}`}
+                      aria-pressed={isShown}
+                      onClick={() => setRevealed((r) => ({ ...r, [i]: !r[i] }))}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                    >
+                      {isShown ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+                    </button>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-11 shrink-0 text-muted-foreground hover:text-danger"
+                    aria-label={keys.length > 1 ? `Rimuovi ${label}` : `Svuota ${label}`}
+                    disabled={keys.length === 1 && !key.trim()}
+                    onClick={() => {
+                      if (key.trim().length > 0) setConfirmTrash(i)
+                      else removeOrClearKey(i)
+                    }}
+                  >
+                    <Trash2 className="size-4" aria-hidden />
+                  </Button>
+                </div>
+                {statusForRow && (
+                  <p
+                    role="status"
+                    className={cn(
+                      'text-meta',
+                      statusForRow.status === 'ok'
+                        ? 'text-success'
+                        : statusForRow.status === 'error'
+                          ? 'text-danger'
+                          : 'text-muted-foreground',
+                    )}
+                    data-testid="key-verify-status"
+                  >
+                    {statusForRow.status === 'pending' ? 'Verifica della chiave…' : statusForRow.message}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+          <div>
+            <button
+              type="button"
+              onClick={() => setKeys((c) => [...c, ''])}
+              className="text-meta font-medium text-link hover:underline cursor-pointer"
+            >
+              + Aggiungi un'altra chiave
+            </button>
+          </div>
+        </div>
+
+        {create.isError && <Alert tone="danger">{errorMessage(create.error)}</Alert>}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <div>
+            {provider !== 'openai_compatible' && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-expanded={advancedOpen}
+                onClick={() => setAdvancedOpen((v) => !v)}
+              >
+                Avanzate
+              </Button>
+            )}
+          </div>
+          <Button type="submit" className="h-11 px-6" disabled={!canSubmit}>
+            {submitLabel}
+          </Button>
+        </div>
+
+        {help && (
+          <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title={help.title} testId="api-key-help-dialog">
+            <div className="mt-3 flex flex-col gap-3 text-body">
+              <ol className="list-decimal space-y-1.5 pl-5">
+                {help.steps.map((stepText) => (
+                  <li key={stepText}>{stepText}</li>
+                ))}
+              </ol>
+              <p className="rounded-md bg-muted/60 p-3 text-meta text-muted-foreground">{help.note}</p>
+              <a
+                href={help.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-fit items-center gap-1.5 font-medium text-link hover:underline"
+              >
+                {help.linkLabel}
+                <ExternalLink className="size-3.5" aria-hidden />
+              </a>
+            </div>
+          </Modal>
+        )}
+
+        <ConfirmDialog
+          open={confirmTrash !== null}
+          title="Eliminare questa chiave?"
+          confirmLabel="Elimina"
+          onCancel={() => setConfirmTrash(null)}
+          onConfirm={() => {
+            if (confirmTrash !== null) removeOrClearKey(confirmTrash)
+          }}
+        >
+          <p>Il valore inserito nel campo verrà rimosso.</p>
+        </ConfirmDialog>
+      </form>
+    )
   }
 
   return (

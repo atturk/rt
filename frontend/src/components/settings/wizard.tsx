@@ -18,16 +18,17 @@ import { useCloudStatus } from '@/api/cloud'
 /** Configurazione guidata del primo avvio (RT4-F5): ogni passo salva subito sul backend e
  * il passo corrente sta nell'URL, così una ricarica riprende da dove si era. */
 
-const STEPS = ['Connessione', 'Modelli', 'Telegram', 'Fatto'] as const
+const STEPS = ['Connessione', 'Modello', 'Pronto'] as const
+const OPTIONAL_JOBS = new Set(['image_description', 'enrichment_image', 'study_chat'])
 
 function stepDone(settings: Settings, index: number): boolean {
   switch (index) {
     case 0:
       return settings.connections.length > 0
-    case 1:
-      return settings.phases.every((p) => !!p.model)
-    case 2:
-      return settings.telegram.bot_token_set && settings.telegram.chat_id_set
+    case 1: {
+      const required = settings.phases.filter((p) => !OPTIONAL_JOBS.has(p.job))
+      return required.length > 0 && required.every((p) => !!p.model)
+    }
     default:
       return false
   }
@@ -42,7 +43,14 @@ export function SetupWizard({ settings }: { settings: Settings }) {
   const navigate = useNavigate()
   const dismiss = useDismissNotice()
   // Senza connessioni ogni pagina porta qui (setup_required): "Configura dopo" lo spegne.
-  const later = () => dismiss.mutate('setup_wizard', { onSuccess: () => void navigate('/') })
+  const later = () => {
+    if (!settings.notices.dismissed.includes('setup_wizard')) {
+      dismiss.mutate('setup_wizard', { onSettled: () => void navigate('/') })
+    } else {
+      void navigate('/')
+    }
+  }
+  const existingNames = settings.connections.map((c) => c.name)
 
   return (
     <section className="mx-auto flex max-w-2xl flex-col gap-5">
@@ -50,35 +58,55 @@ export function SetupWizard({ settings }: { settings: Settings }) {
         <div>
           <h1 className="text-heading font-bold tracking-tight">Configurazione guidata</h1>
         </div>
-        {settings.setup_required && (
-          <Button variant="outline" size="sm" onClick={later} disabled={dismiss.isPending}>
+        {step < STEPS.length && (
+          <Button variant="ghost" size="sm" onClick={later} disabled={dismiss.isPending} className="text-link hover:underline">
             Configura dopo
           </Button>
         )}
       </div>
       <ol className="flex flex-wrap gap-2 text-meta" aria-label="Passi">
-        {STEPS.map((label, i) => (
-          <li key={label}>
-            <button
-              type="button"
-              onClick={() => go(i + 1)}
-              aria-current={step === i + 1 ? 'step' : undefined}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 disabled:opacity-50',
-                step === i + 1 ? 'border-foreground font-semibold' : 'text-muted-foreground',
-              )}
-            >
-              {stepDone(settings, i) ? <Check className="size-3.5 text-success" aria-label="completato" /> : <span>{i + 1}.</span>}
-              {label}
-            </button>
-          </li>
-        ))}
+        {STEPS.map((label, i) => {
+          const done = stepDone(settings, i)
+          const active = step === i + 1
+          return (
+            <li key={label}>
+              <button
+                type="button"
+                onClick={() => go(i + 1)}
+                aria-current={active ? 'step' : undefined}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 transition-colors cursor-pointer disabled:opacity-50',
+                  active ? 'border-foreground font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-flex size-5 items-center justify-center rounded-full text-[11px] font-semibold',
+                    done
+                      ? 'bg-success-soft text-success'
+                      : active
+                        ? 'bg-foreground text-background'
+                        : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {done ? <Check className="size-3.5" aria-label="completato" /> : <span>{i + 1}</span>}
+                </span>
+                {label}
+              </button>
+            </li>
+          )
+        })}
       </ol>
 
-      <Card className="p-5">
-        <h2 className="mb-3 text-body font-bold">{STEPS[step - 1]}</h2>
+      <Card className="p-6">
         {step === 1 && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
+            <header className="flex flex-col gap-1">
+              <h2 className="text-heading font-semibold tracking-tight">Collega un servizio di IA</h2>
+              <p className="text-body text-muted-foreground">
+                RT usa un servizio di intelligenza artificiale per rielaborare e verificare le lezioni. Lo paghi tu, a consumo, con la tua chiave.
+              </p>
+            </header>
             {settings.connections.length > 0 ? (
               <>
                 <p className="text-body">
@@ -86,40 +114,26 @@ export function SetupWizard({ settings }: { settings: Settings }) {
                   un'altra o continuare.
                 </p>
                 <div>
-                  <Button onClick={next}>Continua</Button>
+                  <Button className="h-11 px-6" onClick={next}>Continua</Button>
                 </div>
                 <div className="rounded-lg border">
                   <SettingsDisclosure label="Aggiungi un'altra connessione">
-                    <NewConnectionForm onCreated={() => go(2)} submitLabel="Crea e continua" />
+                    <NewConnectionForm variant="wizard" existingNames={existingNames} onCreated={() => go(2)} submitLabel="Continua" />
                   </SettingsDisclosure>
                 </div>
               </>
             ) : (
-              <ConnectionChoice onByok={() => go(2)} onCloud={() => go(3)} />
+              <ConnectionChoice existingNames={existingNames} onByok={() => go(2)} onCloud={() => go(3)} />
             )}
           </div>
         )}
         {step === 2 && <ModelsStep settings={settings} onDone={next} />}
-        {step === 3 && <TelegramStep settings={settings} onDone={next} />}
-        {step === 4 && (
+        {step === 3 && (
           <div className="flex flex-col gap-3 text-body">
-            <ul className="flex flex-col gap-1">
-              {STEPS.slice(0, 3).map((label, i) => (
-                <li key={label} className="flex items-center gap-2">
-                  {stepDone(settings, i) ? <Check className="size-4 text-success" aria-hidden /> : <span className="size-4 text-center">–</span>}
-                  {label}
-                  {!stepDone(settings, i) && <span className="text-meta text-muted-foreground">{i === 2 ? '(facoltativo)' : 'da completare'}</span>}
-                </li>
-              ))}
-            </ul>
-            <div className="flex gap-2">
-              <Link to="/" className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-body font-medium text-primary-foreground">
-                Vai alle lezioni
-              </Link>
-              <Link to="/impostazioni" className="inline-flex h-9 items-center rounded-md border px-4 text-body">
-                Tutte le impostazioni
-              </Link>
-            </div>
+            <h2 className="text-heading font-semibold tracking-tight">RT è pronto</h2>
+            <Link to="/" className="inline-flex h-11 w-fit items-center rounded-md bg-primary px-6 text-body font-medium text-primary-foreground">
+              Vai alle lezioni
+            </Link>
           </div>
         )}
       </Card>
@@ -129,15 +143,24 @@ export function SetupWizard({ settings }: { settings: Settings }) {
 
 /** Primo avvio senza connessioni: modalità facilitata (abbonamento RT Cloud, niente chiavi né
  * modelli) oppure BYOK con la propria chiave. Senza RT Cloud pubblicato resta solo il BYOK. */
-function ConnectionChoice({ onByok, onCloud }: { onByok: () => void; onCloud: () => void }) {
+function ConnectionChoice({
+  existingNames,
+  onByok,
+  onCloud,
+}: {
+  existingNames: string[]
+  onByok: () => void
+  onCloud: () => void
+}) {
   const cloud = useCloudStatus()
   const [mode, setMode] = useState<'cloud' | 'byok' | null>(null)
   const byok = (
     <>
-      <p className="text-body text-muted-foreground">
-        Una connessione è un provider LLM (OpenRouter, Google AI Studio, DeepSeek o un server compatibile) con la tua chiave API.
-      </p>
-      <NewConnectionForm onCreated={onByok} submitLabel="Crea e continua" />
+      <div className="rounded-lg border border-success/30 bg-success-soft p-3.5 text-body text-foreground" data-testid="connection-explainer">
+        <strong>Connessione</strong> = il servizio che usi, per esempio OpenRouter.{' '}
+        <strong>Chiave API</strong> = il codice personale che quel servizio ti dà. Una connessione può avere più chiavi: RT le usa a turno e passa alla successiva se una finisce il credito o raggiunge i limiti.
+      </div>
+      <NewConnectionForm variant="wizard" existingNames={existingNames} onCreated={onByok} submitLabel="Continua" />
     </>
   )
   if (!cloud.data?.available) return byok
@@ -267,11 +290,4 @@ function SameModelForm({ settings, onDone }: { settings: Settings; onDone: () =>
       </div>
     </form>
   )
-}
-
-function TelegramStep({ onDone }: { settings: Settings; onDone: () => void }) {
-  return <div className="flex flex-col gap-3">
-    <Link to="/impostazioni/telegram" className="text-body underline">Apri Telegram</Link>
-    <Button onClick={onDone}>Continua</Button>
-  </div>
 }
