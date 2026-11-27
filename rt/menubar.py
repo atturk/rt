@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+import urllib.error
 import urllib.request
 
 BUNDLE_ID = "com.atturk.rt"
@@ -233,28 +234,46 @@ def resolve_base_url() -> str:
     return f"http://127.0.0.1:{api_port()}"
 
 
+_SESSION: Optional[str] = None
+_SESSION_LOCK = threading.Lock()
+
+
+def _api_session(renew: bool = False) -> str:
+    """Una sola sessione per tutto il processo: crearne e cancellarne una a ogni controllo
+    (ogni 3-15 s) riscriveva l'elenco delle sessioni e poteva perdere un login fatto nello stesso istante."""
+    global _SESSION
+    from rt.api import auth
+    with _SESSION_LOCK:
+        if renew or _SESSION is None:
+            _SESSION = auth.create_session()
+        return _SESSION
+
+
 def fetch_active_jobs(base_url: str, timeout: float = 2.0) -> Tuple[Optional[List[Dict[str, Any]]], bool]:
-    """Interroga GET /api/v1/jobs?state=active con la stessa auth di _fetch_active_jobs."""
+    """Interroga GET /api/v1/jobs?state=active con una sessione riusata (rinnovata se scade)."""
     if not base_url:
         return None, False
     from rt.api import auth
 
-    session = auth.create_session()
-    try:
-        request = urllib.request.Request(
-            base_url.rstrip("/") + "/api/v1/jobs?state=active&limit=200",
-            method="GET",
-            headers={"Cookie": f"{auth.SESSION_COOKIE}={session}"},
-        )
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        if isinstance(payload, list):
-            return payload, True
-        return None, False
-    except Exception:
-        return None, False
-    finally:
-        auth.drop_session(session)
+    for renew in (False, True):
+        try:
+            request = urllib.request.Request(
+                base_url.rstrip("/") + "/api/v1/jobs?state=active&limit=200",
+                method="GET",
+                headers={"Cookie": f"{auth.SESSION_COOKIE}={_api_session(renew)}"},
+            )
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if isinstance(payload, list):
+                return payload, True
+            return None, False
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401 and not renew:
+                continue
+            return None, False
+        except Exception:
+            return None, False
+    return None, False
 
 
 def read_start_at_login() -> bool:

@@ -97,11 +97,12 @@ def test_poll_interval_changes_with_active_jobs():
 
 
 def test_fetch_active_jobs_success_and_error(monkeypatch):
+    import urllib.error
     from rt.api import auth
 
-    monkeypatch.setattr(auth, "create_session", lambda: "sess-1")
-    dropped = []
-    monkeypatch.setattr(auth, "drop_session", dropped.append)
+    created = []
+    monkeypatch.setattr(menubar, "_SESSION", None)
+    monkeypatch.setattr(auth, "create_session", lambda: created.append(f"sess-{len(created) + 1}") or created[-1])
 
     fake_resp = MagicMock()
     fake_resp.read.return_value = json.dumps([{"id": "1", "state": "running"}]).encode("utf-8")
@@ -110,12 +111,24 @@ def test_fetch_active_jobs_success_and_error(monkeypatch):
 
     jobs, reachable = menubar.fetch_active_jobs("http://127.0.0.1:8765")
     assert reachable is True and jobs == [{"id": "1", "state": "running"}]
-    assert dropped == ["sess-1"]
+    menubar.fetch_active_jobs("http://127.0.0.1:8765")
+    assert created == ["sess-1"]  # la sessione si riusa tra un controllo e l'altro
+
+    calls = []
+
+    def expired_then_ok(req, timeout=2.0):
+        calls.append(req.headers.get("Cookie"))
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(req.full_url, 401, "scaduta", {}, None)
+        return fake_resp
+
+    monkeypatch.setattr(menubar.urllib.request, "urlopen", expired_then_ok)
+    jobs, reachable = menubar.fetch_active_jobs("http://127.0.0.1:8765")
+    assert reachable is True and created == ["sess-1", "sess-2"] and "sess-2" in calls[-1]
 
     monkeypatch.setattr(menubar.urllib.request, "urlopen", Mock(side_effect=OSError("down")))
     jobs2, reachable2 = menubar.fetch_active_jobs("http://127.0.0.1:8765")
     assert reachable2 is False and jobs2 is None
-    assert dropped == ["sess-1", "sess-1"]
 
 
 def test_quit_rt_without_active_jobs_stops_closes_and_terminates():
