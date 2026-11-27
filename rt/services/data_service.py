@@ -76,7 +76,10 @@ def init_data_dir(path: Optional[str] = None, say: Callable[[str], None] = print
     example = os.path.join(root, "config.example")
     config = os.path.join(target, "config")
     if os.path.isdir(example):
+        fresh = not os.path.exists(os.path.join(config, "general.yaml"))
         _copy_missing(example, config)
+        if fresh:
+            _fallback_engine(os.path.join(config, "general.yaml"))
     env = os.path.join(target, ".env")
     if not os.path.exists(env):
         with open(env, "w", encoding="utf-8") as f:
@@ -86,6 +89,23 @@ def init_data_dir(path: Optional[str] = None, say: Callable[[str], None] = print
         paths.write_marker(target, created=_now(), from_layout="new")
         say(f"📁 Cartella dati creata: {target}")
     return target
+
+
+def _fallback_engine(general: str) -> None:
+    """Parakeet ONNX è il motore predefinito; dove onnx-asr manca (es. Python 3.15 senza ruote
+    di onnxruntime) la nuova configurazione parte con macparakeet invece di un motore rotto."""
+    from rt.core import onnx_stt
+    if onnx_stt.available():
+        return
+    try:
+        with open(general, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return
+    fixed = text.replace('engine: "parakeet"', 'engine: "macparakeet"', 1)
+    if fixed != text:
+        with open(general, "w", encoding="utf-8") as f:
+            f.write(fixed)
 
 
 def _copy_missing(src: str, dst: str) -> None:
