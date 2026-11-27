@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import * as domTooltip from '@/components/ui/dom-tooltip'
 import { buildImageStripDOM, mountDocumentImageStrips } from './imageStripDOM'
 
+// Il vero tooltip monta radici React che finiscono il lavoro dopo lo smontaggio di jsdom
+// («window is not defined» a fine file): qui basta sapere che viene chiesto.
+vi.mock('@/components/ui/dom-tooltip', () => ({
+  mountDomTooltip: vi.fn(() => () => {}),
+  unmountDomTooltip: vi.fn(),
+}))
+
 describe('imageStripDOM', () => {
   it('costruisce solo miniature, badge e pulsanti di scorrimento', () => {
     const tooltipSpy = vi.spyOn(domTooltip, 'mountDomTooltip')
