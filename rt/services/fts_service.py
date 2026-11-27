@@ -97,7 +97,7 @@ def reindex_all_lessons(db=None) -> int:
     init_fts_table(database)
 
     with read_scope(database) as session:
-        lessons = session.scalars(select(Lesson)).all()
+        lessons = session.scalars(select(Lesson).where(Lesson.is_sample.is_(False))).all()
         lesson_data = [
             (l.id, l.path, l.materia, l.data, l.titolo) for l in lessons
         ]
@@ -140,7 +140,7 @@ def sync_fts_index(db=None) -> int:
     init_fts_table(database)
     _init_state_table(database)
     with read_scope(database) as session:
-        lessons = [(l.id, l.path, l.materia, l.data, l.titolo) for l in session.scalars(select(Lesson)).all()]
+        lessons = [(l.id, l.path, l.materia, l.data, l.titolo) for l in session.scalars(select(Lesson).where(Lesson.is_sample.is_(False))).all()]
     with database.engine.begin() as conn:
         known = dict(conn.execute(text("SELECT lesson_id, fingerprint FROM lessons_fts_state")).fetchall())
         indexed = {int(r[0]) for r in conn.execute(text("SELECT DISTINCT lesson_id FROM lessons_fts")).fetchall()}

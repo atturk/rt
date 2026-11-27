@@ -43,9 +43,9 @@ export function phaseTone(status: string | undefined): Tone {
 }
 
 /** Titolo senza la data e la materia usate come prefisso nel nome della cartella (come Gradio). */
-export function lessonTitle(lesson: Pick<Lesson, 'titolo' | 'folder_name' | 'materia'>): string {
+export function lessonTitle(lesson: Pick<Lesson, 'titolo' | 'folder_name' | 'materia'> & { is_sample?: boolean }): string {
   let title = (lesson.titolo || lesson.folder_name).replace(/^\[\d{4}-\d{2}-\d{2}\]\s*/, '')
-  const prefix = lesson.materia ? `${lesson.materia} - ` : ''
+  const prefix = lesson.materia ? `${lesson.materia} - ` : lesson.is_sample ? 'ESEMPIO - ' : ''
   if (prefix && title.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase())) title = title.slice(prefix.length)
   return title
 }

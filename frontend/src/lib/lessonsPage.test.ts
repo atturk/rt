@@ -412,3 +412,15 @@ describe('filterMissingLessons', () => {
   })
 })
 
+describe('lezione di esempio', () => {
+  it('mostra Esempio al posto della materia, nasconde docente e non entra nelle statistiche materie/docenti', () => {
+    const sample = lesson(99, { is_sample: true, materia: '', docente: 'Team RT', titolo: 'Introduzione a RT' })
+    expect(lessonSubtitle(sample, 'data', NOW)).toBe('Esempio · 9 unità · 38 domande')
+    expect(lessonInfo(sample, false, NOW).slice(0, 2)).toEqual([['Materia', 'Esempio'], ['Docente', '—']])
+    const details = selectionDetails([sample, lesson(1)])
+    expect(details.subjects).toEqual([{ name: 'Fisiologia', count: 1 }])
+    expect(details.teachers).toEqual([{ name: 'Rossi', count: 1 }])
+  })
+})
+
+

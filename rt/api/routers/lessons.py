@@ -38,10 +38,14 @@ def import_sample_lesson(_actor: Actor):
     if not os.path.isfile(sample_path):
         from scripts.make_sample_lesson import build_sample_lesson
         build_sample_lesson(sample_path)
-    lesson_id = import_archive(sample_path, on_existing="keep")
+    lesson_id = import_archive(sample_path, on_existing="keep", is_sample=True)
     lesson_dir = lesson_service.resolve_lesson_dir(lesson_id)
     detail = lesson_service.lesson_detail(lesson_id, lesson_dir)
-    return SampleLessonOut(lesson_id=lesson_id, materia=detail.get("materia", "ESEMPIO"), titolo=detail.get("titolo", "Introduzione a RT"))
+    return SampleLessonOut(
+        lesson_id=lesson_id,
+        materia="ESEMPIO" if detail.get("is_sample") else (detail.get("materia") or "ESEMPIO"),
+        titolo=detail.get("titolo") or "Introduzione a RT",
+    )
 
 
 @router.get("/lessons", response_model=List[schemas.LessonSummary], summary="Elenco delle lezioni (come la dashboard)")

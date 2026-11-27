@@ -151,7 +151,7 @@ function QuestionTypeEditor({ initial, existing, subjects, onSave, onCancel, pen
   const study = useStudyLesson(lessonId || null)
   const trial = useQuestionTrial()
   const set = <K extends keyof QuestionDefinition>(key: K, value: QuestionDefinition[K]) => { setDraft(old => ({ ...old, [key]: value })); trial.reset() }
-  const selectedLessons = (lessons.data ?? []).filter(lesson => draft.materie.some(materia => materia.toLocaleLowerCase() === lesson.materia.toLocaleLowerCase()))
+  const selectedLessons = (lessons.data ?? []).filter(lesson => !lesson.is_sample && draft.materie.some(materia => materia.toLocaleLowerCase() === lesson.materia.toLocaleLowerCase()))
   const valid = draft.nome.trim() && draft.cerca.trim() && draft.chiedi.trim() && draft.materie.length > 0
   const trialDefinition = () => ({ ...draft })
   function submit(event: FormEvent) { event.preventDefault(); onSave(trialDefinition()) }

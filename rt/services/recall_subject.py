@@ -88,7 +88,7 @@ def subject_lessons(materia: str) -> List[Dict[str, Any]]:
     subject = normalize_subject(materia)
     day, selection = subject_day(subject), subject_selection(subject)
     if day:
-        items = [i for i in list_lessons() if i["data"] == day]
+        items = [i for i in list_lessons() if not i.get("is_sample") and i["data"] == day]
     elif selection:
         items = [i for i in list_lessons() if i["id"] in selection]
     else:
@@ -130,6 +130,8 @@ def recall_by_subject() -> List[Dict[str, Any]]:
     classifying = _classifying()
     subjects: Dict[str, List[Dict[str, Any]]] = {}
     for summary in list_lessons():
+        if summary.get("is_sample"):
+            continue
         subjects.setdefault(summary["materia"] or "", []).append(lesson_stats(summary, classifying))
     active = {s["subject"]: s for s in _subject_sessions(state=ACTIVE)}
     out = [{"materia": materia, "lessons": lessons, "session": active.get(materia) if materia else None}

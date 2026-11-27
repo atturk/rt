@@ -257,6 +257,18 @@ def _info_counts(lesson_dir: str) -> Dict[str, Any]:
     }
 
 
+def _lesson_is_sample(lesson_id: int) -> bool:
+    from sqlalchemy import select
+    from rt.db.engine import get_database
+    from rt.db.models import Lesson
+    from rt.db.session import read_scope
+    db = get_database()
+    if db is None:
+        return False
+    with read_scope(db) as s:
+        return bool(s.scalar(select(Lesson.is_sample).where(Lesson.id == lesson_id)))
+
+
 def lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     """Stessi dati della dashboard (rt/tui/data.py) in forma JSON."""
     with fs.read_snapshot():
@@ -266,10 +278,12 @@ def lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
 def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     from rt.core.idempotency import check_phase_status
     from rt.core.state import compute_effective_workflow_state, read_info_yaml
+    from rt.db.sync import is_sample_info
     from rt.pipeline.cost import compute_lesson_cost
     out: Dict[str, Any] = {
         "id": lesson_id, "folder_name": os.path.basename(lesson_dir), "path": lesson_dir,
-        "data": "", "ora": "", "materia": "", "titolo": "", "argomenti": "", "docente": "", "state": None,
+        "data": "", "ora": "", "materia": "", "titolo": "", "argomenti": "", "docente": "",
+        "is_sample": False, "state": None,
         "phases": {ph: "MISSING" for ph in PHASES}, "pending_issues": 0, "cost_usd": None, "error": None,
         "error_message": None,
         "unit_count": None, "duration_seconds": None, "recall_questions": 0, "recall_pending": 0,
@@ -277,14 +291,16 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     }
     try:
         info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
+        sample = is_sample_info(info) or _lesson_is_sample(lesson_id)
         state = compute_effective_workflow_state(lesson_dir)
         out.update({
             "data": str(info.get("data") or ""),
             "ora": str(info.get("ora") or ""),
-            "materia": str(info.get("materia") or "").strip().upper(),
+            "materia": "" if sample else str(info.get("materia") or "").strip().upper(),
             "titolo": str(info.get("titolo") or ""),
             "argomenti": str(info.get("argomenti") or ""),
-            "docente": str(info.get("docente") or ""),
+            "docente": "" if sample else str(info.get("docente") or ""),
+            "is_sample": sample,
             "state": state.value if state else info.get("fase_corrente"),
             "phases": {ph: check_phase_status(lesson_dir, ph)[0].value for ph in PHASES},
             "pending_issues": _pending_count(lesson_dir),
@@ -298,7 +314,7 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     return out
 
 
-SUMMARY_SCHEMA = 1
+SUMMARY_SCHEMA = 2
 
 
 def _persisted_fingerprint(fingerprint: str) -> str:
@@ -369,7 +385,9 @@ def _input_fingerprints(ids: Dict[str, int]) -> Dict[int, str]:
         for key, value in s.execute(select(Setting.key, Setting.value).where(
                 Setting.key.like("prompt_override:%")).order_by(Setting.key)):
             config_parts.append(f"{key}|{value}")
-        storage = dict(s.execute(select(Lesson.id, Lesson.storage).where(Lesson.id.in_(lesson_ids))).all())
+        lesson_meta = {lid: (st, bool(samp)) for lid, st, samp in s.execute(
+            select(Lesson.id, Lesson.storage, Lesson.is_sample).where(Lesson.id.in_(lesson_ids))).all()}
+        storage = {lid: st for lid, (st, _) in lesson_meta.items()}
         for lesson_id, name, sha, mtime, size in s.execute(
                 select(LessonFile.lesson_id, LessonFile.name, LessonFile.sha256, LessonFile.mtime, LessonFile.size)
                 .where(LessonFile.lesson_id.in_(lesson_ids)).order_by(LessonFile.lesson_id, LessonFile.name)):
@@ -382,7 +400,7 @@ def _input_fingerprints(ids: Dict[str, int]) -> Dict[int, str]:
     for path, lesson_id in ids.items():
         if storage.get(lesson_id) != fs.STORAGE_DB:
             rows[lesson_id].append(_folder_fingerprint(path))
-        body = f"{path}\n{storage.get(lesson_id)}\n" + "\n".join(config_parts + rows[lesson_id])
+        body = f"{path}\n{lesson_meta.get(lesson_id)}\n" + "\n".join(config_parts + rows[lesson_id])
         out[lesson_id] = hashlib.sha256(body.encode("utf-8", "surrogateescape")).hexdigest()
     return out
 
@@ -534,13 +552,16 @@ def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
         for item in items:
             item.update(progress[item["id"]])
     if materia:
-        items = [i for i in items if i["materia"] == materia.strip().upper()]
+        items = [i for i in items if not i.get("is_sample") and i["materia"] == materia.strip().upper()]
     if state:
         items = [i for i in items if i["state"] == state]
     if text:
         needle = text.casefold()
-        items = [i for i in items if any(needle in str(i[k]).casefold()
-                                         for k in ("folder_name", "titolo", "argomenti", "materia", "docente"))]
+        def _search_fields(item: Dict[str, Any]):
+            if item.get("is_sample"):
+                return (item["folder_name"], item["titolo"], item["argomenti"], "Esempio")
+            return (item["folder_name"], item["titolo"], item["argomenti"], item["materia"], item["docente"])
+        items = [i for i in items if any(needle in str(val).casefold() for val in _search_fields(i))]
     items.sort(key=lambda i: (i["data"], i["ora"], i["folder_name"]), reverse=True)
     return items
 

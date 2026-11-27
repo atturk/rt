@@ -1138,7 +1138,7 @@ function LessonDetailsPopup({
   if (!open) return null
 
   const title = lessonTitle(lesson)
-  const materia = lesson.materia ? subjectName(lesson.materia) : null
+  const materia = lesson.is_sample ? 'Esempio' : (lesson.materia ? subjectName(lesson.materia) : null)
   const data = lesson.data ? longDate(lesson.data) : null
   const duration = lesson.duration_seconds ? formatDuration(lesson.duration_seconds) : null
 
@@ -1159,7 +1159,7 @@ function LessonDetailsPopup({
             <span>{materia}</span>
           </>
         )}
-        {lesson.docente && (
+        {!lesson.is_sample && lesson.docente && (
           <>
             <span className="text-muted-foreground">Docente</span>
             <span>{lesson.docente}</span>

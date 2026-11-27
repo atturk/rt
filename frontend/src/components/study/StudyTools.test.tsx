@@ -29,7 +29,7 @@ vi.mock('@/lib/preferences', async () => {
 
 const LESSON = {
   id: 1, materia: 'FISIOLOGIA', titolo: 'Acidosi', ora: '', data: '2026-10-02', folder_name: 'a',
-  phases: { build: 'VALID', rewrite: 'VALID' }, argomenti: '', docente: '', path: '', duration_seconds: 0,
+  phases: { build: 'VALID', rewrite: 'VALID' }, argomenti: '', docente: '', is_sample: false, path: '', duration_seconds: 0,
   unit_count: 2, pending_issues: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, recall_questions: 0,
   media_count: 0,
 } as Lesson

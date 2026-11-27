@@ -151,8 +151,8 @@ export function monthLabel(date: string): string {
 export function groupLessons(sorted: Lesson[], group: LessonGroupBy, dateDir: SortDir = 'desc', now = new Date()): LessonGroup[] {
   if (group === 'nessuno') return [{ key: 'tutte', label: 'Tutte le lezioni', lessons: sorted }]
   const keyOf = (l: Lesson): string => {
-    if (group === 'materia') return l.materia || ''
-    if (group === 'docente') return (l.docente ?? '').trim()
+    if (group === 'materia') return l.is_sample ? '' : (l.materia || '')
+    if (group === 'docente') return l.is_sample ? '' : (l.docente ?? '').trim()
     const d = parseIso(l.data || '')
     if (!d) return ''
     return group === 'giorno' ? isoDay(d) : isoDay(d).slice(0, 7)

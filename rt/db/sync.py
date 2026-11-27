@@ -43,6 +43,11 @@ def ledger_file_sha(lesson_dir: str) -> str:
         return hashlib.sha256(f.read()).hexdigest()
 
 
+def is_sample_info(info: Dict[str, Any]) -> bool:
+    """True se info.yaml marca la lezione come lezione di esempio."""
+    return str(info.get("esempio") or "").strip().lower() in ("true", "1", "yes", "si", "sì")
+
+
 def lesson_fields_from_files(lesson_dir: str) -> Optional[Dict[str, Any]]:
     """Campi di Lesson da info.yaml, oppure None se la cartella non è una lezione."""
     from rt.core.lesson_paths import lesson_path
@@ -51,14 +56,16 @@ def lesson_fields_from_files(lesson_dir: str) -> Optional[Dict[str, Any]]:
     if not fs.isfile(yaml_path):
         return None
     info = read_info_yaml(yaml_path)
+    sample = is_sample_info(info)
     return {
         "folder_name": os.path.basename(normalize_lesson_path(lesson_dir)),
         "data": str(info.get("data", "")),
-        "materia": str(info.get("materia", "")).strip().upper(),
-        "docente": str(info.get("docente") or "").strip(),
+        "materia": "" if sample else str(info.get("materia", "")).strip().upper(),
+        "docente": "" if sample else str(info.get("docente") or "").strip(),
         "titolo": str(info.get("titolo", "")),
         "argomenti": str(info.get("argomenti", "")),
         "workflow_state": str(info.get("fase_corrente", "") or info.get("stato", "")),
+        "is_sample": sample,
     }
 
 
@@ -130,6 +137,8 @@ def sync_lesson(session: Session, lesson_dir: str) -> Optional[Lesson]:
         return None
     repo = LessonRepository(session)
     lesson = repo.get_or_create(lesson_dir)
+    if lesson.is_sample and not fields.get("is_sample"):
+        fields = {**fields, "is_sample": True, "materia": "", "docente": ""}
     repo.update_fields(lesson, fields)
     PhaseRunRepository(session).replace_for_lesson(lesson, phase_runs_from_files(lesson_dir))
     IssueRepository(session).replace_for_lesson(lesson, issues_from_files(lesson_dir))

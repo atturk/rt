@@ -169,14 +169,56 @@ def _lesson_lines(lesson_dir: Optional[str], lesson_title: Optional[str]) -> Lis
     return lines
 
 
+def _is_sample_lesson(lesson_dir: Optional[str]) -> bool:
+    """True se la lezione è quella di esempio (non deve mandare notifiche Telegram)."""
+    if lesson_dir:
+        try:
+            from rt.core.lesson_paths import lesson_path
+            from rt.core.state import read_info_yaml
+            from rt.db.sync import is_sample_info
+            if is_sample_info(read_info_yaml(lesson_path(lesson_dir, "info.yaml")) or {}):
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        from sqlalchemy import select
+        from rt.db.engine import get_database
+        from rt.db.models import Job, Lesson
+        from rt.db.repositories import normalize_lesson_path
+        from rt.db.session import read_scope
+        from rt.llm.deferred import current_job_id
+        db = get_database()
+        if db is None:
+            return False
+        job_id = current_job_id()
+        with read_scope(db) as s:
+            job = s.get(Job, job_id) if job_id else None
+            payload = (job.payload or {}) if job is not None else {}
+            lid = payload.get("lesson_id")
+            lesson = s.get(Lesson, lid) if lid is not None else None
+            if lesson is None:
+                path_candidate = lesson_dir or (job.lesson_path if job is not None else None)
+                if path_candidate:
+                    lesson = s.scalar(select(Lesson).where(Lesson.path == normalize_lesson_path(path_candidate)))
+            if lesson is not None and lesson.is_sample:
+                return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
 def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson_title: str,
                            raise_errors: bool = False) -> bool:
+    if _is_sample_lesson(lesson_dir):
+        return False
     lines = ["✅ <b>Lezione pronta</b>"] + _lesson_lines(lesson_dir, lesson_title)
     return send_notification("lezione_pronta", "\n".join(lines), raise_errors=raise_errors)
 
 
 def notify_review_completed(lesson_dir: Optional[str], pending_count: int,
                             lesson_title: Optional[str] = None, raise_errors: bool = False) -> bool:
+    if _is_sample_lesson(lesson_dir):
+        return False
     title = lesson_title if lesson_title is not None else _title(lesson_dir)
     tail = f"{pending_count} issue da decidere in RT" if pending_count > 0 else "Nessuna issue"
     lines = ["🔎 <b>Verifica completata</b>"] + _lesson_lines(lesson_dir, title) + [tail]
@@ -186,6 +228,8 @@ def notify_review_completed(lesson_dir: Optional[str], pending_count: int,
 def notify_decision_needed(kind: str, lesson_dir: Optional[str], lesson_title: Optional[str],
                            count: Optional[int] = None) -> bool:
     """La lavorazione aspetta una decisione: la scaletta da approvare o le issue da decidere."""
+    if _is_sample_lesson(lesson_dir):
+        return False
     if kind == "outline_approval":
         event_kind = "scaletta_da_approvare"
         head, tail = "📝 <b>Scaletta da approvare</b>", "Aprila in RT per approvarla o chiedere modifiche."
@@ -200,6 +244,8 @@ def notify_decision_needed(kind: str, lesson_dir: Optional[str], lesson_title: O
 
 
 def notify_job_failed(lesson_dir: Optional[str], lesson_title: Optional[str], error: Optional[str]) -> bool:
+    if _is_sample_lesson(lesson_dir):
+        return False
     from rt.services.human_error import human_error
     lines = ["❌ <b>Lavorazione non riuscita</b>"] + _lesson_lines(lesson_dir, lesson_title)
     if error:

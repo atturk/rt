@@ -18,6 +18,7 @@ const LESSON: Lesson = {
   phases: { build: 'VALID', rewrite: 'VALID' },
   argomenti: '',
   docente: 'Rossi',
+  is_sample: false,
   path: '',
   duration_seconds: 3600,
   unit_count: 3,

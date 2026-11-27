@@ -23,6 +23,8 @@ def _view(session):
         names[name.casefold()] = name
     from rt.services.lesson_service import has_info_yaml
     for lesson in session.scalars(select(Lesson)):
+        if lesson.is_sample:
+            continue
         if lesson.storage != fs.STORAGE_DB and not has_info_yaml(lesson.path):
             continue
         name = (lesson.materia or "").strip()

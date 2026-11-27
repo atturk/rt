@@ -111,7 +111,7 @@ def list_lessons(
     if db is None:
         raise ApiError(503, "database_unavailable", "Database non disponibile.")
 
-    query = select(Lesson).order_by(Lesson.data.desc(), Lesson.id.desc())
+    query = select(Lesson).where(Lesson.is_sample.is_(False)).order_by(Lesson.data.desc(), Lesson.id.desc())
     if subject and subject.strip():
         query = query.where(Lesson.materia == subject.strip().upper())
     if date_from and date_from.strip():

@@ -35,6 +35,7 @@ class Lesson(Base):
     # path è solo l'identificativo; testi e metadati stanno in lesson_files, i media in
     # <cartella dati>/media (vedi rt/storage/fs.py).
     storage: Mapped[str] = mapped_column(String(16), default="folder", server_default="folder")
+    is_sample: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # sha256 dell'ultimo review_decisions.json esportato dal DB (o importato): se il file
     # cambia fuori da RT, al prossimo accesso il DB lo reimporta.
     ledger_sha: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

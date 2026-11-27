@@ -45,7 +45,7 @@ export function dateForms(date: string): string[] {
 /** Testo in cui cerca il campo "Cerca": titolo, argomenti, materia, docente e data (in più formati). */
 export function searchableText(lesson: Lesson): string {
   return normalizeText(
-    [lessonTitle(lesson), lesson.titolo, lesson.argomenti, lesson.materia, lesson.docente ?? '', ...dateForms(lesson.data)].join('\n'),
+    [lessonTitle(lesson), lesson.titolo, lesson.argomenti, lesson.is_sample ? 'Esempio' : lesson.materia, lesson.is_sample ? '' : (lesson.docente ?? ''), ...dateForms(lesson.data)].join('\n'),
   )
 }
 
@@ -61,7 +61,7 @@ export function matchesQuery(lesson: Lesson, query: string): boolean {
 export function filterLessons(lessons: Lesson[], filters: Partial<LessonListFilters>): Lesson[] {
   return lessons.filter(
     (l) =>
-      (!filters.materia || l.materia === filters.materia) &&
+      (!filters.materia || (!l.is_sample && l.materia === filters.materia)) &&
       (!filters.state || l.state === filters.state) &&
       matchesQuery(l, filters.q ?? ''),
   )
