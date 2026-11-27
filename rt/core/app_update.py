@@ -491,11 +491,12 @@ def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
     if not app:
         raise AppUpdateError("Non trovo RT.app: scarica l'aggiornamento dalla pagina delle release.")
     parent = os.path.dirname(app)
+    getuid = getattr(os, "getuid", None)
     try:
         owner = os.stat(app).st_uid
     except OSError:
-        owner = os.getuid()
-    if owner != os.getuid():
+        owner = None
+    if getuid is not None and owner is not None and owner != getuid():
         raise AppUpdateError(
             "RT.app è stata installata da un altro utente del Mac: per aggiornarla trascina la nuova "
             "versione in Applicazioni (serve la password di amministratore)."

@@ -21,8 +21,6 @@ from typing import Callable, Dict, List, Optional, Sequence
 
 from rt.core import paths
 
-BUNDLE_ID = "com.atturk.rt"
-
 LABEL_PREFIX = "com.atturk.rt."
 SERVICES: Dict[str, List[str]] = {
     "api": ["api", "--service"],
@@ -136,19 +134,9 @@ def choose_port(say: Callable[[str], None] = print) -> int:
     return chosen
 
 
-# Copia del Python di RT.app chiamata «RT»: macOS mostra il nome dell'eseguibile in
-# Elementi login e in Monitoraggio Attività, e «python3» non dice di chi sia.
-NAMED_PYTHON = "RT"
-
-
 def _python() -> str:
     venv = os.path.join(paths.project_root(), ".venv", "bin", "python3")
-    if os.path.isfile(venv):
-        return venv
-    named = os.path.join(os.path.dirname(sys.executable), NAMED_PYTHON)
-    if sys.platform == "darwin" and os.path.isfile(named) and os.access(named, os.X_OK):
-        return named
-    return sys.executable
+    return venv if os.path.isfile(venv) else sys.executable
 
 
 def render_plist(name: str, data_dir: Optional[str] = None, port: Optional[int] = None,
@@ -173,8 +161,6 @@ def render_plist(name: str, data_dir: Optional[str] = None, port: Optional[int] 
     spec = {
         "Label": label(name),
         "ProgramArguments": args,
-        # macOS 13+: in Elementi login il servizio si mostra come parte di RT.app.
-        "AssociatedBundleIdentifiers": [BUNDLE_ID],
         "WorkingDirectory": data,
         "EnvironmentVariables": env,
         "StandardOutPath": log,

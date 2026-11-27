@@ -564,7 +564,7 @@ def test_macos_update_refuses_app_owned_by_another_user(tmp_path, monkeypatch):
     app = tmp_path / "RT.app"
     app.mkdir()
     monkeypatch.setattr(bundle, "app_path", lambda root=None: str(app))
-    monkeypatch.setattr(app_update.os, "getuid", lambda: os.stat(app).st_uid + 1)
+    monkeypatch.setattr(app_update.os, "getuid", lambda: os.stat(app).st_uid + 1, raising=False)
     popen = Mock()
     monkeypatch.setattr(app_update.subprocess, "Popen", popen)
     with pytest.raises(app_update.AppUpdateError, match="altro utente"):

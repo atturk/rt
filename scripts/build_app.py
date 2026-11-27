@@ -107,10 +107,6 @@ def build_payload(target: str, payload: str, archive: str, spa_dist: str) -> str
         raise SystemExit("Il Python dell'app non contiene pythonw.exe.")
     if target == "macos":
         _prepare_macos_dependencies(payload)
-        # I servizi in background partono da questa copia: in Elementi login si legge «RT», non «python3».
-        named = os.path.join(payload, "python", "bin", "RT")
-        shutil.copy2(os.path.realpath(python), named)
-        subprocess.run([named, "-c", "import webview, AppKit"], check=True)
     subprocess.run([python, "-c", "import webview"], check=True)
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
     for name in CODE:

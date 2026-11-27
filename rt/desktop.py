@@ -132,7 +132,7 @@ def _services_match_app() -> bool:
                 program = plistlib.load(f)["ProgramArguments"][0]
         except (OSError, KeyError, IndexError, plistlib.InvalidFileException):
             return False
-        if os.path.realpath(program) != os.path.realpath(sm._python()):
+        if os.path.realpath(program) != os.path.realpath(sys.executable):
             return False
     return True
 

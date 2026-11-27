@@ -10,7 +10,6 @@ Seconda beta della 4.3.10: aggiornamenti dentro Impostazioni senza popup, instal
 - **«Installa e riavvia» più rapido**: RT si chiude subito, l'aggiornamento si installa dietro le quinte e RT si riapre da sola; un download interrotto riprende da dove si era fermato.
 - **Tooltip «i» e «?»**: si aprono anche col clic, non solo passandoci sopra.
 - **Icona nella barra dei menu**: all'apertura di RT riparte se era ferma, così c'è sempre mentre RT è aperta o lavora in background.
-- **Elementi login**: i servizi in background si chiamano «RT» invece di «python3».
 
 ### Correzioni
 
