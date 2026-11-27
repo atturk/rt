@@ -213,13 +213,15 @@ describe('useAutoSave', () => {
     mutate,
     delay = 600,
     enabled = true,
+    manual = false,
   }: {
     mutate: (v: string, opts?: { onSuccess?: () => void; onError?: (e: unknown) => void }) => void
     delay?: number
     enabled?: boolean
+    manual?: boolean
   }) {
     const [val, setVal] = useState('iniziale')
-    const save = useAutoSave({ mutate }, val, { delay, enabled, initial: 'iniziale' })
+    const save = useAutoSave({ mutate }, val, { delay, enabled, manual, initial: 'iniziale' })
     return (
       <SettingsRow
         label="Campo"
@@ -255,6 +257,22 @@ describe('useAutoSave', () => {
 
     act(() => { vi.advanceTimersByTime(1500) })
     expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('in modalità manuale non salva mentre si scrive, solo al blur', () => {
+    vi.useFakeTimers()
+    const mutate = vi.fn((_v: string, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.())
+    render(<AutoSaveHarness mutate={mutate} manual />)
+
+    const input = screen.getByLabelText('Campo')
+    for (const partial of ['re', 'recraft', 'recraft/rec']) {
+      fireEvent.change(input, { target: { value: partial } })
+      act(() => { vi.advanceTimersByTime(2000) })
+    }
+    expect(mutate).not.toHaveBeenCalled()
+    fireEvent.blur(input)
+    expect(mutate).toHaveBeenCalledTimes(1)
+    expect(mutate).toHaveBeenCalledWith('recraft/rec', expect.any(Object))
   })
 
   it('salva subito al blur senza aspettare i 600 ms', () => {
