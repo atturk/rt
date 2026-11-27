@@ -1,4 +1,4 @@
-import { BookOpen, Brain, Download, Image, Info, Plus, SearchX, ShieldCheck } from 'lucide-react'
+import { BookOpen, Brain, Download, Image, Info, SearchX, ShieldCheck } from 'lucide-react'
 import { lazy, Suspense, useEffect, useRef, useState, type RefObject } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
@@ -63,7 +63,6 @@ export function DashboardPage() {
   const openNewLesson = useOpenNewLesson()
   const { filters, setFilter, resetFilters, applyFilters, filtered } = useFilteredLessons(all.data)
   const [prefs, setPrefs] = useLessonsPrefs()
-  const [welcomeDismissed, setWelcomeDismissed] = usePreference('welcome.dismissed', false)
   const { pins, togglePin, unpinGroup } = useCategoryPins()
   const { searchPin, pinSearch, unpinSearch } = useSearchPin()
   const [legacyPinned, setLegacyPinned] = usePreference<unknown>(LEGACY_PINNED_VIEW_PREF, undefined)
@@ -199,18 +198,7 @@ export function DashboardPage() {
           </p>
         )}
         {all.data?.length === 0 && (
-          !welcomeDismissed ? (
-            <WelcomeBox
-              onNewLesson={openNewLesson}
-              onSampleImported={() => void all.refetch()}
-              onDismiss={() => setWelcomeDismissed(true)}
-            />
-          ) : (
-            <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
-              Nessuna lezione.
-              <Button onClick={openNewLesson}><Plus aria-hidden />Nuova lezione</Button>
-            </p>
-          )
+          <WelcomeBox onNewLesson={openNewLesson} onSampleImported={() => void all.refetch()} />
         )}
         {all.data && all.data.length > 0 && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-3 py-24 text-center text-muted-foreground" data-testid="lessons-empty">

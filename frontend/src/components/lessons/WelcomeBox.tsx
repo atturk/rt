@@ -8,10 +8,9 @@ import { Alert } from '@/components/ui/alert'
 export interface WelcomeBoxProps {
   onNewLesson: () => void
   onSampleImported: () => void
-  onDismiss: () => void
 }
 
-export function WelcomeBox({ onNewLesson, onSampleImported, onDismiss }: WelcomeBoxProps) {
+export function WelcomeBox({ onNewLesson, onSampleImported }: WelcomeBoxProps) {
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -33,7 +32,7 @@ export function WelcomeBox({ onNewLesson, onSampleImported, onDismiss }: Welcome
   }
 
   return (
-    <div className="rounded-xl border bg-card p-6 shadow-sm max-w-2xl" data-testid="welcome-box">
+    <div className="mx-auto my-8 w-full max-w-2xl rounded-xl border bg-card p-6 shadow-sm sm:my-16" data-testid="welcome-box">
       <div className="flex items-start gap-3">
         <div className="rounded-lg bg-primary/10 p-2 text-primary">
           <BookOpen className="size-6" aria-hidden />
@@ -45,7 +44,8 @@ export function WelcomeBox({ onNewLesson, onSampleImported, onDismiss }: Welcome
               RT organizza le tue lezioni universitarie in unità di studio, le confronta con le fonti del docente e prepara il materiale per il ripasso attivo.
             </p>
           </div>
-          {estimate.data && (
+          {/* Senza prezzi noti per il modello la riga «stima non disponibile» confondeva: meglio non mostrarla. */}
+          {estimate.data?.cost_eur != null && (
             <p className="text-meta text-muted-foreground" data-testid="welcome-estimate">
               Costo stimato con i modelli attuali:{' '}
               <strong className="font-semibold text-foreground">{estimate.data.formatted}</strong>
@@ -70,16 +70,6 @@ export function WelcomeBox({ onNewLesson, onSampleImported, onDismiss }: Welcome
             >
               <Plus className="size-4" aria-hidden />
               Crea la tua prima lezione
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onDismiss}
-              disabled={importing}
-              className="text-muted-foreground hover:text-foreground"
-              data-testid="welcome-dismiss"
-            >
-              Non mostrare più
             </Button>
           </div>
         </div>

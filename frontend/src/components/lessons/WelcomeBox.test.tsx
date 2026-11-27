@@ -15,7 +15,6 @@ function renderComponent(props: Partial<React.ComponentProps<typeof WelcomeBox>>
   const defaultProps = {
     onNewLesson: vi.fn(),
     onSampleImported: vi.fn(),
-    onDismiss: vi.fn(),
     ...props,
   }
   const result = render(
@@ -31,7 +30,7 @@ describe('WelcomeBox', () => {
     vi.spyOn(api, 'GET').mockImplementation((path) => {
       if (path === '/api/v1/settings/estimate') {
         return Promise.resolve({
-          data: { eur: 0.05, formatted: 'circa 0,05 € a lezione (stima)' },
+          data: { cost_eur: 0.05, formatted: 'circa 0,05 € a lezione (stima)' },
           response: new Response(null, { status: 200 }),
         } as never)
       }
@@ -42,20 +41,18 @@ describe('WelcomeBox', () => {
     expect(screen.getByRole('heading', { name: 'Benvenuto in RT' })).toBeInTheDocument()
     expect(screen.getByTestId('welcome-import-sample')).toBeInTheDocument()
     expect(screen.getByTestId('welcome-create-lesson')).toBeInTheDocument()
-    expect(screen.getByTestId('welcome-dismiss')).toBeInTheDocument()
+    expect(screen.queryByTestId('welcome-dismiss')).not.toBeInTheDocument()
 
     expect(await screen.findByTestId('welcome-estimate')).toHaveTextContent('circa 0,05 € a lezione (stima)')
 
     fireEvent.click(screen.getByTestId('welcome-create-lesson'))
     expect(props.onNewLesson).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByTestId('welcome-dismiss'))
-    expect(props.onDismiss).toHaveBeenCalledTimes(1)
   })
 
   it('importa la lezione di esempio con successo', async () => {
     vi.spyOn(api, 'GET').mockResolvedValue({
-      data: { eur: null, formatted: 'stima non disponibile' },
+      data: { cost_eur: null, formatted: 'stima non disponibile' },
       response: new Response(null, { status: 200 }),
     } as never)
     const postSpy = vi.spyOn(api, 'POST').mockImplementation((path) => {
@@ -75,11 +72,13 @@ describe('WelcomeBox', () => {
       expect(postSpy).toHaveBeenCalledWith('/api/v1/lessons/sample')
       expect(props.onSampleImported).toHaveBeenCalledTimes(1)
     })
+    // senza prezzo del modello la riga della stima non compare
+    expect(screen.queryByTestId('welcome-estimate')).not.toBeInTheDocument()
   })
 
   it('mostra errore se l importazione fallisce', async () => {
     vi.spyOn(api, 'GET').mockResolvedValue({
-      data: { eur: null, formatted: 'stima non disponibile' },
+      data: { cost_eur: null, formatted: 'stima non disponibile' },
       response: new Response(null, { status: 200 }),
     } as never)
     vi.spyOn(api, 'POST').mockImplementation((path) => {
