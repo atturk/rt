@@ -353,6 +353,7 @@ def test_macparakeet_download_verifies_sha256_extracts_member_and_deletes(api_cl
     fake_home = isolated_data / "home"
     fake_home.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))  # Windows: expanduser usa USERPROFILE
     monkeypatch.delenv("RT_MACPARAKEET_MODELS_DIR", raising=False)
     monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
     monkeypatch.setattr("rt.core.config.effective_engine", lambda cfg=None: "macparakeet")
@@ -466,6 +467,7 @@ def test_macparakeet_folder_growth_progress_and_pause_resume(isolated_data, monk
     fake_home = isolated_data / "home"
     fake_home.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))  # Windows: expanduser usa USERPROFILE
     monkeypatch.delenv("RT_MACPARAKEET_MODELS_DIR", raising=False)
     monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
     monkeypatch.setattr(setup.shutil, "which", lambda _n: None)

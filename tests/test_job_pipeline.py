@@ -121,6 +121,7 @@ def test_worker_stt_capability(queue, tmp_path, monkeypatch):
     assert detect_stt_capability("auto", mock=True) == "mock"
     assert detect_stt_capability("none") is None
     monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)  # CI Linux/Intel: simula Apple Silicon
     monkeypatch.setattr("rt.pipeline.setup.find_macparakeet_binary", lambda: "/opt/homebrew/bin/macparakeet-cli")
     assert detect_stt_capability("auto") == "macparakeet"
     linux = Worker(queue, on_message=lambda m: None, stt="none")

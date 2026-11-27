@@ -120,7 +120,7 @@ def _find_headless_shell_executable(p) -> Optional[str]:
     except Exception:
         pass
 
-    shell_names = ("chrome-headless-shell.exe", "chrome-headless-shell")
+    shell_names = ("chrome-headless-shell.exe", "chrome-headless-shell", "headless_shell.exe", "headless_shell")
     seen = set()
     for root_dir in roots:
         if not root_dir or root_dir in seen or not os.path.isdir(root_dir):
