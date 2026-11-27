@@ -1,5 +1,21 @@
 # Novità di RT
 
+## 4.3.10b2 — 2026-11-27
+
+Seconda beta della 4.3.10: aggiornamenti dentro Impostazioni senza popup, installazione che chiude subito RT e lavora dietro le quinte, servizi in background col nome di RT.
+
+### Cambiamenti
+
+- **Aggiornamenti senza popup**: un pallino sull'ingranaggio e su Impostazioni › Info e aggiornamenti segnala una versione nuova, il download pronto o un errore; il download mostra la barra e si può continuare a usare RT.
+- **«Installa e riavvia» più rapido**: RT si chiude subito, l'aggiornamento si installa dietro le quinte e RT si riapre da sola; un download interrotto riprende da dove si era fermato.
+- **Tooltip «i» e «?»**: si aprono anche col clic, non solo passandoci sopra.
+- **Icona nella barra dei menu**: all'apertura di RT riparte se era ferma, così c'è sempre mentre RT è aperta o lavora in background.
+- **Elementi login**: i servizi in background si chiamano «RT» invece di «python3».
+
+### Correzioni
+
+- **Aggiornamento di un'app installata da un altro utente del Mac**: lo dice subito, invece di fermarsi a metà.
+
 ## 4.3.10b1 — 2026-11-27
 
 Prima beta della 4.3.10: primo avvio rifatto (configurazione guidata, lezione di esempio come guida rapida), trascrizione sul Mac senza Homebrew, icona nella barra dei menu e le correzioni del collaudo su Mac.
