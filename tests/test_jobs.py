@@ -424,3 +424,42 @@ def test_recall_evaluate_not_blocked_by_running_recall_refill(queue, tmp_path):
     assert eval_job2 is not None and eval_job2.id == eval_id
     assert queue.requeue_expired(now=utcnow() + timedelta(hours=1)) == [refill_id, eval_id]
     assert queue.claim("w-rewrite", ["rewrite_unit"]).id == rewrite_id
+
+
+def test_worker_idle_backoff_and_reset_on_job(queue, monkeypatch):
+    from rt.services import worker as worker_mod
+
+    assert worker_mod.idle_poll_interval(1.0, 0.0) == 1.0
+    assert worker_mod.idle_poll_interval(1.0, 30.0) == 2.0
+    assert worker_mod.idle_poll_interval(1.0, 61.0) == 5.0
+
+    clock = {"now": 100.0}
+    waits = []
+    monkeypatch.setattr(worker_mod.time, "monotonic", lambda: clock["now"])
+
+    class FakeStop:
+        def __init__(self):
+            self.stopped = False
+
+        def is_set(self):
+            return self.stopped
+
+        def wait(self, seconds):
+            waits.append(seconds)
+            if len(waits) == 1:
+                clock["now"] += 35.0
+            elif len(waits) == 2:
+                clock["now"] += 30.0
+            elif len(waits) == 3:
+                queue.enqueue("noop", None, {})
+            elif len(waits) == 4:
+                self.stopped = True
+            return self.stopped
+
+    w = _worker(queue, handlers={"noop": lambda j, c: JobOutcome(state=JobState.SUCCEEDED)})
+    w.poll_interval = 1.0
+    stop_event = FakeStop()
+    done = w.run(stop_event=stop_event)
+    assert done == 1
+    # 1 -> 2 -> 5 a coda vuota, poi torna a 1 dopo aver eseguito il job
+    assert waits == [1.0, 2.0, 5.0, 1.0]

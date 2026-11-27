@@ -179,6 +179,15 @@ CANCEL_POLL_SECONDS = 2.0
 LESSON_BUSY_BACKOFF_SECONDS = 5.0
 
 
+def idle_poll_interval(base: float, idle_seconds: float) -> float:
+    """Attesa progressiva a coda vuota: base (1 s) -> 2 s (da 30 s) -> 5 s (oltre 60 s)."""
+    if idle_seconds >= 60.0:
+        return max(base, min(5.0, base * 5.0)) if base <= 5.0 else base
+    if idle_seconds >= 30.0:
+        return max(base, min(2.0, base * 2.0)) if base <= 2.0 else base
+    return base
+
+
 class _Heartbeat(threading.Thread):
     """Rinnova il lease ogni lease/3 secondi; su richiesta di annullamento o lease perso
     ferma il job tramite il CancelToken. L'annullamento si controlla più spesso (ogni
@@ -268,6 +277,7 @@ class Worker:
         numero di job eseguiti."""
         self.register()
         done = 0
+        idle_since: Optional[float] = None
         try:
             while not (stop_event is not None and stop_event.is_set()):
                 now_mono = time.monotonic()
@@ -284,14 +294,18 @@ class Worker:
                 job = self.run_once()
                 if job is not None:
                     done += 1
+                    idle_since = None
                 if once or (max_jobs is not None and done >= max_jobs):
                     break
                 if job is None:
+                    if idle_since is None:
+                        idle_since = time.monotonic()
+                    wait_seconds = idle_poll_interval(self.poll_interval, time.monotonic() - idle_since)
                     self.queue.beat_worker(self.worker_id)
                     if stop_event is not None:
-                        stop_event.wait(self.poll_interval)
+                        stop_event.wait(wait_seconds)
                     else:
-                        time.sleep(self.poll_interval)
+                        time.sleep(wait_seconds)
         finally:
             self.queue.stop_worker(self.worker_id)
         return done
