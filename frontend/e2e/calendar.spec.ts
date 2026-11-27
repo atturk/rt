@@ -334,7 +334,8 @@ test('calendario: aggiunge un’ora solo nelle settimane scelte', async ({ page 
     const popup = page.getByRole('dialog', { name: 'Intervallo di settimane' })
     await popup.locator(`[data-week="${from}"]`).click()
     if (!await popup.locator(`[data-week="${last}"]`).count()) await popup.getByRole('button', { name: 'Anno successivo' }).click()
-    await popup.locator(`[data-week="${last}"]`).click()
+    // un clic sceglie una settimana, ⇧+clic estende la selezione fino a quella cliccata
+    await popup.locator(`[data-week="${last}"]`).click({ modifiers: ['Shift'] })
     await test.info().attach('Intervallo di settimane', { body: await popup.screenshot(), contentType: 'image/png' })
     await popup.getByRole('button', { name: 'Modifica queste settimane' }).click()
     await expect(popup).toHaveCount(0)
