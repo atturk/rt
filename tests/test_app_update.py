@@ -122,9 +122,104 @@ def test_download_dropped_connection_says_so(tmp_path, monkeypatch, error):
     with pytest.raises(app_update.AppUpdateError) as exc:
         app_update.download(info, opener=opener)
     assert str(exc.value).startswith("La connessione si è interrotta durante il download dell'aggiornamento dopo 1,5 MB su 3,0 MB")
+    assert "riprende da dove si era fermato" in str(exc.value)
     assert "timed out" not in str(exc.value)
     assert timeouts == [app_update.READ_TIMEOUT] * 2
-    assert not list((tmp_path / "updates").glob("*.part"))
+    parts = list((tmp_path / "updates").glob("*.part"))
+    assert len(parts) == 1
+    assert parts[0].stat().st_size == len(payload) // 2
+
+
+def test_download_resumes_with_206_and_verifies_full_sha256(tmp_path, monkeypatch):
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    payload = b"0123456789abcdef" * 1000
+    sums = f"{hashlib.sha256(payload).hexdigest()}  {EXE}\n".encode()
+    info = _info()
+    info.asset_size = len(payload)
+
+    # Prima interruzione: lascia .part con metà file
+    def fail_opener(request, timeout=None):
+        name = request.full_url.rsplit("/", 1)[-1]
+        return _Resp(sums) if name == "SHA256SUMS" else _DroppingResp(payload, ConnectionResetError("drop"))
+
+    with pytest.raises(app_update.AppUpdateError, match="riprende da dove si era fermato"):
+        app_update.download(info, opener=fail_opener)
+
+    part = tmp_path / "updates" / f"{EXE}.part"
+    half = len(payload) // 2
+    assert part.stat().st_size == half
+
+    # Ripresa con HTTP 206
+    seen_ranges = []
+
+    class _PartialResp(_Resp):
+        status = 206
+
+        def __init__(self, data, start, total):
+            super().__init__(data)
+            self.headers = {
+                "Content-Range": f"bytes {start}-{total - 1}/{total}",
+                "Content-Length": str(len(data)),
+            }
+
+    def resume_opener(request, timeout=None):
+        name = request.full_url.rsplit("/", 1)[-1]
+        if name == "SHA256SUMS":
+            return _Resp(sums)
+        seen_ranges.append(request.get_header("Range"))
+        return _PartialResp(payload[half:], half, len(payload))
+
+    progress = []
+    out_path = app_update.download(info, lambda done, total: progress.append((done, total)), opener=resume_opener)
+    assert seen_ranges == [f"bytes={half}-"]
+    assert open(out_path, "rb").read() == payload
+    assert not part.exists()
+    assert progress[0] == (half, len(payload))
+    assert progress[-1] == (len(payload), len(payload))
+
+
+def test_download_restarts_from_zero_when_server_returns_200(tmp_path, monkeypatch):
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    payload = b"full-restart-payload" * 200
+    sums = f"{hashlib.sha256(payload).hexdigest()}  {EXE}\n".encode()
+    info = _info()
+    info.asset_size = len(payload)
+
+    updates = tmp_path / "updates"
+    updates.mkdir()
+    part = updates / f"{EXE}.part"
+    part.write_bytes(b"stale-prefix" * 10)
+
+    seen_ranges = []
+
+    class _Ok200Resp(_Resp):
+        status = 200
+        headers = {"Content-Length": str(len(payload))}
+
+    def opener(request, timeout=None):
+        name = request.full_url.rsplit("/", 1)[-1]
+        if name == "SHA256SUMS":
+            return _Resp(sums)
+        seen_ranges.append(request.get_header("Range"))
+        return _Ok200Resp(payload)
+
+    out_path = app_update.download(info, opener=opener)
+    assert seen_ranges == [f"bytes={len(b'stale-prefix' * 10)}-"]
+    assert open(out_path, "rb").read() == payload
+
+
+def test_download_discards_part_on_version_change(tmp_path, monkeypatch):
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    updates = tmp_path / "updates"
+    updates.mkdir()
+    old_part = updates / "RT-4.2.9-windows-x64-setup.exe.part"
+    old_part.write_bytes(b"old-partial")
+
+    payload = b"new-version-payload" * 100
+    sums = f"{hashlib.sha256(payload).hexdigest()}  {EXE}\n".encode()
+    out_path = app_update.download(_info(), opener=_opener({EXE: payload, "SHA256SUMS": sums}))
+    assert os.path.isfile(out_path)
+    assert not old_part.exists()
 
 
 def test_download_without_network_says_so(tmp_path, monkeypatch):
@@ -314,18 +409,36 @@ def test_macos_update_closes_window_before_swapping_apps(tmp_path, monkeypatch):
     app.mkdir()
     monkeypatch.setenv("RT_DATA_DIR", str(tmp_path / "dati"))
     monkeypatch.setattr(bundle, "app_path", lambda root=None: str(app))
-    monkeypatch.setattr(app_update, "_run", lambda command: None)
-    monkeypatch.setattr(app_update.os.path, "isdir", lambda path: True)
-    monkeypatch.setattr(app_update.subprocess, "run", Mock())
+    run_helper = Mock(side_effect=AssertionError("install_macos non deve eseguire comandi in-process"))
+    run_sub = Mock(side_effect=AssertionError("install_macos non deve chiamare subprocess.run in-process"))
+    monkeypatch.setattr(app_update, "_run", run_helper)
+    monkeypatch.setattr(app_update.subprocess, "run", run_sub)
     popen = Mock()
     monkeypatch.setattr(app_update.subprocess, "Popen", popen)
-    app_update.install_macos(str(tmp_path / "nuova.dmg"))
+    dmg_path = str(tmp_path / "nuova.dmg")
+    app_update.install_macos(dmg_path)
+    run_helper.assert_not_called()
+    run_sub.assert_not_called()
+
     command = popen.call_args.args[0]
+    assert command[:2] == ["/bin/sh", "-c"]
     script = command[-1]
     assert 'kill "$PID"' in script
-    assert script.index('kill "$PID"') < script.index('mv "$APP"')
+    assert 'hdiutil attach' in script
+    assert 'ditto --noqtn' in script
+    assert 'hdiutil detach' in script
+    assert 'xattr' not in script
+    assert script.index('kill "$PID"') < script.index('hdiutil attach') < script.index('ditto --noqtn') < script.index('mv "$APP"')
     assert 'open "$APP" --args --after-update' in script
-    assert popen.call_args.kwargs["env"]["WINDOW_PID"] == str(tmp_path / "dati" / "run" / "window.pid")
+    assert 'open "$APP" --args --update-failed' in script
+    env = popen.call_args.kwargs["env"]
+    assert env["APP"] == str(app)
+    assert env["NEW"] == str(app) + ".update"
+    assert env["OLD"] == str(app) + ".old"
+    assert env["DMG"] == dmg_path
+    assert env["WINDOW_PID"] == str(tmp_path / "dati" / "run" / "window.pid")
+    assert env["INSTALLING_JSON"] == str(tmp_path / "dati" / "updates" / "installing.json")
+    assert env["LAST_ERROR"] == str(tmp_path / "dati" / "updates" / "last_error.txt")
 
 
 def test_copy_dmg_preserves_existing_target(tmp_path):
@@ -430,3 +543,17 @@ def test_install_runs_in_background_and_reports_errors(tmp_path, monkeypatch):
     assert app_update.STATE.snapshot()["error"] == "Il .dmg non contiene RT.app."
     log = (tmp_path / "updates" / "install.log").read_text()
     assert "installo RT 4.3.0" in log and "errore: Il .dmg non contiene RT.app." in log
+
+
+def test_last_error_file_surfaces_as_error_phase_on_api_poll(api_client, tmp_path, monkeypatch):
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    updates = tmp_path / "updates"
+    updates.mkdir()
+    (updates / "last_error.txt").write_text("Impossibile montare il .dmg: immagine danneggiata\n", encoding="utf-8")
+    app_update.STATE.phase = "installing"
+    app_update.STATE.target = "4.3.0"
+
+    data = api_client.get("/api/v1/system/update").json()
+    assert data["progress"]["phase"] == "error"
+    assert data["progress"]["error"] == "Impossibile montare il .dmg: immagine danneggiata"
+    assert not (updates / "last_error.txt").exists()

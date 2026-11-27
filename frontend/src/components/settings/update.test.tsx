@@ -1,10 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { vi } from 'vitest'
+import { createMemoryRouter, RouterProvider } from 'react-router'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { api, type Schemas } from '@/api/client'
+import { Layout } from '@/components/Layout'
+import { testSettings } from '@/components/settings/testSettings'
+import { InfoSettingsPage, SettingsLayout } from '@/routes/settings'
 import { UpdateSection } from './update'
+import { computeUpdateNotice } from './useAppUpdate'
 
 const idle = { phase: 'idle', downloaded: 0, total: null, error: null, target: null }
 const base: Schemas['AppUpdate'] = {
@@ -27,10 +32,30 @@ function result(data: unknown, status = 200) {
   return { data, response: new Response('{}', { status }) }
 }
 
-function renderUpdate(data: Schemas['AppUpdate']) {
-  vi.spyOn(api, 'GET').mockImplementation((() => Promise.resolve(result(data))) as never)
-  const post = vi.spyOn(api, 'POST').mockImplementation((() =>
-    Promise.resolve(
+function renderUpdate(data: Schemas['AppUpdate'], initialPrefs: Record<string, unknown> = {}) {
+  const prefs: Record<string, unknown> = { ...initialPrefs }
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+    if (path === '/api/v1/preferences') return Promise.resolve(result({ ...prefs }))
+    return Promise.resolve(result(data))
+  }) as never)
+  const post = vi.spyOn(api, 'POST').mockImplementation(((path: string) => {
+    if (path === '/api/v1/system/update/install') {
+      return Promise.resolve(
+        result(
+          {
+            ...data,
+            ready: true,
+            progress: {
+              ...idle,
+              phase: 'installing',
+              target: data.latest ?? '4.3.0',
+            },
+          },
+          202,
+        ),
+      )
+    }
+    return Promise.resolve(
       result(
         {
           ...data,
@@ -44,9 +69,15 @@ function renderUpdate(data: Schemas['AppUpdate']) {
         },
         202,
       ),
-    )) as never)
-  const put = vi.spyOn(api, 'PUT').mockImplementation((() =>
-    Promise.resolve(
+    )
+  }) as never)
+  const put = vi.spyOn(api, 'PUT').mockImplementation(((path: string, opts?: { params?: { path?: { name?: string } }; body?: unknown }) => {
+    if (path === '/api/v1/preferences/{name}') {
+      const name = opts?.params?.path?.name
+      if (name) prefs[name] = opts?.body
+      return Promise.resolve(result(undefined, 204))
+    }
+    return Promise.resolve(
       result(
         {
           ...data,
@@ -54,36 +85,145 @@ function renderUpdate(data: Schemas['AppUpdate']) {
         },
         200,
       ),
-    )) as never)
+    )
+  }) as never)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  render(
+  const view = render(
     <QueryClientProvider client={client}>
       <UpdateSection />
     </QueryClientProvider>,
   )
-  return { post, put }
+  return { post, put, prefs, container: view.container }
+}
+
+function renderAppShell(
+  updateData: Schemas['AppUpdate'],
+  { initialPath = '/', phone = false, initialPrefs = {} }: { initialPath?: string; phone?: boolean; initialPrefs?: Record<string, unknown> } = {},
+) {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: phone && query.includes('max-width'),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
+  const prefs: Record<string, unknown> = { ...initialPrefs }
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+    if (path === '/api/v1/auth/me') return Promise.resolve(result({ actor: 'test' }))
+    if (path === '/api/v1/system/update') return Promise.resolve(result(updateData))
+    if (path === '/api/v1/preferences') return Promise.resolve(result({ ...prefs }))
+    if (path === '/api/v1/jobs') return Promise.resolve(result([]))
+    if (path === '/api/v1/workers') return Promise.resolve(result([{ id: 'w1' }]))
+    if (path === '/api/v1/system/converters') return Promise.resolve(result({ pptx: { available: false, methods: [], platform: 'darwin' } }))
+    if (path === '/api/v1/system/info') {
+      return Promise.resolve(result({
+        version: '4.2.5',
+        prerelease: false,
+        update_channel: 'stable',
+        install_dir: '/app',
+        data_dir: '/data',
+        config_dir: '/config',
+        python_version: '3.12.3',
+        platform: 'Darwin',
+        donazioni_url: '',
+      }))
+    }
+    if (path === '/api/v1/system/cache') {
+      return Promise.resolve(result({ audio: { entries: 0, bytes: 0 }, waveform: { entries: 0, bytes: 0 }, total: { entries: 0, bytes: 0 } }))
+    }
+    if (path === '/api/v1/system/compact-audio/preview') {
+      return Promise.resolve(result({ file_convertibili: 0, bytes_convertibili: 0, file_orfani: 0, bytes_orfani: 0, spazio_stimato_liberato: 0 }))
+    }
+    if (path === '/api/v1/system/changelog') return Promise.resolve(result([]))
+    if (path === '/api/v1/settings') return Promise.resolve(result(testSettings))
+    return Promise.resolve(result({}))
+  }) as never)
+  const put = vi.spyOn(api, 'PUT').mockImplementation(((path: string, opts?: { params?: { path?: { name?: string } }; body?: unknown }) => {
+    if (path === '/api/v1/preferences/{name}') {
+      const name = opts?.params?.path?.name
+      if (name) prefs[name] = opts?.body
+      return Promise.resolve(result(undefined, 204))
+    }
+    return Promise.resolve(result({}, 200))
+  }) as never)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/',
+        element: <Layout />,
+        children: [
+          { index: true, element: <p>Pagina lezioni</p> },
+          {
+            path: 'impostazioni',
+            element: <SettingsLayout />,
+            children: [
+              { path: 'aspetto', element: <p>Aspetto</p> },
+              { path: 'info-aggiornamenti', element: <InfoSettingsPage /> },
+            ],
+          },
+        ],
+      },
+    ],
+    { initialEntries: [initialPath] },
+  )
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  )
+  return { put, prefs, router }
 }
 
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  localStorage.clear()
+  sessionStorage.clear()
+  delete (window as unknown as { pywebview?: unknown }).pywebview
 })
 
 describe('Aggiornamenti', () => {
-  it("nell'app installata scarica la versione disponibile e propone installa se pronta", async () => {
-    const { post } = renderUpdate(base)
+  it("nell'app installata scarica la versione disponibile con barra determinata, MB e testo di avviso", async () => {
+    const { post, container } = renderUpdate(base)
     expect(await screen.findByText('4.3.0')).toBeVisible()
     const downloadBtn = screen.getByRole('button', { name: /Scarica/ })
     await userEvent.click(downloadBtn)
     expect(post).toHaveBeenCalledWith('/api/v1/system/update')
-    expect(await screen.findByRole('status')).toHaveTextContent('Scarico RT 4.3.0 (50%)')
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Scarico RT 4.3.0…')
+    const progress = container.querySelector('progress')
+    expect(progress).not.toBeNull()
+    expect(progress).toHaveAttribute('value', '50')
+    expect(progress).toHaveAttribute('max', '100')
+    expect(progress).toHaveClass('max-w-sm', 'accent-primary')
+    expect(screen.getByText('50% · 150.0 MB / 300.0 MB')).toBeVisible()
+    expect(
+      screen.getByText(
+        "Download avviato: puoi continuare a usare RT. Quando finisce, o se qualcosa va storto, lo vedi qui e sull'icona delle Impostazioni.",
+      ),
+    ).toBeVisible()
   })
 
-  it('quando il file è pronto mostra Installa e riavvia', async () => {
-    const { post } = renderUpdate({ ...base, ready: true, progress: { ...idle, phase: 'ready' } })
-    expect(await screen.findByRole('button', { name: /Installa e riavvia/ })).toBeVisible()
-    await userEvent.click(screen.getByRole('button', { name: /Installa e riavvia/ }))
+  it('quando il file è pronto mostra Installa e riavvia e al clic mostra solo "Riavvio in corso…" senza progress', async () => {
+    const { post, container } = renderUpdate({ ...base, ready: true, progress: { ...idle, phase: 'ready' } })
+    const btn = await screen.findByRole('button', { name: /Installa e riavvia/ })
+    expect(btn).toBeVisible()
+    await userEvent.click(btn)
     expect(post).toHaveBeenCalledWith('/api/v1/system/update/install')
+    expect(await screen.findByRole('status')).toHaveTextContent('Riavvio in corso…')
+    expect(container.querySelector('progress')).toBeNull()
+    expect(screen.getByRole('button', { name: /Installa e riavvia/ })).toBeDisabled()
+  })
+
+  it('in fase installing non mostra alcuna barra <progress> e disabilita il pulsante', async () => {
+    const { container } = renderUpdate({
+      ...base,
+      ready: true,
+      progress: { ...idle, phase: 'installing', target: '4.3.0' },
+    })
+    expect(await screen.findByRole('status')).toHaveTextContent('Riavvio in corso…')
+    expect(container.querySelector('progress')).toBeNull()
+    expect(screen.getByRole('button', { name: /Installa e riavvia/ })).toBeDisabled()
   })
 
   it('senza app installata non offre il pulsante', async () => {
@@ -106,5 +246,72 @@ describe('Aggiornamenti', () => {
     expect(betaSwitch).not.toBeChecked()
     await userEvent.click(betaSwitch)
     expect(put).toHaveBeenCalledWith('/api/v1/system/update/channel', { body: { channel: 'beta' } })
+  })
+})
+
+describe('Avviso e pallino aggiornamenti', () => {
+  it('computeUpdateNotice distingue available, ready, error e ignora fasi busy o già viste', () => {
+    expect(computeUpdateNotice(base, null)).toEqual({ notice: 'available', seenKey: '4.3.0:available' })
+    expect(computeUpdateNotice(base, '4.3.0:available')).toEqual({ notice: null, seenKey: '4.3.0:available' })
+
+    const readyData = { ...base, ready: true, progress: { ...idle, phase: 'ready' } }
+    expect(computeUpdateNotice(readyData, '4.3.0:available')).toEqual({ notice: 'ready', seenKey: '4.3.0:ready' })
+    expect(computeUpdateNotice(readyData, '4.3.0:ready')).toEqual({ notice: null, seenKey: '4.3.0:ready' })
+
+    const errData = { ...base, progress: { ...idle, phase: 'error', error: 'Rete assente', target: '4.3.0' } }
+    expect(computeUpdateNotice(errData, '4.3.0:ready')).toEqual({ notice: 'error', seenKey: '4.3.0:error' })
+    expect(computeUpdateNotice(errData, '4.3.0:error')).toEqual({ notice: null, seenKey: '4.3.0:error' })
+
+    const busyData = { ...base, progress: { ...idle, phase: 'downloading', target: '4.3.0' } }
+    expect(computeUpdateNotice(busyData, null)).toEqual({ notice: null, seenKey: null })
+  })
+
+  it('mostra il pallino ready su Impostazioni e nella voce Info e aggiornamenti, e non chiama mai apri_aggiornamento dal Layout', async () => {
+    const apriMock = vi.fn()
+    window.pywebview = { api: { salva_copia_backup: vi.fn(), apri_aggiornamento: apriMock } }
+    sessionStorage.setItem('rt-app', '1')
+
+    renderAppShell(
+      { ...base, ready: true, progress: { ...idle, phase: 'ready', target: '4.3.0' } },
+      { initialPath: '/impostazioni/aspetto' },
+    )
+
+    const settingsNavLink = await screen.findByRole('link', { name: 'Impostazioni' })
+    expect(await within(settingsNavLink).findByLabelText('Aggiornamento pronto')).toBeInTheDocument()
+
+    const sectionsNav = screen.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
+    const infoLink = within(sectionsNav).getByRole('link', { name: /Info e aggiornamenti/ })
+    expect(await within(infoLink).findByLabelText('Aggiornamento pronto')).toBeInTheDocument()
+
+    await new Promise((r) => setTimeout(r, 50))
+    expect(apriMock).not.toHaveBeenCalled()
+  })
+
+  it('mostra il pallino error anche su telefono e lo spegne aprendo Info e aggiornamenti ("visto")', async () => {
+    const errData: Schemas['AppUpdate'] = {
+      ...base,
+      progress: { ...idle, phase: 'error', error: 'Impossibile montare il .dmg', target: '4.3.0' },
+    }
+    const { put } = renderAppShell(errData, { initialPath: '/impostazioni', phone: true })
+
+    const settingsNavLink = await screen.findByRole('link', { name: 'Impostazioni' })
+    expect(await within(settingsNavLink).findByLabelText('Aggiornamento non riuscito')).toBeInTheDocument()
+
+    const sectionsNav = screen.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
+    const infoLink = within(sectionsNav).getByRole('link', { name: /Info e aggiornamenti/ })
+    expect(await within(infoLink).findByLabelText('Aggiornamento non riuscito')).toBeInTheDocument()
+
+    // Aprendo Info e aggiornamenti scrive update.seen e spegne il pallino
+    await userEvent.click(infoLink)
+    expect(await screen.findByText('Impossibile montare il .dmg')).toBeVisible()
+    await waitFor(() => {
+      expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', {
+        params: { path: { name: 'update.seen' } },
+        body: '4.3.0:error',
+      })
+    })
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('update-notice-dot')).toHaveLength(0)
+    })
   })
 })
