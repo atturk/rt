@@ -557,3 +557,16 @@ def test_last_error_file_surfaces_as_error_phase_on_api_poll(api_client, tmp_pat
     assert data["progress"]["phase"] == "error"
     assert data["progress"]["error"] == "Impossibile montare il .dmg: immagine danneggiata"
     assert not (updates / "last_error.txt").exists()
+
+
+def test_macos_update_refuses_app_owned_by_another_user(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    app = tmp_path / "RT.app"
+    app.mkdir()
+    monkeypatch.setattr(bundle, "app_path", lambda root=None: str(app))
+    monkeypatch.setattr(app_update.os, "getuid", lambda: os.stat(app).st_uid + 1)
+    popen = Mock()
+    monkeypatch.setattr(app_update.subprocess, "Popen", popen)
+    with pytest.raises(app_update.AppUpdateError, match="altro utente"):
+        app_update.install_macos(str(tmp_path / "nuova.dmg"))
+    popen.assert_not_called()

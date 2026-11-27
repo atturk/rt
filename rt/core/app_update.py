@@ -491,6 +491,15 @@ def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
     if not app:
         raise AppUpdateError("Non trovo RT.app: scarica l'aggiornamento dalla pagina delle release.")
     parent = os.path.dirname(app)
+    try:
+        owner = os.stat(app).st_uid
+    except OSError:
+        owner = os.getuid()
+    if owner != os.getuid():
+        raise AppUpdateError(
+            "RT.app è stata installata da un altro utente del Mac: per aggiornarla trascina la nuova "
+            "versione in Applicazioni (serve la password di amministratore)."
+        )
     if not os.access(parent, os.W_OK):
         raise AppUpdateError(f"Non posso scrivere in {parent}: scarica l'aggiornamento dalla pagina delle release.")
     staging = app + ".update"
