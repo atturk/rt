@@ -69,12 +69,26 @@ def test_partial_download_is_not_used(tmp_path, monkeypatch):
     assert onnx_stt._download(ok, "silero", None) == str(tmp_path / "silero")
 
 
-def test_default_engine_per_system(monkeypatch):
+def test_default_engine_per_system(monkeypatch, tmp_path):
+    from rt.core.config import load_config
+
     monkeypatch.delenv("RT_DEFAULT_STT_ENGINE", raising=False)
+    monkeypatch.setattr(onnx_stt, "available", lambda: True)
     monkeypatch.setattr("sys.platform", "win32")
     assert default_engine() == "parakeet"
     monkeypatch.setattr("sys.platform", "darwin")
+    assert default_engine() == "parakeet"
+
+    # Se onnx-asr non è disponibile, su Mac ripiega su macparakeet
+    monkeypatch.setattr(onnx_stt, "available", lambda: False)
     assert default_engine() == "macparakeet"
+
+    # Chi ha già salvato transcription.engine in config lo tiene
+    monkeypatch.setattr(onnx_stt, "available", lambda: True)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "general.yaml").write_text("transcription:\n  engine: macparakeet\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert load_config().transcription.engine == "macparakeet"
 
 
 def test_parakeet_engine_runs_on_any_worker(monkeypatch, tmp_path):

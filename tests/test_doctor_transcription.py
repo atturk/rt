@@ -26,7 +26,7 @@ def test_settings_finds_macparakeet_outside_path(monkeypatch):
     _homebrew_only(monkeypatch)
     engines = settings_service.transcription_engines()
     assert engines["macparakeet_installed"] is True
-    assert engines["recommended"] == "macparakeet"
+    assert engines["recommended"] == "parakeet"
 
 
 def test_doctor_and_settings_fallback_on_mac_without_binary(monkeypatch):

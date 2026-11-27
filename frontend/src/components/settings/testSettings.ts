@@ -6,10 +6,10 @@ export const testSettings: Settings = {
   preferences: { modalita_scaletta: 'auto', secondi_approvazione: 10, sfondo_gruppi: 'colori', modalita_arricchimento: 'manuale', chiusura_x: 'background', avvia_all_accesso: true },
   rewrite: { context_mode: 'macro', parallel_macros: 4 },
   transcription: {
-    engine: 'macparakeet',
+    engine: 'parakeet',
     api_key_set: false,
-    recommended: 'macparakeet',
-    effective_engine: 'macparakeet',
+    recommended: 'parakeet',
+    effective_engine: 'parakeet',
     macparakeet_fallback: false,
     macparakeet_available: true,
     macparakeet_installed: true,

@@ -264,8 +264,8 @@ def save_telegram_notify(project_root: Path, notify: dict[str, bool]) -> dict[st
 
 
 def transcription_engines(cfg: Any = None) -> Dict[str, Any]:
-    """Quali motori locali girano qui e quale consigliare (macparakeet sul Mac, Parakeet ONNX
-    altrove)."""
+    """Quali motori locali girano qui e quale consigliare (Parakeet ONNX ovunque; macparakeet
+    resta scelta avanzata su Mac se installato con Homebrew)."""
     import sys
 
     from rt.core import onnx_stt
@@ -282,7 +282,7 @@ def transcription_engines(cfg: Any = None) -> Dict[str, Any]:
     mac_available = sys.platform == "darwin"
     mac_installed = mac_available and bool(find_macparakeet_binary())
     parakeet_available = onnx_stt.available()
-    recommended = "parakeet" if (mac_available and not mac_installed and parakeet_available) else default_engine()
+    recommended = "parakeet"
     return {
         "recommended": recommended,
         "effective_engine": resolved,

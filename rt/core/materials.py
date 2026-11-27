@@ -213,6 +213,11 @@ def available_slide_methods() -> list[str]:
     return methods
 
 
+def has_quicklook() -> bool:
+    """True su macOS se qlmanage è disponibile (ripiego a qualità ridotta per le .pptx)."""
+    return sys.platform == 'darwin' and bool(shutil.which('qlmanage'))
+
+
 def _slide_render_methods(real, target):
     """Genera i metodi di resa disponibili in ordine di priorità:
     1. LibreOffice (se installato)

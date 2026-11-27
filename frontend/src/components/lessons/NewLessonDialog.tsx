@@ -24,7 +24,9 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEven
 import { Link, useNavigate } from 'react-router'
 
 import { api, unwrap, type Schemas, ApiError, errorMessage } from '@/api/client'
+import { useComponents } from '@/api/components'
 import { useLessons } from '@/api/hooks'
+import { useSettings } from '@/api/settings'
 import { useSubjects, useTeacherSuggestions } from '@/api/subjects'
 import { calendarApi, calendarKeys, type CalendarEventView } from '@/api/calendar'
 import {
@@ -340,6 +342,31 @@ export function NewLessonDialog({
     recreating || (!!upload && isUploadActive(upload)) || (!!zipJob && !job.isError && !jobFinished(job.data))
 
   const subjectsQuery = useSubjects()
+  const settingsQuery = useSettings()
+  const componentsQuery = useComponents({ enabled: open && hasAudio })
+  const transcriptionComp = Array.isArray(componentsQuery.data)
+    ? componentsQuery.data.find((c) => c.id === 'transcription')
+    : undefined
+  const effectiveEngine = settingsQuery.data?.transcription?.effective_engine ?? 'parakeet'
+  const needsParakeetModel =
+    hasAudio &&
+    effectiveEngine === 'parakeet' &&
+    !!transcriptionComp &&
+    transcriptionComp.available &&
+    transcriptionComp.state !== 'ready'
+  const transcriptionNotice = !needsParakeetModel || !transcriptionComp
+    ? null
+    : transcriptionComp.state === 'downloading'
+      ? (() => {
+          const parts: string[] = []
+          if (transcriptionComp.percent != null) parts.push(`${transcriptionComp.percent}%`)
+          if (transcriptionComp.eta_label) parts.push(transcriptionComp.eta_label)
+          const detail = parts.length > 0 ? ` (${parts.join(', ')})` : ''
+          return `Il modello di trascrizione si sta scaricando${detail}: la lezione partirà appena è pronto.`
+        })()
+      : transcriptionComp.state === 'error'
+        ? 'Il modello di trascrizione non è ancora pronto: il download riprenderà all’avvio della lezione.'
+        : 'Il modello di trascrizione non è ancora pronto (~670 MB): si scaricherà all’avvio della lezione.'
   const subjects = Array.isArray(subjectsQuery.data)
     ? subjectsQuery.data.map((s) => s.nome)
     : [...new Set((lessons.data ?? []).filter((l) => !l.is_sample).map((l) => l.materia).filter(Boolean))].sort()
@@ -1071,6 +1098,11 @@ export function NewLessonDialog({
             <p className="mb-3 text-meta text-muted-foreground" data-testid="pipeline-sentence">
               {sentence}
             </p>
+            {transcriptionNotice && (
+              <p className="mb-3 rounded-md border bg-muted/40 px-3 py-2 text-meta text-muted-foreground" data-testid="transcription-download-notice">
+                {transcriptionNotice}
+              </p>
+            )}
           </>
         )}
 

@@ -434,6 +434,7 @@ def client_log(entry: ClientLogEntry, _actor: Actor) -> Response:
 class PptxConverterInfo(BaseModel):
     available: bool = Field(description="True se è disponibile almeno un convertitore affidabile per .pptx")
     methods: list[str] = Field(description="Nomi dei convertitori disponibili (es. LibreOffice, PowerPoint, Keynote)")
+    quicklook_available: bool = Field(default=False, description="True su macOS se è disponibile Quick Look (qualità ridotta)")
     platform: str = Field(description="Piattaforma del server (sys.platform)")
 
 
@@ -444,12 +445,13 @@ class ConvertersInfo(BaseModel):
 @router.get("/system/converters", response_model=ConvertersInfo,
             summary="Programmi disponibili per rendere le presentazioni come immagini")
 def get_system_converters(_actor: Actor) -> ConvertersInfo:
-    from rt.core.materials import available_slide_methods
+    from rt.core.materials import available_slide_methods, has_quicklook
     methods = available_slide_methods()
     return ConvertersInfo(
         pptx=PptxConverterInfo(
             available=bool(methods),
             methods=methods,
+            quicklook_available=has_quicklook(),
             platform=sys.platform,
         )
     )

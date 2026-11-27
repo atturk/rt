@@ -247,16 +247,20 @@ def notify_review_completed(lesson_dir: str, pending_count: int, ctx: RunContext
             ctx.emit(Notice(message=f"Notifica di fine verifica inviata ({getattr(notifier, 'channel', 'notifica')})."))
 
 
-def _setup_progress(ctx: RunContext, msg: str) -> None:
+def emit_stt_progress(ctx: RunContext, phase: str, msg: str) -> None:
     if msg.startswith("✔"):
         ctx.emit(Notice(message=msg))
         return
     import re
     pct = None
     match = re.search(r"\b(\d{1,3})%", msg)
-    if match and "Scarico" in msg:
+    if match and ("Scarico" in msg or "modello di trascrizione" in msg):
         pct = min(100, int(match.group(1)))
-    ctx.progress("setup", pct, 100 if pct is not None else None, msg)
+    ctx.progress(phase, pct, 100 if pct is not None else None, msg)
+
+
+def _setup_progress(ctx: RunContext, msg: str) -> None:
+    emit_stt_progress(ctx, "setup", msg)
 
 
 def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> Dict[str, Any]:

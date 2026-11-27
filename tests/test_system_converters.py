@@ -24,17 +24,25 @@ def test_available_slide_methods_collects_reliable_tools():
 
 
 def test_system_converters_endpoint_available_and_missing(api_client):
-    with patch("rt.core.materials.available_slide_methods", return_value=[]):
+    with (
+        patch("rt.core.materials.available_slide_methods", return_value=[]),
+        patch("rt.core.materials.has_quicklook", return_value=True),
+    ):
         res = api_client.get("/api/v1/system/converters")
         assert res.status_code == 200
         body = res.json()
         assert body["pptx"]["available"] is False
         assert body["pptx"]["methods"] == []
+        assert body["pptx"]["quicklook_available"] is True
         assert isinstance(body["pptx"]["platform"], str)
 
-    with patch("rt.core.materials.available_slide_methods", return_value=["LibreOffice", "PowerPoint"]):
+    with (
+        patch("rt.core.materials.available_slide_methods", return_value=["LibreOffice", "PowerPoint"]),
+        patch("rt.core.materials.has_quicklook", return_value=False),
+    ):
         res = api_client.get("/api/v1/system/converters")
         assert res.status_code == 200
         body = res.json()
         assert body["pptx"]["available"] is True
         assert body["pptx"]["methods"] == ["LibreOffice", "PowerPoint"]
+        assert body["pptx"]["quicklook_available"] is False

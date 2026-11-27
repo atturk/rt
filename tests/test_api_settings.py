@@ -48,7 +48,7 @@ def test_settings_snapshot(api_client, ws):
     data = _no_secret(api_client.get("/api/v1/settings")).json()
     assert "lessons_root" not in data
     assert [p["job"] for p in data["phases"]] == list(JOBS)
-    assert data["transcription"]["engine"] == "macparakeet"
+    assert data["transcription"]["engine"] == "parakeet"  # config.example: Parakeet ONNX predefinito (4.3.10b3)
 
 
 def test_fresh_install_has_no_connections(api_client, ws, monkeypatch):

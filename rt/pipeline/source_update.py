@@ -70,13 +70,15 @@ def _transcribe(path, mock=False, ctx=None, duration=None):
             load_env_file()
             if resolved_engine == "parakeet":
                 from rt.core.stt_slot import local_transcription_slot
+                from rt.services.pipeline_service import emit_stt_progress
                 with local_transcription_slot(
                     on_wait=(lambda msg: ctx.progress('prepare', message=msg)) if ctx else None,
                     cancel_token=ctx.cancel_token if ctx else None,
                 ):
                     data = transcribe_onnx(
                         real,
-                        on_progress=(lambda msg: ctx.progress('prepare', message=msg)) if ctx else None,
+                        on_progress=(lambda msg: emit_stt_progress(ctx, 'prepare', msg)) if ctx else None,
+                        cancel_token=ctx.cancel_token if ctx else None,
                     )
             else:
                 data = transcribe_custom(real, stt.base_url, stt.model, stt.timeout_seconds)

@@ -321,4 +321,38 @@ describe('SetupWizard: passo Pronto', () => {
     expect(put).toHaveBeenCalledWith('/api/v1/settings/notices', { body: { notice: 'setup_wizard', dismissed: true } })
     expect(await screen.findByText('Elenco lezioni')).toBeVisible()
   })
+
+  it('avvia il download del modello di trascrizione al passo Modello e mostra la barra', async () => {
+    const comp = {
+      id: 'transcription',
+      name: 'Modello di trascrizione',
+      description: "necessario per trascrivere l'audio",
+      detail: 'Parakeet ONNX + VAD',
+      required: true,
+      state: 'not_downloaded',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      approx_bytes: 670 * 1024 * 1024,
+      percent: null,
+      eta_seconds: null,
+      eta_label: null,
+      error: null,
+      available: true,
+      unavailable_reason: null,
+    }
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+      if (path === '/api/v1/components') return Promise.resolve(ok([comp]))
+      if (path === '/api/v1/settings/connections/{name}/catalog') return Promise.resolve(ok(catalogModels.slice(0, 2)))
+      return Promise.resolve(ok({}))
+    }) as never)
+    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ ...comp, state: 'downloading' }))
+
+    renderWizard('/impostazioni/configurazione?passo=2', unassignedSettings)
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/api/v1/components/{component_id}/download', {
+        params: { path: { component_id: 'transcription' } },
+      }),
+    )
+    expect(await screen.findByTestId('wizard-transcription-download')).toHaveTextContent('Modello di trascrizione')
+  })
 })
