@@ -48,7 +48,7 @@ def _legacy_layout_hint(say: Callable[[str], None]) -> None:
     from rt.core import paths
     if paths.active_data_dir() is None and os.path.isdir(os.path.join(_PROJECT_ROOT, "config")):
         say("ℹ️  Completa l'aggiornamento a RT 4.0 con 'rt -u': sposta configurazione e dati nella "
-            "cartella dati (~/.rt) e installa i servizi in background.")
+            "cartella dati di RT e installa i servizi in background.")
 
 
 def _already_running(port: int) -> bool:

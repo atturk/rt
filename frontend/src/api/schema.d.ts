@@ -9604,7 +9604,7 @@ export interface components {
             config_dir: string;
             /**
              * Data Dir
-             * @description Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media
+             * @description Cartella dati di RT (o RT_DATA_DIR): canale, rt.db, media
              */
             data_dir: string;
             /**

@@ -6,6 +6,7 @@ Verifica che il setup crei ESCLUSIVAMENTE i file sorgente e non artefatti di rev
 import os
 import json
 import subprocess
+import sys
 import pytest
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline
@@ -25,7 +26,7 @@ def test_rt_setup_clean_initialization(tmp_path):
         
     # 2. Eseguiamo 'rt setup' via subprocess con --skip-transcribe
     cmd = [
-        "python3",
+        sys.executable,
         "bin/rt",
         "setup",
         audio_file,

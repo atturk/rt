@@ -88,7 +88,8 @@ show_monitor_verbose: false
 
 ### Campo opzionale: `database_url`
 URL SQLAlchemy del database di RT (indice lezioni, decisioni di review, costi, stato Telegram).
-Se assente si usa SQLite in `<cartella dati>/rt.db` (`~/.rt` o `RT_DATA_DIR`, vedi
+Se assente si usa SQLite in `<cartella dati>/rt.db` (`~/Library/Application Support/RT` per l'app
+macOS, `%LOCALAPPDATA%\RT` su Windows, `~/.rt` da terminale/Linux o `RT_DATA_DIR`, vedi
 [Self-hosting](SELF_HOSTING.md)); nelle installazioni 3.x non ancora migrate in
 `<lessons_root>/.rt/rt.db` (o `~/.rt/rt.db` senza `lessons_root`).
 La variabile d'ambiente `RT_DATABASE_URL` ha la precedenza. Il DB si crea e si aggiorna da solo

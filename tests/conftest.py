@@ -2,7 +2,15 @@
 tests/conftest.py
 Fixture condivise per l'intera suite di test.
 """
+import base64
 import os
+
+# Mai interrogare il portachiavi reale del sistema nei test (evita popup Keychain per master_key).
+os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.null.Keyring"
+# Chiave Fernet di test valida impostata prima di ogni import di rt.
+TEST_MASTER_KEY = base64.urlsafe_b64encode(b"rt-test-master-key-0123456789ab!").decode("ascii")
+os.environ["RT_MASTER_KEY"] = TEST_MASTER_KEY
+
 import pytest
 from rt.llm.credentials import GLOBAL_CREDENTIALS, CredentialRef
 from rt.core.config import RouteConfig, JobRoutingConfig
@@ -40,7 +48,8 @@ def _isolate_encrypted_secret_store(tmp_path_factory):
     missing = tmp_path_factory.mktemp("secrets") / "absent-secrets.enc"
     previous = os.environ.get("RT_SECRETS_FILE")
     os.environ["RT_SECRETS_FILE"] = str(missing)
-    os.environ.pop("RT_MASTER_KEY", None)
+    os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.null.Keyring"
+    os.environ["RT_MASTER_KEY"] = TEST_MASTER_KEY
     yield
     if previous is None:
         os.environ.pop("RT_SECRETS_FILE", None)
@@ -90,7 +99,9 @@ def _isolate_data_dir(tmp_path_factory, monkeypatch):
     monkeypatch.delenv("RT_DATA_DIR", raising=False)
     monkeypatch.setenv("RT_API_PORT", "65432")
     monkeypatch.setenv("RT_LAUNCH_AGENTS_DIR", str(tmp_path_factory.mktemp("launch-agents")))
-    monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", str(tmp_path_factory.mktemp("no-data-dir")))
+    empty_data = str(tmp_path_factory.mktemp("no-data-dir"))
+    monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", empty_data)
+    monkeypatch.setattr("rt.core.paths.PLATFORM_DATA_DIR", empty_data)
 
 
 @pytest.fixture(autouse=True)

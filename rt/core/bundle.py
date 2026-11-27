@@ -71,16 +71,24 @@ def app_path(project_root: Optional[str] = None) -> Optional[str]:
     return None
 
 
+_APPLIED_BROWSERS_PATH: Optional[str] = None
+
+
 def apply_env() -> None:
     """Impostazioni per i processi dell'app (API, worker e figli): testo UTF-8 anche su Windows
     e browser delle catture nella cartella dati invece che nella cartella utente."""
+    global _APPLIED_BROWSERS_PATH
     if sys.platform == "win32":
         os.environ.setdefault("PYTHONUTF8", "1")
         os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     if kind() is None:
         return
     from rt.core.paths import data_dir
-    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", os.path.join(data_dir(), "browsers"))
+    target = os.path.join(data_dir(), "browsers")
+    current = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if current is None or current == _APPLIED_BROWSERS_PATH:
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = target
+        _APPLIED_BROWSERS_PATH = target
 
 
 def utf8_console() -> None:

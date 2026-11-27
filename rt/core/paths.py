@@ -4,8 +4,9 @@ La cartella dati di RT (RT4-G1): un solo posto per config/, .env, secrets.enc, D
 stato del bot, PID, log e backup, al posto della cartella d'installazione e di ~/.rt.
 
 - RT_DATA_DIR (es. /data nel container) la sceglie in modo esplicito e vince sempre.
-- Altrimenti è ~/.rt, ma solo quando è "attiva": contiene il file DATA_MARKER, scritto da
-  'rt data init' (installer) o da 'rt data migrate' (aggiornamento da una 3.x).
+- Altrimenti sull'app desktop (macOS Application Support, Windows %LOCALAPPDATA%\\RT) si usa
+  la cartella di sistema; da terminale, su Linux e in Docker resta ~/.rt (solo quando attiva:
+  contiene rt-data.json).
 - Senza cartella dati attiva tutto resta come prima (config/ nella cwd o nella cartella
   d'installazione, DB in <lessons_root>/.rt/rt.db): le installazioni vecchie funzionano
   finché la migrazione non le sposta.
@@ -15,11 +16,13 @@ RT_DATA_DIR > config/ nella cwd (sviluppo e test) > cartella dati attiva > carte
 """
 import json
 import os
+import sys
 from typing import Optional
 
 DATA_DIR_ENV = "RT_DATA_DIR"
 DATA_MARKER = "rt-data.json"
 DEFAULT_DATA_DIR = os.path.join("~", ".rt")
+PLATFORM_DATA_DIR: Optional[str] = None
 
 
 def project_root() -> str:
@@ -33,9 +36,47 @@ def explicit_data_dir() -> Optional[str]:
     return os.path.abspath(os.path.expanduser(value)) if value else None
 
 
+def legacy_data_dir() -> str:
+    """Cartella dati storica (~/.rt, usata da terminale, Linux, Docker e versioni precedenti)."""
+    return os.path.abspath(os.path.expanduser(DEFAULT_DATA_DIR))
+
+
+def platform_data_dir() -> str:
+    """Cartella dati di sistema per l'app desktop:
+    - macOS: ~/Library/Application Support/RT
+    - Windows: %LOCALAPPDATA%\\RT
+    - Linux: ~/.rt
+    """
+    if PLATFORM_DATA_DIR is not None:
+        return os.path.abspath(os.path.expanduser(PLATFORM_DATA_DIR))
+    if sys.platform == "darwin":
+        return os.path.abspath(os.path.expanduser(os.path.join("~", "Library", "Application Support", "RT")))
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA", "").strip()
+        base = os.path.abspath(os.path.expanduser(local)) if local else os.path.abspath(
+            os.path.expanduser(os.path.join("~", "AppData", "Local"))
+        )
+        return os.path.join(base, "RT")
+    return legacy_data_dir()
+
+
 def default_data_dir() -> str:
-    """Dove sta (o starà) la cartella dati: RT_DATA_DIR, altrimenti ~/.rt."""
-    return explicit_data_dir() or os.path.abspath(os.path.expanduser(DEFAULT_DATA_DIR))
+    """Dove sta (o starà) la cartella dati:
+    RT_DATA_DIR > cartella nuova se inizializzata > ~/.rt se attiva (marker) > cartella nuova
+    per le installazioni nuove dell'app (bundle.kind() non None; da terminale resta ~/.rt)."""
+    explicit = explicit_data_dir()
+    if explicit:
+        return explicit
+    new = platform_data_dir()
+    legacy = legacy_data_dir()
+    if new != legacy and is_initialized(new):
+        return new
+    if is_initialized(legacy):
+        return legacy
+    from rt.core import bundle
+    if bundle.kind() is not None:
+        return new
+    return legacy
 
 
 def sample_lesson_path() -> str:
@@ -63,9 +104,9 @@ def active_data_dir() -> Optional[str]:
 
 
 def data_dir() -> str:
-    """Cartella per i dati propri di RT (PID, stato, log): quella attiva, altrimenti ~/.rt
-    come prima."""
-    return active_data_dir() or os.path.abspath(os.path.expanduser(DEFAULT_DATA_DIR))
+    """Cartella per i dati propri di RT (PID, stato, log): quella attiva, altrimenti il
+    percorso predefinito."""
+    return active_data_dir() or default_data_dir()
 
 
 def config_home(fallback: Optional[str] = None) -> str:

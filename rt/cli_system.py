@@ -28,8 +28,8 @@ def _ask_yes(question: str) -> bool:
 def configure_data_parser(p: argparse.ArgumentParser) -> None:
     sub = p.add_subparsers(dest="data_command", required=False, title="Sottocomandi")
     sub.add_parser("status", help="Mostra dove stanno configurazione, segreti, database e media (default)")
-    p_init = sub.add_parser("init", help="Crea la cartella dati (RT_DATA_DIR o ~/.rt)")
-    p_init.add_argument("--path", default=None, help="Cartella da usare (default: RT_DATA_DIR o ~/.rt)")
+    p_init = sub.add_parser("init", help="Crea la cartella dati di RT (o RT_DATA_DIR)")
+    p_init.add_argument("--path", default=None, help="Cartella da usare (default: la cartella dati di RT o RT_DATA_DIR)")
     p_mig = sub.add_parser("migrate", help="Sposta i dati di un'installazione 3.x nella cartella dati")
     p_mig.add_argument("--dry-run", action="store_true", help="Mostra cosa verrebbe spostato, senza toccare nulla")
     sub.add_parser("post-update", help=argparse.SUPPRESS)  # chiamato da 'rt -u' con il codice nuovo

@@ -21,12 +21,15 @@ coerente), sposta media/ e solo alla fine attiva la cartella. Gli originali rest
 rinominati (*.migrato-<data>): niente viene cancellato. Si rifiuta se API o worker
 sono attivi, perché scriverebbero nel DB vecchio.
 """
+import json
 import os
+import re
 import shutil
 import sqlite3
+import sys
 import time
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from rt.core import paths
 
@@ -373,28 +376,466 @@ def _restart_services(sm, say: Callable[[str], None]) -> bool:
     return True
 
 
+def _prefix_variants(old_dir: str) -> List[str]:
+    """Varianti normalizzate del vecchio prefisso (percorso assoluto e percorso reale),
+    ordinate dalla più lunga alla più corta."""
+    raw = [os.path.abspath(old_dir), os.path.realpath(old_dir)]
+    out: List[str] = []
+    for item in raw:
+        cleaned = item.rstrip("/\\")
+        if cleaned and cleaned not in out:
+            out.append(cleaned)
+    out.sort(key=len, reverse=True)
+    return out
+
+
+def _rewrite_path_prefix(value: str, old_prefixes: Sequence[str], new_dir: str,
+                         allow_tilde: bool = False) -> str:
+    """Sostituisce il vecchio prefisso di cartella dati con new_dir rispettando il confine di
+    percorso (es. non tocca ~/.rt-dev quando si sposta ~/.rt)."""
+    if not value:
+        return value
+    if value.startswith("sqlite:///"):
+        inner = value[len("sqlite:///"):]
+        rewritten = _rewrite_path_prefix(inner, old_prefixes, new_dir, allow_tilde=allow_tilde)
+        return ("sqlite:///" + rewritten) if rewritten != inner else value
+    candidates = list(old_prefixes)
+    if allow_tilde:
+        home_legacy = os.path.abspath(os.path.expanduser("~/.rt")).rstrip("/\\")
+        if any(os.path.normcase(p) == os.path.normcase(home_legacy) for p in old_prefixes):
+            candidates.append("~/.rt")
+    norm_val = os.path.normcase(value)
+    for prefix in candidates:
+        norm_pref = os.path.normcase(prefix)
+        if norm_val == norm_pref:
+            return new_dir
+        if norm_val.startswith(norm_pref + "/") or norm_val.startswith(norm_pref + "\\"):
+            return new_dir + value[len(prefix):]
+    return value
+
+
+def _rewrite_yaml_node(node, old_prefixes: Sequence[str], new_dir: str):
+    if isinstance(node, dict):
+        changed = False
+        out = {}
+        for k, v in node.items():
+            nv, c = _rewrite_yaml_node(v, old_prefixes, new_dir)
+            out[k] = nv
+            changed = changed or c
+        return out, changed
+    if isinstance(node, list):
+        changed = False
+        out = []
+        for item in node:
+            ni, c = _rewrite_yaml_node(item, old_prefixes, new_dir)
+            out.append(ni)
+            changed = changed or c
+        return out, changed
+    if isinstance(node, str):
+        rewritten = _rewrite_path_prefix(node, old_prefixes, new_dir, allow_tilde=True)
+        return rewritten, rewritten != node
+    return node, False
+
+
+def _write_atomic_bytes(path: str, data: bytes, mode: Optional[int] = None) -> None:
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    if mode is not None:
+        try:
+            os.chmod(tmp, mode)
+        except OSError:
+            pass
+    os.replace(tmp, path)
+
+
+_ENV_LINE_RE = re.compile(r"^(\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*)(.*)$")
+
+
+def _rewrite_config_and_env(new_dir: str, old_prefixes: Sequence[str],
+                            saved_files_rel: Dict[str, bytes]) -> None:
+    import yaml
+    config_root = os.path.join(new_dir, "config")
+    if os.path.isdir(config_root):
+        for base, _dirs, files in os.walk(config_root):
+            for name in sorted(files):
+                if not name.endswith((".yaml", ".yml")):
+                    continue
+                path = os.path.join(base, name)
+                with open(path, "rb") as f:
+                    raw_bytes = f.read()
+                parsed = yaml.safe_load(raw_bytes.decode("utf-8"))
+                if not isinstance(parsed, (dict, list)):
+                    continue
+                rewritten, changed = _rewrite_yaml_node(parsed, old_prefixes, new_dir)
+                if not changed:
+                    continue
+                rel = os.path.relpath(path, new_dir)
+                saved_files_rel[rel] = raw_bytes
+                dumped = yaml.safe_dump(rewritten, sort_keys=False, allow_unicode=True, width=10000)
+                _write_atomic_bytes(path, dumped.encode("utf-8"))
+
+    env_path = os.path.join(new_dir, ".env")
+    if os.path.isfile(env_path):
+        with open(env_path, "rb") as f:
+            raw_bytes = f.read()
+        text = raw_bytes.decode("utf-8")
+        lines = text.splitlines(keepends=True)
+        out_lines: List[str] = []
+        env_changed = False
+        for line in lines:
+            eol = ""
+            body = line
+            if body.endswith("\r\n"):
+                body, eol = body[:-2], "\r\n"
+            elif body.endswith("\n"):
+                body, eol = body[:-1], "\n"
+            stripped = body.lstrip()
+            if not stripped or stripped.startswith("#"):
+                out_lines.append(line)
+                continue
+            m = _ENV_LINE_RE.match(body)
+            if not m:
+                out_lines.append(line)
+                continue
+            prefix_part, rhs = m.group(1), m.group(2)
+            quote = rhs[0] if len(rhs) >= 2 and rhs[0] == rhs[-1] and rhs[0] in ('"', "'") else ""
+            inner = rhs[1:-1] if quote else rhs
+            new_inner = _rewrite_path_prefix(inner, old_prefixes, new_dir, allow_tilde=True)
+            if new_inner != inner:
+                env_changed = True
+                out_lines.append(f"{prefix_part}{quote}{new_inner}{quote}{eol}")
+            else:
+                out_lines.append(line)
+        if env_changed:
+            saved_files_rel[".env"] = raw_bytes
+            _write_atomic_bytes(env_path, "".join(out_lines).encode("utf-8"), mode=0o600)
+
+
+def _reset_downloading_components(new_dir: str, saved_files_rel: Dict[str, bytes]) -> None:
+    models_dir = os.path.join(new_dir, "models")
+    for lock_name in (".lock", ".browser.lock"):
+        lpath = os.path.join(models_dir, lock_name)
+        if os.path.exists(lpath):
+            try:
+                os.remove(lpath)
+            except OSError:
+                pass
+    comp_path = os.path.join(models_dir, "components.json")
+    if not os.path.isfile(comp_path):
+        return
+    with open(comp_path, "rb") as f:
+        raw_bytes = f.read()
+    try:
+        data = json.loads(raw_bytes.decode("utf-8"))
+    except ValueError:
+        return
+    if not isinstance(data, dict):
+        return
+    changed = False
+    for entry in data.values():
+        if isinstance(entry, dict) and entry.get("state") == "downloading":
+            entry["state"] = "not_downloaded"
+            entry["auto_resume"] = False
+            entry["pid"] = None
+            entry["helper_pid"] = None
+            entry["detached_pid"] = None
+            entry["eta_seconds"] = None
+            entry["eta_label"] = None
+            entry["error"] = None
+            changed = True
+    if changed:
+        saved_files_rel[os.path.join("models", "components.json")] = raw_bytes
+        encoded = (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        _write_atomic_bytes(comp_path, encoded)
+
+
+def _db_path_columns() -> List[Tuple[type, object]]:
+    """Ispeziona i modelli SQLAlchemy e restituisce (Modello, attributo) per ogni colonna
+    stringa path, lesson_path, *_path (e active_lesson)."""
+    from sqlalchemy import String
+    from rt.db.models import Base
+    targets: List[Tuple[type, object]] = []
+    for mapper in Base.registry.mappers:
+        cls = mapper.class_
+        for prop in mapper.column_attrs:
+            col = prop.columns[0]
+            if not isinstance(col.type, String):
+                continue
+            if (col.name == "path" or col.name == "lesson_path"
+                    or col.name.endswith("_path") or col.name == "active_lesson"):
+                targets.append((cls, getattr(cls, prop.key)))
+    return targets
+
+
+def _rewrite_db_paths(db_url: str, old_prefixes: Sequence[str], new_dir: str) -> None:
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+    from rt.db.engine import create_db_engine, current_revision, head_revision, upgrade_database
+    from rt.db.models import StateDocument
+
+    eng = create_db_engine(db_url)
+    try:
+        if current_revision(eng) != head_revision():
+            upgrade_database(db_url, eng)
+        with Session(eng) as session, session.begin():
+            for model_cls, col_attr in _db_path_columns():
+                for row in session.scalars(select(model_cls).where(col_attr.is_not(None))):
+                    val = getattr(row, col_attr.key)
+                    if isinstance(val, str):
+                        updated = _rewrite_path_prefix(val, old_prefixes, new_dir)
+                        if updated != val:
+                            setattr(row, col_attr.key, updated)
+            for doc in list(session.scalars(select(StateDocument))):
+                updated_key = _rewrite_path_prefix(doc.key, old_prefixes, new_dir)
+                if updated_key != doc.key:
+                    if session.get(StateDocument, updated_key) is None:
+                        doc.key = updated_key
+                    else:
+                        session.delete(doc)
+    finally:
+        eng.dispose()
+
+
+def _has_live_running_jobs(db_url: Optional[str]) -> bool:
+    if not db_url:
+        return False
+    from sqlalchemy import select
+    from sqlalchemy.exc import SQLAlchemyError
+    from sqlalchemy.orm import Session
+    from rt.db.engine import create_db_engine, sqlite_file
+    from rt.db.models import Job, utcnow
+
+    db_file = sqlite_file(db_url)
+    if db_file and not os.path.isfile(db_file):
+        return False
+    eng = create_db_engine(db_url)
+    try:
+        with Session(eng) as session:
+            live = session.scalar(
+                select(Job.id)
+                .where(
+                    Job.state == "running",
+                    Job.lease_until.is_not(None),
+                    Job.lease_until >= utcnow(),
+                )
+                .limit(1)
+            )
+            return live is not None
+    except SQLAlchemyError:
+        return False
+    finally:
+        eng.dispose()
+
+
+def _suspend_open_log_streams(root_dir: str) -> List[Tuple[str, str]]:
+    """Su Windows (pythonw) stdout/stderr possono essere file aperti dentro la cartella dati:
+    vanno chiusi prima di os.rename() per non avere PermissionError e riaperti dopo."""
+    suspended: List[Tuple[str, str]] = []
+    for attr in ("stdout", "stderr"):
+        stream = getattr(sys, attr, None)
+        name = getattr(stream, "name", None)
+        if not isinstance(name, str) or not _inside(name, root_dir):
+            continue
+        rel = os.path.relpath(name, root_dir)
+        try:
+            stream.flush()
+        except Exception:
+            pass
+        try:
+            stream.close()
+        except Exception:
+            pass
+        setattr(sys, attr, None)
+        suspended.append((attr, rel))
+    return suspended
+
+
+def _reopen_log_streams(suspended: Sequence[Tuple[str, str]], target_dir: str) -> None:
+    for attr, rel in suspended:
+        path = os.path.join(target_dir, rel)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            setattr(sys, attr, open(path, "a", encoding="utf-8", buffering=1, newline="\n"))
+        except OSError:
+            pass
+
+
+def _migrate_platform_data_dir(say: Callable[[str], None],
+                               installed_services: Sequence[str] = ()) -> bool:
+    """Sposta la cartella dati dell'app desktop da ~/.rt ad Application Support (macOS) o
+    %LOCALAPPDATA%\\RT (Windows). Restituisce False se lo spostamento è rimandato o fallito."""
+    from rt.core import bundle
+    from rt.core.config import _cached_config
+    from rt.db.engine import current_database_url, reset_database_cache, sqlite_file
+    from rt.services import service_manager as sm
+
+    if bundle.kind() not in (bundle.MACOS, bundle.WINDOWS):
+        return True
+    if paths.explicit_data_dir():
+        return True
+    old_dir = paths.legacy_data_dir()
+    new_dir = paths.platform_data_dir()
+    if os.path.abspath(old_dir) == os.path.abspath(new_dir):
+        return True
+    if paths.is_initialized(new_dir):
+        return True
+    if not paths.is_initialized(old_dir):
+        return True
+    old_marker = paths.read_marker(old_dir)
+    if old_marker.get("location"):
+        return True
+    if os.path.lexists(new_dir):
+        say(f"⚠️  Spostamento della cartella dati rimandato al prossimo avvio: {new_dir} esiste già.")
+        return False
+
+    reset_database_cache()
+    _cached_config.cache_clear()
+    db_url = current_database_url()
+    if _has_live_running_jobs(db_url):
+        say("⏳ Spostamento della cartella dati rimandato al prossimo avvio: ci sono elaborazioni in corso.")
+        return False
+
+    marker_path = os.path.join(old_dir, paths.DATA_MARKER)
+    with open(marker_path, "rb") as f:
+        original_marker_bytes = f.read()
+
+    db_file = sqlite_file(db_url) if db_url else None
+    if db_file and not _inside(db_file, old_dir):
+        db_file = None
+    elif db_file is None and db_url is None and os.path.isfile(os.path.join(old_dir, "rt.db")):
+        # RT_DATABASE_URL=off nei test che non usano DB: nessun backup o riscrittura DB
+        db_file = None
+
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backup_rel = os.path.join("backups", f"prima-dello-spostamento-{stamp}.db")
+    old_backup: Optional[str] = None
+    if db_file and os.path.isfile(db_file):
+        old_backup = os.path.join(old_dir, backup_rel)
+        try:
+            sqlite_copy(db_file, old_backup)
+        except Exception as exc:
+            tmp_bak = old_backup + ".tmp"
+            if os.path.exists(tmp_bak):
+                try:
+                    os.remove(tmp_bak)
+                except OSError:
+                    pass
+            say(f"⚠️  Spostamento della cartella dati rimandato al prossimo avvio: {exc}")
+            return False
+
+    old_prefixes = _prefix_variants(old_dir)
+    closed_streams = _suspend_open_log_streams(old_dir)
+    try:
+        os.makedirs(os.path.dirname(new_dir), exist_ok=True)
+        os.rename(old_dir, new_dir)
+    except OSError as exc:
+        _reopen_log_streams(closed_streams, old_dir)
+        if old_backup and os.path.isfile(old_backup):
+            try:
+                os.remove(old_backup)
+            except OSError:
+                pass
+        say(f"⚠️  Spostamento della cartella dati rimandato al prossimo avvio: {exc}")
+        return False
+
+    _reopen_log_streams(closed_streams, new_dir)
+    redirect_created = False
+    saved_files_rel: Dict[str, bytes] = {}
+    new_db_file = os.path.join(new_dir, os.path.relpath(db_file, old_dir)) if db_file else None
+    try:
+        paths.write_marker(old_dir, location=new_dir, moved_at=_now())
+        redirect_created = True
+        reset_database_cache()
+        _cached_config.cache_clear()
+
+        _rewrite_config_and_env(new_dir, old_prefixes, saved_files_rel)
+        _reset_downloading_components(new_dir, saved_files_rel)
+        _cached_config.cache_clear()
+        if new_db_file and os.path.isfile(new_db_file):
+            new_db_url = current_database_url() or ("sqlite:///" + new_db_file)
+            _rewrite_db_paths(new_db_url, old_prefixes, new_dir)
+        if sm.supported() and installed_services:
+            sm.install(installed_services, start=False, data_dir=new_dir, say=lambda _m: None)
+    except Exception as exc:
+        reset_database_cache()
+        _cached_config.cache_clear()
+        rollback_streams = _suspend_open_log_streams(new_dir)
+        if redirect_created and os.path.isdir(old_dir):
+            shutil.rmtree(old_dir, ignore_errors=True)
+        try:
+            if os.path.isdir(new_dir) and not os.path.exists(old_dir):
+                os.rename(new_dir, old_dir)
+        except OSError as rename_exc:
+            _reopen_log_streams(rollback_streams or closed_streams, new_dir if os.path.isdir(new_dir) else old_dir)
+            say(f"❌ Spostamento della cartella dati non riuscito e ripristino fallito ({rename_exc}): {exc}")
+            return False
+        with open(os.path.join(old_dir, paths.DATA_MARKER), "wb") as f:
+            f.write(original_marker_bytes)
+        for rel, content in saved_files_rel.items():
+            with open(os.path.join(old_dir, rel), "wb") as f:
+                f.write(content)
+        if old_backup and os.path.isfile(old_backup) and db_file:
+            for suffix in ("-wal", "-shm"):
+                if os.path.exists(db_file + suffix):
+                    try:
+                        os.remove(db_file + suffix)
+                    except OSError:
+                        pass
+            shutil.copy2(old_backup, db_file)
+            try:
+                os.remove(old_backup)
+            except OSError:
+                pass
+        _reopen_log_streams(rollback_streams or closed_streams, old_dir)
+        if sm.supported() and installed_services:
+            try:
+                sm.install(installed_services, start=False, data_dir=old_dir, say=lambda _m: None)
+            except Exception:
+                pass
+        reset_database_cache()
+        _cached_config.cache_clear()
+        bundle.apply_env()
+        say(f"❌ Spostamento della cartella dati non riuscito, ripristinato tutto in {old_dir}: {exc}")
+        return False
+
+    reset_database_cache()
+    _cached_config.cache_clear()
+    bundle.apply_env()
+    say(f"📦 Cartella dati spostata in {new_dir} (rimando lasciato in {old_dir}).")
+    return True
+
+
 def post_update(say: Callable[[str], None] = print,
                 confirm: Optional[Callable[[str], bool]] = None) -> bool:
     """Ultimo passo di 'rt -u' e dell'installer, con il codice nuovo: cartella dati (migrazione
-    dalla 3.x), database migrato e lezioni importate, proposta di cifrare le chiavi, servizi
-    aggiornati e riavviati. Idempotente. False se qualcosa va sistemato a mano."""
+    dalla 3.x o spostamento nella cartella di sistema), database migrato e lezioni importate,
+    proposta di cifrare le chiavi, servizi aggiornati e riavviati. Idempotente. False se qualcosa
+    va sistemato a mano."""
+    from rt.core import bundle
     from rt.services import service_manager as sm
     ok = True
     had_services = sm.supported() and bool(sm.installed())
+    installed_before = sm.installed() if had_services else []
     if had_services:
         sm.stop()
     plan = None
+    from_3x = False
     try:
+        if not _migrate_platform_data_dir(say=say, installed_services=installed_before):
+            ok = False
         try:
             plan = auto_migrate(say=say)
         except DataDirError as exc:
             say(f"⚠️  {exc}")
             ok = False
         from_3x = plan is not None and bool(plan.steps or plan.redirect_from)
-        from rt.core.config import load_env_file
+        from rt.core.config import _cached_config, load_env_file
         from rt.db.bootstrap import ensure_database
         from rt.db.engine import DatabaseUnavailable, reset_database_cache
         reset_database_cache()
+        _cached_config.cache_clear()
+        bundle.apply_env()
         load_env_file(override=True)
         try:
             ensure_database()

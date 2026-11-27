@@ -88,7 +88,7 @@ def check_data_dir() -> Check:
     active = paths.active_data_dir()
     if not active:
         return Check("Cartella dati", WARN, "installazione con la disposizione 3.x (config nella cartella di RT).",
-                     "Esegui 'rt data migrate' (o 'rt -u'): sposta tutto in ~/.rt, con copia di sicurezza.")
+                     f"Esegui 'rt data migrate' (o 'rt -u'): sposta tutto nella cartella dati di RT ({paths.default_data_dir()}), con copia di sicurezza.")
     if not os.access(active, os.W_OK):
         return Check("Cartella dati", FAIL, f"{active} non è scrivibile.", f"Controlla i permessi di {active}.")
     free = shutil.disk_usage(active).free

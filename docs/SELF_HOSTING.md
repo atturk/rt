@@ -40,10 +40,12 @@ Variabili utili (tutte facoltative):
 
 ## La cartella dati
 
-Tutto ciò che è tuo sta in un posto solo, `~/.rt` (o `RT_DATA_DIR`):
+Tutto ciò che è tuo sta in un posto solo: la cartella dati di RT (`~/.rt` per installazioni da
+terminale/Linux, `~/Library/Application Support/RT` per l'app macOS, `%LOCALAPPDATA%\RT` su
+Windows, oppure `RT_DATA_DIR`):
 
 ```text
-~/.rt/
+<cartella dati>/
   rt-data.json      segna la cartella come attiva
   config/           general.yaml, file dei job, secrets.enc (chiavi API e token, cifrati)
   .env              variabili non segrete (RT_TELEGRAM_CHAT_ID)

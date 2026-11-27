@@ -459,10 +459,12 @@ Con il database attivo le nuove lezioni non hanno più una cartella di lavoro.
 
 - **Cartella dati** (`rt/core/paths.py`): un solo posto per `config/`, `.env`, `secrets.enc`,
   `rt.db`, `media/`, registro delle notifiche Telegram, PID, log e backup. `RT_DATA_DIR` la sceglie (vince sempre,
-  anche su `config/` nella cwd); altrimenti è `~/.rt` quando contiene `rt-data.json`, che può
-  rimandare altrove (`location`: 3.x migrate con DB e media in `<lezioni>/.rt`). Senza cartella
-  attiva vale la disposizione 3.x. `config_home()` è l'unica precedenza per config e `.env`,
-  usata da `load_config`, `load_env_file`, `config_service`, `secrets.default_store_path`.
+  anche su `config/` nella cwd); altrimenti l'app desktop usa `~/Library/Application Support/RT`
+  (macOS) o `%LOCALAPPDATA%\RT` (Windows) e le installazioni da terminale/Linux usano `~/.rt`
+  quando contiene `rt-data.json`, che può rimandare altrove (`location`: 3.x migrate o dati
+  spostati nella cartella di sistema). Senza cartella attiva vale la disposizione 3.x.
+  `config_home()` è l'unica precedenza per config e `.env`, usata da `load_config`, `load_env_file`,
+  `config_service`, `secrets.default_store_path`.
 - **Migrazione e completamento degli aggiornamenti** (`rt/services/data_service.py`):
   `plan_migration`/`migrate` (copia config, `.env`, stato di Telegram; DB con l'API di backup di
   SQLite e `media/` spostata solo verso una `RT_DATA_DIR` scelta; rollback se un passo fallisce;

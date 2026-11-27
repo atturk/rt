@@ -20,7 +20,7 @@ In questa pagina trovi le risposte ai problemi più comuni e le istruzioni per c
 
 ## Dove sono i registri (log)
 
-Se hai bisogno di esaminare i dettagli tecnici di un errore, RT scrive i propri registri nella cartella dati:
-- Su macOS e Linux il percorso predefinito è `~/.rt/logs/`.
-- Su Windows si trova nella cartella del tuo profilo utente in `.rt\logs\`.
-- Puoi aprire direttamente la cartella dei log dall'applicazione desktop tramite il menu **Aiuto → Apri cartella dati** (o dalla riga di comando con `rt data`).
+Se hai bisogno di esaminare i dettagli tecnici di un errore, RT scrive i propri registri nella cartella dati di RT:
+- Su macOS (app desktop) il percorso predefinito è `~/Library/Application Support/RT/logs/` (da terminale o su Linux è `~/.rt/logs/`).
+- Su Windows il percorso predefinito è `%LOCALAPPDATA%\RT\logs\`.
+- Puoi aprire direttamente la cartella dei log dall'applicazione desktop tramite il menu **RT → Mostra registri** (o **Apri cartella dati**; dalla riga di comando con `rt data`).

@@ -13231,7 +13231,7 @@
             "type": "string"
           },
           "data_dir": {
-            "description": "Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media",
+            "description": "Cartella dati di RT (o RT_DATA_DIR): canale, rt.db, media",
             "title": "Data Dir",
             "type": "string"
           },

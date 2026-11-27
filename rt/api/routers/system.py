@@ -56,7 +56,7 @@ class SystemInfo(BaseModel):
     build: Optional[str] = Field(None, description="Informazioni di build per l'app (build N · commit · data)")
     update_channel: str = Field(description="Canale di aggiornamento: stable o beta ('rt -u --beta' / '--stable')")
     install_dir: str = Field(description="Cartella del codice di RT")
-    data_dir: str = Field(description="Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media")
+    data_dir: str = Field(description="Cartella dati di RT (o RT_DATA_DIR): canale, rt.db, media")
     config_dir: str = Field(description="Cartella config/ in uso")
     python_version: str
     platform: str

@@ -1,7 +1,7 @@
 ; Setup di RT per Windows (Inno Setup 6), compilato da scripts/build_app.py:
 ;   iscc /DAppVersion=4.3.0 /DAppNumericVersion=4.3.0 /DSourceDir=... /DOutputDir=... /DOutputName=... /DIconFile=... rt.iss
 ; Installa per l'utente corrente (niente amministratore) in %LOCALAPPDATA%\Programs\RT.
-; I dati (lezioni, database, impostazioni) stanno in %USERPROFILE%\.rt e restano anche
+; I dati (lezioni, database, impostazioni) stanno in %LOCALAPPDATA%\RT e restano anche
 ; disinstallando l'app.
 ;
 ; Aggiornamento dall'app (rt/core/app_update.py): il setup parte con /SILENT, chiude RT,

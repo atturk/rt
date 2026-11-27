@@ -145,14 +145,14 @@ def forward_to_app(project_root: str, argv: List[str], execv: Optional[Callable]
             or os.path.lexists(os.path.join(app_cli_root(app), RETIRED_MARKER))):
         print("❌ Questa cartella RT è ritirata e non trovo un'app valida a cui passare i comandi. "
               f"Ripristina RT.app in {app or 'Applicazioni'} dal .dmg. "
-              "I dati restano in ~/.rt.", file=sys.stderr)
+              "I dati restano nella cartella dati di RT.", file=sys.stderr)
         raise SystemExit(1)
     python, script = app_cli(app)
     try:
         (execv or os.execv)(python, [python, script, *argv])
     except OSError as exc:
         print(f"❌ Non riesco ad avviare {app}: {exc}. Ripristina l'app dal .dmg; "
-              "i dati restano in ~/.rt.", file=sys.stderr)
+              "i dati restano nella cartella dati di RT.", file=sys.stderr)
         raise SystemExit(1) from None
 
 
@@ -283,7 +283,7 @@ def offer(project_root: str, confirm: Callable[[str], bool], say: Callable[[str]
         switch(project_root, say=say)
     except (AppSwitchError, app_update.AppUpdateError, OSError) as exc:
         if retired_to(project_root):
-            say(f"⚠️  {exc}. La cartella è già ritirata: apri RT da Applicazioni. I dati restano in ~/.rt.")
+            say(f"⚠️  {exc}. La cartella è già ritirata: apri RT da Applicazioni. I dati restano nella cartella dati di RT.")
         else:
             say(f"⚠️  Passaggio all'app non riuscito: {exc}. I dati restano al loro posto; "
                 "riprova con 'rt app install'.")

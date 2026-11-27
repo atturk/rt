@@ -980,7 +980,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  backup / restore    Backup completo (database, media, configurazione) e ripristino\n"
         "  service             Servizi in background con launchd: API e worker\n"
         "  logs                Ultime righe dei log dei servizi (--follow per seguirli)\n"
-        "  data                Cartella dati di RT (~/.rt o RT_DATA_DIR)\n"
+        "  data                Cartella dati di RT (o RT_DATA_DIR)\n"
         "  app                 Passa all'app per il Mac tenendo i dati\n"
         "  uninstall           Disinstalla RT lasciando i dati\n\n"
         "Opzioni generali:\n"
@@ -1226,7 +1226,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_svc.set_defaults(func=cli_system.cmd_service)
     p_mb = subparsers.add_parser("menubar", help=argparse.SUPPRESS, description="Icona di RT nella barra dei menu di macOS")
     p_mb.set_defaults(func=lambda args: __import__("rt.menubar", fromlist=["cmd_menubar"]).cmd_menubar(args))
-    p_data = subparsers.add_parser("data", help=argparse.SUPPRESS, description="Cartella dati di RT (RT_DATA_DIR o ~/.rt): stato, creazione, migrazione")
+    p_data = subparsers.add_parser("data", help=argparse.SUPPRESS, description="Cartella dati di RT (o RT_DATA_DIR): stato, creazione, migrazione")
     cli_system.configure_data_parser(p_data)
     p_data.set_defaults(func=cli_system.cmd_data)
     p_app = subparsers.add_parser("app", help="Passa all'app per il Mac (RT.app) tenendo i dati",
