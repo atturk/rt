@@ -11,7 +11,7 @@ export function useGeneralPreference() {
     mutationFn: async (change: Partial<NonNullable<Settings['preferences']>>) => {
       const latest = await unwrap(api.GET('/api/v1/settings'))
       return unwrap(api.PUT('/api/v1/settings/preferences', { body: {
-        modalita_scaletta: 'auto', secondi_approvazione: 10, sfondo_gruppi: 'colori', modalita_arricchimento: 'manuale', chiusura_x: 'background', ...latest.preferences, ...change,
+        modalita_scaletta: 'auto', secondi_approvazione: 10, sfondo_gruppi: 'colori', modalita_arricchimento: 'manuale', chiusura_x: 'background', avvia_all_accesso: true, ...latest.preferences, ...change,
       } }))
     },
     onSuccess: settings => { client.setQueryData(['settings'], settings) },

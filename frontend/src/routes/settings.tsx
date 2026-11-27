@@ -24,7 +24,7 @@ import { api, errorMessage } from '@/api/client'
 import { useLogout } from '@/api/hooks'
 import { useSettings, useSystemInfo, type Settings } from '@/api/settings'
 import { DeviceAccessSection } from '@/components/settings/device-access'
-import { CloseActionSection, TranscriptionSection } from '@/components/settings/general'
+import { CloseActionSection, StartAtLoginSection, TranscriptionSection } from '@/components/settings/general'
 import { NotificationsCard, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
@@ -245,6 +245,7 @@ export function AppearanceSettingsPage() {
       {(s) => (
         <SettingsPage title="Aspetto e lettura" description="Tema, testo dello Studio, copia, lettura veloce e comportamento della finestra.">
           <AppearanceSection settings={s} />
+          <StartAtLoginSection settings={s} />
           <CloseActionSection settings={s} />
           <ScrollToHash />
         </SettingsPage>

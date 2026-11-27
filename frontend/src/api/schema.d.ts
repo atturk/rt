@@ -7780,6 +7780,12 @@ export interface components {
         /** PreferencesSettings */
         PreferencesSettings: {
             /**
+             * Avvia All Accesso
+             * @description Avvia RT all'accesso su macOS
+             * @default true
+             */
+            avvia_all_accesso: boolean;
+            /**
              * Chiusura X
              * @description Azione chiudendo la finestra dell'app con la X
              * @default background
