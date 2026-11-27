@@ -327,21 +327,30 @@ class TranscriptionUnavailable(RuntimeError):
 
 def transcription_unavailable_reason(mock: bool = False, skip_transcribe: bool = False) -> Optional[str]:
     """Motivo per cui l'ingest audio non può trascrivere qui (None se può). macparakeet-cli
-    esiste solo su macOS; il motore STT 'custom' e la modalità mock girano ovunque."""
+    esiste solo su macOS; il motore STT 'custom', Parakeet ONNX e la modalità mock girano ovunque."""
     import sys
-    if mock or skip_transcribe or sys.platform == "darwin":
+    if mock or skip_transcribe:
         return None
     try:
-        from rt.core.config import load_config
-        engine = load_config().transcription.engine
+        from rt.core.config import effective_engine, load_config
+        engine = effective_engine(load_config().transcription)
         if engine == "custom":
             return None
         if engine == "parakeet":
             from rt.core.onnx_stt import available
             if available():
                 return None
+            return ("Parakeet ONNX scelto ma il pacchetto onnx-asr non è installato. "
+                    "Reinstalla RT oppure scegli un altro motore in Impostazioni.")
+        if sys.platform == "darwin":
+            from rt.pipeline.setup import find_macparakeet_binary
+            if find_macparakeet_binary():
+                return None
+            return ("macparakeet-cli non trovato e Parakeet ONNX non è disponibile. "
+                    "Installa macparakeet-cli oppure reinstalla RT.")
     except Exception:
-        pass
+        if sys.platform == "darwin":
+            return None
     return ("La trascrizione con macparakeet funziona solo su macOS: in Impostazioni scegli "
             "Parakeet ONNX (locale) o un server di trascrizione compatibile.")
 

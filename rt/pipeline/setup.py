@@ -680,12 +680,14 @@ def run_setup(
         current_status = "pronto_per_rielaborazione"
 
     elif not skip_transcribe:
-        from rt.core.config import load_config, load_env_file
+        from rt.core.config import effective_engine, load_config, load_env_file
         from rt.core.custom_stt import transcribe_custom
 
         stt = load_config().transcription
-        use_custom_stt = stt.engine == "custom"
-        use_onnx = stt.engine == "parakeet"
+        resolved_engine = effective_engine(stt)
+        use_custom_stt = resolved_engine == "custom"
+        use_onnx = resolved_engine == "parakeet"
+        macparakeet_fallback = use_onnx and stt.engine == "macparakeet"
         parakeet_bin = None if use_custom_stt or use_onnx else find_macparakeet_binary()
         if not use_custom_stt and not use_onnx and not parakeet_bin:
             raise SetupError(
@@ -702,6 +704,7 @@ def run_setup(
         import logging
         logging.getLogger(__name__).info(
             "[2/9] TRASCRIZIONE STT CUSTOM..." if use_custom_stt
+            else "[2/9] TRASCRIZIONE PARAKEET ONNX (macparakeet-cli non trovato)..." if macparakeet_fallback
             else "[2/9] TRASCRIZIONE PARAKEET ONNX..." if use_onnx
             else "[2/9] MACPARAKEET TRANSCRIPTION (ASR Timecoded)..."
         )

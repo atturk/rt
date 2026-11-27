@@ -110,3 +110,62 @@ def test_effective_engine_macparakeet_fallback(monkeypatch):
     monkeypatch.setattr("sys.platform", "linux")
     monkeypatch.setattr(onnx_stt, "available", lambda: True)
     assert effective_engine(TranscriptionConfig(engine="macparakeet")) == "macparakeet"
+
+
+def test_mac_without_macparakeet_uses_parakeet_fallback(monkeypatch, tmp_path):
+    from rt.pipeline import setup
+    from rt.services import jobs
+    from rt.services.pipeline_service import transcription_unavailable_reason
+
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "general.yaml").write_text("transcription:\n  engine: macparakeet\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    # Mac con binario -> macparakeet
+    monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "/opt/homebrew/bin/macparakeet-cli")
+    monkeypatch.setattr(onnx_stt, "available", lambda: True)
+    assert jobs.detect_stt_capability("auto") == "macparakeet"
+    assert transcription_unavailable_reason() is None
+
+    # Mac senza binario + ONNX -> fallback a parakeet, setup non solleva
+    monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "")
+    assert jobs.detect_stt_capability("auto") == "parakeet"
+    assert transcription_unavailable_reason() is None
+
+    audio = tmp_path / "lezione.m4a"
+    audio.write_bytes(b"fake-audio")
+    called = []
+
+    def fake_transcribe_onnx(path, on_percent=None, on_progress=None):
+        called.append(path)
+        return {
+            "rawTranscript": "Lezione di prova.",
+            "text": "Lezione di prova.",
+            "transcriptSegments": [{"startMs": 0.0, "endMs": 1000.0, "text": "Lezione di prova.", "confidence": 0.9}],
+            "wordTimestamps": [],
+            "model": onnx_stt.MODEL_LABEL,
+        }
+
+    monkeypatch.setattr(onnx_stt, "transcribe_onnx", fake_transcribe_onnx)
+    res = setup.run_setup(
+        audio=str(audio),
+        date="2026-10-10",
+        materia="FISIOLOGIA",
+        dest_dir=str(tmp_path / "lezioni"),
+        interactive=False,
+    )
+    assert len(called) == 1
+    assert res["lesson_dir"]
+
+    # Mac senza binario e senza ONNX -> motivo non disponibile + SetupError come oggi
+    monkeypatch.setattr(onnx_stt, "available", lambda: False)
+    assert transcription_unavailable_reason() is not None
+    with pytest.raises(setup.SetupError, match="macparakeet-cli non trovato"):
+        setup.run_setup(
+            audio=str(audio),
+            date="2026-10-11",
+            materia="FISIOLOGIA",
+            dest_dir=str(tmp_path / "lezioni"),
+            interactive=False,
+        )

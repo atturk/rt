@@ -139,9 +139,24 @@ class TestTranscribeVoiceAnswer:
         with open(audio_path, "wb") as f:
             f.write(b"FAKE_AUDIO")
 
-        with patch("rt.pipeline.setup.find_macparakeet_binary", return_value=""):
+        with patch("rt.pipeline.setup.find_macparakeet_binary", return_value=""), \
+             patch("rt.core.onnx_stt.available", return_value=False):
             with pytest.raises(RuntimeError):
                 transcribe_voice_answer(audio_path)
+
+    def test_falls_back_to_parakeet_when_macparakeet_not_found(self, tmp_path):
+        audio_path = str(tmp_path / "voice.oga")
+        with open(audio_path, "wb") as f:
+            f.write(b"FAKE_AUDIO")
+
+        with patch("sys.platform", "darwin"), \
+             patch("rt.pipeline.setup.find_macparakeet_binary", return_value=""), \
+             patch("rt.core.onnx_stt.available", return_value=True), \
+             patch("rt.core.onnx_stt.transcribe_onnx", return_value={"rawTranscript": "Risposta vocale."}) as mock_onnx:
+            text = transcribe_voice_answer(audio_path, stt_engine="macparakeet")
+
+        assert text == "Risposta vocale."
+        mock_onnx.assert_called_once_with(audio_path)
 
     def test_api_engine_not_implemented(self, tmp_path):
         audio_path = str(tmp_path / "voice.oga")

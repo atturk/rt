@@ -762,8 +762,8 @@ def detect_stt_capability(requested: Optional[str] = "auto", mock: bool = False)
     if mock:
         return "mock"
     try:
-        from rt.core.config import load_config
-        engine = load_config().transcription.engine
+        from rt.core.config import effective_engine, load_config
+        engine = effective_engine(load_config().transcription)
         if engine == "custom":
             return "custom"
         if engine == "parakeet":
