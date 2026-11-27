@@ -571,7 +571,7 @@ export function AddEventPopup({
   const knownSubjects = subjectsQuery.data
     ? subjectsQuery.data.map((s) => s.nome)
     : [
-        ...new Set((lessonsQuery.data ?? []).map((l) => l.materia).filter((m): m is string => !!m)),
+        ...new Set((lessonsQuery.data ?? []).filter((l) => !l.is_sample).map((l) => l.materia).filter((m): m is string => !!m)),
       ].sort()
 
   useEffect(() => {

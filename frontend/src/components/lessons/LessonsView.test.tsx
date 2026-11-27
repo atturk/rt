@@ -28,6 +28,7 @@ const sampleLesson = (id: number, titolo = `Lezione ${id}`): Lesson => ({
   materia: 'FISIOLOGIA',
   argomenti: '',
   docente: 'Rossi',
+  is_sample: false,
   phases: { build: 'VALID' },
   pending_issues: 0,
   cost_usd: 0.1,

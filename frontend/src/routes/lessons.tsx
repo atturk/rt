@@ -402,7 +402,11 @@ export function LessonPage() {
   // Le lezioni già rielaborate (anche importate da versioni precedenti) non richiedono il gate della scaletta.
   const pendingOutline = !!outline.data && !outline.data.approved && l.phases.rewrite !== 'VALID'
   const sections = document.data?.sections ?? []
-  const path = [l.materia ? subjectName(l.materia) : null, l.data ? shortDate(l.data) : null, l.docente?.trim() || null].filter(Boolean).join(' · ')
+  const path = [
+    l.is_sample ? 'Esempio' : (l.materia ? subjectName(l.materia) : null),
+    l.data ? shortDate(l.data) : null,
+    l.is_sample ? null : (l.docente?.trim() || null),
+  ].filter(Boolean).join(' · ')
   const meta = [l.unit_count != null ? `${l.unit_count} unità` : null, l.duration_seconds ? formatDuration(l.duration_seconds) : null].filter(Boolean).join(' · ')
   const toggle = (view: PanelView) => setPanel(panel === view ? null : view)
   return (

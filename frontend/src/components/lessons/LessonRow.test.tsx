@@ -8,7 +8,7 @@ vi.mock('@/api/settings', () => ({
   useSettings: () => ({ data: { stati_studio: [{ id: 'ripasso', nome: 'Ripasso', colore: 'text-blue-500', icona: 'Star' }] } }),
 }))
 
-export const lesson = { id: 15, titolo: 'Emogasanalisi', materia: '', data: '', docente: '', argomenti: '', ora: '', folder_name: '', path: '', unit_count: 10, study_learned: 3, study_learning: 2, study_ignored: 1, recall_questions: 4, recall_pending: 0, pending_issues: 0, media_count: 0, phases: { rewrite: 'VALID', review: 'VALID', build: 'VALID' } } as Lesson
+export const lesson = { id: 15, titolo: 'Emogasanalisi', materia: '', data: '', docente: '', is_sample: false, argomenti: '', ora: '', folder_name: '', path: '', unit_count: 10, study_learned: 3, study_learning: 2, study_ignored: 1, recall_questions: 4, recall_pending: 0, pending_issues: 0, media_count: 0, phases: { rewrite: 'VALID', review: 'VALID', build: 'VALID' } } as Lesson
 it('l’anello usa i colori dello studio con stacchi fra gli archi', () => {
   render(<MemoryRouter><StudyRing lesson={lesson} /></MemoryRouter>)
   const ring = screen.getByTestId('lesson-study-ring')

@@ -342,7 +342,7 @@ export function NewLessonDialog({
   const subjectsQuery = useSubjects()
   const subjects = Array.isArray(subjectsQuery.data)
     ? subjectsQuery.data.map((s) => s.nome)
-    : [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
+    : [...new Set((lessons.data ?? []).filter((l) => !l.is_sample).map((l) => l.materia).filter(Boolean))].sort()
   const teachers = useTeacherSuggestions(materia)
 
   const calendarDayQuery = useQuery({

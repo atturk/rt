@@ -86,7 +86,8 @@ export function ArchivePage() {
   const origin = Number(params.get('da')) || null
   const lessons = useLessons()
   const [subject, setSubject] = useState<string | null>(null)
-  const materia = subject ?? lessons.data?.find((l) => l.id === origin)?.materia ?? ''
+  const originLesson = lessons.data?.find((l) => l.id === origin)
+  const materia = subject ?? (originLesson?.is_sample ? '' : originLesson?.materia) ?? ''
   const isMateriaReady = !origin || subject !== null || Boolean(lessons.data)
   const [kind, setKind] = useState('')
   const [query, setQuery] = useState('')
@@ -103,7 +104,7 @@ export function ArchivePage() {
       archiveFilesApi.list({ materia: materia || undefined, tipo: kind || undefined, q: debouncedQuery || undefined }),
     enabled: isMateriaReady,
   })
-  const subjects = [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
+  const subjects = [...new Set((lessons.data ?? []).filter((l) => !l.is_sample).map((l) => l.materia).filter(Boolean))].sort()
   const sha = chosen ?? files.data?.[0]?.impronta
   const root = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(() => {

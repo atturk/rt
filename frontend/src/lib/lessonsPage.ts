@@ -291,15 +291,15 @@ export function unitsText(lesson: Pick<Lesson, 'unit_count'>): string | null {
 /** Sottotitolo grigio della riga: i soli campi non già detti dal raggruppamento. */
 export function lessonSubtitle(lesson: Lesson, group: LessonsGrouping, now = new Date()): string {
   const date = lesson.data ? shortDate(lesson.data, now) : null
-  const subject = lesson.materia ? subjectName(lesson.materia) : null
-  const teacher = lesson.docente?.trim() || null
+  const subject = lesson.is_sample ? 'Esempio' : (lesson.materia ? subjectName(lesson.materia) : null)
+  const teacher = lesson.is_sample ? null : (lesson.docente?.trim() || null)
   const fields =
     group === 'data'
       ? [subject, teacher]
       : group === 'mese'
         ? [date, subject, teacher]
         : group === 'materia'
-          ? [date, teacher]
+          ? [date, lesson.is_sample ? subject : null, teacher]
           : group === 'docente'
             ? [date, subject]
             : [date, subject, teacher]
@@ -374,8 +374,8 @@ export function selectionDetails(lessons: readonly Lesson[]) {
       ignored: units ? ignored / units * 100 : 0,
       toLearn: units ? Math.max(0, units - learned - learning - ignored) / units * 100 : 0,
     },
-    subjects: counts(lessons.map(l => subjectName(l.materia.trim()) || 'Senza materia')),
-    teachers: counts(lessons.map(l => l.docente.trim() || 'Senza docente')),
+    subjects: counts(lessons.filter(l => !l.is_sample).map(l => subjectName(l.materia.trim()) || 'Senza materia')),
+    teachers: counts(lessons.filter(l => !l.is_sample).map(l => l.docente.trim() || 'Senza docente')),
   }
 }
 
@@ -421,8 +421,8 @@ export function lessonInfo(lesson: Lesson, running: boolean, now = new Date()): 
     lesson.error ? `errore: ${lesson.error}` : null,
   ].filter(Boolean).join(' · ')
   return [
-    ['Materia', lesson.materia ? subjectName(lesson.materia) : '—'],
-    ['Docente', lesson.docente?.trim() || '—'],
+    ['Materia', lesson.is_sample ? 'Esempio' : (lesson.materia ? subjectName(lesson.materia) : '—')],
+    ['Docente', lesson.is_sample ? '—' : (lesson.docente?.trim() || '—')],
     ['Data', longDate(lesson.data, now)],
     ['Durata', formatDuration(lesson.duration_seconds)],
     ['Unità', lesson.unit_count != null ? String(lesson.unit_count) : '—'],
