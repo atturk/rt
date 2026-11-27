@@ -175,7 +175,7 @@ def _remove_lesson(lesson_id: int) -> None:
 
 
 def import_archive(archive: Union[str, BinaryIO], on_existing: str = "ask",
-                   replace_id: Optional[int] = None) -> int:
+                   replace_id: Optional[int] = None, is_sample: bool = False) -> int:
     """Importa un export completo. Se la lezione c'è già (vedi _same_lesson):
     on_existing="ask" la rifiuta con LessonAlreadyPresent; "replace" sostituisce per intero
     la lezione replace_id (file, scaletta, stato dello studio), con ripristino automatico se
@@ -271,7 +271,10 @@ def import_archive(archive: Union[str, BinaryIO], on_existing: str = "ask",
             try:
                 target = fs.create_db_lesson(target)
                 with session_scope(db) as session:
-                    created_id = LessonRepository(session).get_by_path(target).id
+                    created = LessonRepository(session).get_by_path(target)
+                    if is_sample:
+                        created.is_sample = True
+                    created_id = created.id
                 for name in declared:
                     rel = name[len(folder) + 1:]
                     fs.copy2(os.path.join(staging, *rel.split("/")), lesson_path(target, rel))

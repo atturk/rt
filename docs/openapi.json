@@ -6991,6 +6991,11 @@
             "title": "Id",
             "type": "integer"
           },
+          "is_sample": {
+            "default": false,
+            "title": "Is Sample",
+            "type": "boolean"
+          },
           "materia": {
             "default": "",
             "title": "Materia",
@@ -7668,6 +7673,11 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "is_sample": {
+            "default": false,
+            "title": "Is Sample",
+            "type": "boolean"
           },
           "materia": {
             "default": "",

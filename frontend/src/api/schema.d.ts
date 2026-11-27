@@ -6887,6 +6887,11 @@ export interface components {
             /** Id */
             id: number;
             /**
+             * Is Sample
+             * @default false
+             */
+            is_sample: boolean;
+            /**
              * Materia
              * @default
              */
@@ -7275,6 +7280,11 @@ export interface components {
             folder_name: string;
             /** Id */
             id: number;
+            /**
+             * Is Sample
+             * @default false
+             */
+            is_sample: boolean;
             /**
              * Materia
              * @default
