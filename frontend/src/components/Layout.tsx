@@ -5,10 +5,8 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
 
 import { ApiError } from '@/api/client'
-import { useDismissNotice } from '@/api/documentEdit'
 import { useMe } from '@/api/hooks'
 import { useLiveUpdates } from '@/api/liveUpdates'
-import { useSettings } from '@/api/settings'
 import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
 import { useDesktopJobSignals } from '@/components/jobs/useDesktopJobSignals'
 import { useOpenedFiles } from '@/lib/useOpenedFiles'
@@ -100,8 +98,6 @@ export function Layout() {
     }
   }, [layout.active, layout.tint])
   const me = useMe()
-  const settings = useSettings()
-  const dismissNotice = useDismissNotice()
   const location = useLocation()
   const matches = useMatches()
   const [returnAddress, setReturnAddress] = useState('/')
@@ -174,16 +170,6 @@ export function Layout() {
   // le altre restano nei margini di prima.
   const bare = matches.some((m) => (m.handle as { bare?: boolean } | undefined)?.bare)
   const path = location.pathname
-  const wizardPasso = new URLSearchParams(location.search).get('passo')
-  const completeWizardOnNav = () => {
-    if (
-      path === '/impostazioni/configurazione' &&
-      (wizardPasso === '3' || wizardPasso === '4') &&
-      !settings.data?.notices.dismissed.includes('setup_wizard')
-    ) {
-      dismissNotice.mutate('setup_wizard')
-    }
-  }
 
   if (path.startsWith('/app/') || path.endsWith('/stampa')) {
     return (
@@ -199,7 +185,6 @@ export function Layout() {
       <div className="rt-layout flex min-h-dvh bg-background" data-rsvp={rsvp.active || undefined} data-zen={zen.active || undefined} data-tint={layout.active ? layout.tint ?? undefined : undefined}>
         {!phone && <nav
           aria-label="Navigazione" aria-hidden={layout.active || undefined} inert={layout.active || undefined}
-          onClickCapture={completeWizardOnNav}
           className="sticky top-0 hidden h-dvh w-(--rail-width) shrink-0 flex-col items-center gap-1.5 border-r bg-background py-3 md:flex"
         >
           <IconButton label="Nuova lezione" icon={Plus} side="right" variant="solid" onClick={() => openNewLesson()} aria-haspopup="dialog" />
@@ -225,7 +210,6 @@ export function Layout() {
         {/* Telefono: quattro schede in basso. */}
         {phone && <nav
           aria-label="Navigazione" aria-hidden={layout.active || undefined} inert={layout.active || undefined}
-          onClickCapture={completeWizardOnNav}
           className="fixed inset-x-0 bottom-0 z-50 flex min-h-16 items-center justify-around border-t bg-background pb-[max(8px,env(safe-area-inset-bottom))] pt-2 md:hidden"
         >
           {[LESSONS, CALENDAR, JOBS, SETTINGS].map((section) => (

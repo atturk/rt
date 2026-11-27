@@ -1,5 +1,5 @@
 import { Check, Loader2, Plus, Sparkles } from 'lucide-react'
-import { useId, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
@@ -58,6 +58,11 @@ export function SetupWizard({ settings }: { settings: Settings }) {
       dismiss.mutate('setup_wizard')
     }
   }
+  // Lasciare la schermata «Pronto» in qualunque modo (barra laterale, link, indietro) chiude la configurazione:
+  // lo fa la pagina stessa all'uscita, così il Layout non carica le impostazioni a ogni avvio.
+  const leavingReady = useRef<() => void>(() => {})
+  useEffect(() => { leavingReady.current = () => { if (step === STEPS.length) markCompleted() } })
+  useEffect(() => () => leavingReady.current(), [])
   const later = () => {
     if (!settings.notices.dismissed.includes('setup_wizard')) {
       dismiss.mutate('setup_wizard', { onSettled: () => void navigate('/') })
