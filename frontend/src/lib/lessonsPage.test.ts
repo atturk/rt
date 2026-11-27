@@ -209,6 +209,7 @@ describe('stato e Info', () => {
   it('il pallino: in corso prima di tutto, poi errore, da verificare, pronta', () => {
     expect(lessonStatus(lesson(1, { pending_issues: 2 }), true)).toBe('in-corso')
     expect(lessonStatus(lesson(1, { error: 'illeggibile' }), false)).toBe('errore')
+    expect(lessonStatus(lesson(1, { phases: { build: 'MISSING' } }), false, true)).toBe('errore')
     expect(lessonStatus(lesson(1, { pending_issues: 2 }), false)).toBe('da-verificare')
     expect(lessonStatus(lesson(1), false)).toBe('pronta')
     expect(lessonStatus(lesson(1, { phases: { build: 'MISSING' } }), false)).toBe('da-completare')

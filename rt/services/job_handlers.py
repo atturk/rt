@@ -72,7 +72,10 @@ def run_pipeline_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     if is_audio_input(inputs) and job.lesson_path and fs.isdir(job.lesson_path):
         # Ripresa dopo una decisione (es. scaletta approvata): la lezione è già stata creata
         # dall'audio, si riparte da lì invece di rifare il setup sulla stessa cartella.
-        inputs = [job.lesson_path]
+        # Se invece il setup si è fermato prima della trascrizione, serve riprendere il setup.
+        from rt.pipeline.setup import _resumable_setup_folder
+        if not _resumable_setup_folder(job.lesson_path):
+            inputs = [job.lesson_path]
     if is_audio_input(inputs):
         reason = transcription_unavailable_reason(options.mock, options.skip_transcribe)
         if reason:

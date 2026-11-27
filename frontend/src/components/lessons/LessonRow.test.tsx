@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
+import type { Schemas } from '@/api/client'
 import { LessonRow, StudyRing } from './LessonsView'
 import type { Lesson } from '@/lib/format'
 
@@ -53,4 +55,38 @@ it.each([
 it.each([[3, 4, 3, 10, true], [10, 0, 0, 10, true], [3, 3, 3, 10, false], [0, 0, 0, 0, false]])('spunta con %s apprese, %s in apprendimento, %s ignorate su %s', (learned, learning, ignored, total, complete) => {
   render(<MemoryRouter><StudyRing lesson={{ ...lesson, study_learned: learned as number, study_learning: learning as number, study_ignored: ignored as number, unit_count: total as number }} /></MemoryRouter>)
   expect(!!screen.queryByTestId('lesson-study-complete')).toBe(complete)
+})
+
+it('mostra stato errore, messaggio e Riprova se l ultimo job della lezione è fallito', () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const failedJob = {
+    id: 'job-err-1',
+    type: 'run_pipeline',
+    state: 'failed',
+    error: 'SetupError: macparakeet-cli non trovato.',
+    error_message: 'macparakeet-cli non trovato.',
+    attempts: 1,
+    cancel_requested: false,
+    payload: {},
+  } as Schemas['Job']
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <ul>
+          <LessonRow
+            lesson={{ ...lesson, state: 'metadata_only', phases: { prepare: 'MISSING', outline: 'MISSING', rewrite: 'MISSING', review: 'MISSING', build: 'MISSING' } }}
+            grouping="materia"
+            running={false}
+            failedJob={failedJob}
+            selecting={false}
+            selected={false}
+            onSelect={() => {}}
+          />
+        </ul>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(screen.getByTestId('lesson-status')).toHaveAttribute('data-status', 'errore')
+  expect(screen.getByTestId('lesson-row-error')).toHaveTextContent('macparakeet-cli non trovato.')
+  expect(screen.getByRole('button', { name: 'Riprova' })).toBeInTheDocument()
 })

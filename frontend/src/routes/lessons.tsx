@@ -164,6 +164,13 @@ export function DashboardPage() {
   const [selecting, setSelecting] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
   const running = new Set((jobs.data ?? []).filter((j) => isActive(j.state) && j.lesson_id != null).map((j) => j.lesson_id!))
+  const failedJobs = new Map<number, Schemas['Job']>()
+  const seenLessonJobs = new Set<number>()
+  for (const j of jobs.data ?? []) {
+    if (j.lesson_id == null || seenLessonJobs.has(j.lesson_id)) continue
+    seenLessonJobs.add(j.lesson_id)
+    if (j.state === 'failed') failedJobs.set(j.lesson_id, j)
+  }
   const groups = lessonsGroups(filtered, prefs, undefined, activeCategoryPin)
   const chosen = filtered.filter((l) => selected.has(l.id))
   useSearchShortcut('lessons-search')
@@ -229,6 +236,7 @@ export function DashboardPage() {
             groups={groups}
             grouping={prefs.group}
             running={running}
+            failedJobs={failedJobs}
             selecting={selecting}
             selected={selected}
             onSelected={setSelected}
@@ -435,7 +443,7 @@ export function LessonPage() {
           {outline.isError && !(outline.error instanceof ApiError && outline.error.code === 'outline_not_found') && <Alert tone="danger" className="mt-5">{errorMessage(outline.error)}<Button size="sm" variant="outline" onClick={() => void outline.refetch()}>Riprova</Button></Alert>}
           {outline.data && pendingOutline
             ? <LessonOutline key={outline.data.expires_at ?? JSON.stringify(outline.data.macro_sections)} lessonId={id} outline={outline.data} busy={!!job && isActive(job.state)} mock={job?.payload.mock === true || (typeof job?.payload.options === 'object' && job.payload.options != null && 'mock' in job.payload.options && job.payload.options.mock === true)} refresh={outline.refetch} />
-            : <DocumentCard lesson={l} outline={outline.data} job={job} actionsRef={editorActions} reviewOpen={panel === 'verifica'} classifierOpen={panel === 'classificatore'} onEditingChange={setEditingDocument} />}
+            : <DocumentCard lesson={l} outline={outline.data} job={job} failed={!!failedJob} actionsRef={editorActions} reviewOpen={panel === 'verifica'} classifierOpen={panel === 'classificatore'} onEditingChange={setEditingDocument} />}
         </LessonPageNavigation>
       </div>
       {l.has_audio && <AudioPlayer lessonId={id} panelOpen={!!panel} />}
@@ -550,7 +558,7 @@ function LessonProgress({ lessonId, job, pendingOutline }: { lessonId: number; j
 const LessonEditor = lazy(() => import('@/components/lesson/LessonEditor').then((m) => ({ default: m.LessonEditor })))
 
 /** Documento della lezione: si legge e si modifica nello stesso posto, come in Obsidian. */
-function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, reviewOpen, classifierOpen }: { outline?: Schemas['Outline']; job?: Schemas['Job']; classifierOpen: boolean; reviewOpen: boolean; actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
+function DocumentCard({ lesson: l, outline, job, failed = false, onEditingChange, actionsRef, reviewOpen, classifierOpen }: { outline?: Schemas['Outline']; job?: Schemas['Job']; failed?: boolean; classifierOpen: boolean; reviewOpen: boolean; actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
   const id = l.id
   const document = useLessonDocument(id)
   const running = !!job && isActive(job.state)
@@ -558,6 +566,7 @@ function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, re
   const doc = live?.document ?? document.data
   // Il documento non c'è ancora e una fase lo sta preparando: lo scheletro, non il testo che lo spiega.
   const writing = !!doc?.pending && !live && running
+  if (failed && doc?.pending && !running) return null
   return (
     <div className="mt-6">
       {document.isPending && !live && <DocumentSkeleton />}

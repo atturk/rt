@@ -191,3 +191,39 @@ it('mostra il messaggio leggibile error_message invece del testo tecnico nel riq
   expect(banner).toHaveTextContent("Non riesco a leggere l'audio «finto-audio.mp3».")
   expect(banner).not.toHaveTextContent('SetupError')
 })
+
+it('se la trascrizione è fallita e manca il documento, non mostra la bozza dell editor sotto al banner di errore', () => {
+  workflow.document = {
+    markdown: 'Questa lezione non è ancora pronta.',
+    html: '',
+    final: false,
+    pending: true,
+    sections: [],
+  }
+  workflow.jobs = [
+    {
+      id: 'job-fail-empty',
+      type: 'run_pipeline',
+      state: 'failed',
+      error: 'SetupError: macparakeet-cli non trovato.',
+      error_message: 'macparakeet-cli non trovato.',
+      attempts: 1,
+      cancel_requested: false,
+      payload: {},
+    } as Schemas['Job'],
+  ]
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter initialEntries={['/lezioni/1']}>
+        <Routes>
+          <Route path="/lezioni/:lessonId" element={<LessonPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  const banner = screen.getByTestId('failed-lesson-banner')
+  expect(banner).toHaveTextContent('macparakeet-cli non trovato.')
+  expect(within(banner).getByRole('button', { name: 'Riprova' })).toBeInTheDocument()
+  expect(screen.queryByTestId('document-preview-note')).toBeNull()
+  expect(screen.queryByLabelText('Editor')).toBeNull()
+})

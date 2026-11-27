@@ -741,8 +741,10 @@ def job_needs_stt(job_type: str, payload: Optional[Dict[str, Any]], lesson_path:
         return False
     if job_type == "run_pipeline" and lesson_path:
         # ripresa dopo una decisione: la lezione esiste già, la trascrizione è fatta
+        # (se è rimasta ai soli metadati provvisori va invece ritrascritta).
+        from rt.pipeline.setup import _resumable_setup_folder
         from rt.storage import fs
-        return not fs.isdir(lesson_path)
+        return not fs.isdir(lesson_path) or _resumable_setup_folder(lesson_path)
     return True
 
 
