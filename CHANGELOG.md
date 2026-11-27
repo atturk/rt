@@ -9,6 +9,7 @@ Seconda beta della 4.3.10: aggiornamenti dentro Impostazioni senza popup, instal
 - **Aggiornamenti senza popup**: un pallino sull'ingranaggio e su Impostazioni › Info e aggiornamenti segnala una versione nuova, il download pronto o un errore; il download mostra la barra e si può continuare a usare RT.
 - **«Installa e riavvia» più rapido**: RT si chiude subito, l'aggiornamento si installa dietro le quinte e RT si riapre da sola; un download interrotto riprende da dove si era fermato.
 - **Tooltip «i» e «?»**: si aprono anche col clic, non solo passandoci sopra.
+- **Caricamento della lista Lezioni**: gruppi a card con barre che luccicano, come la pagina vera.
 - **Icona nella barra dei menu**: all'apertura di RT riparte se era ferma, così c'è sempre mentre RT è aperta o lavora in background.
 
 ### Correzioni
