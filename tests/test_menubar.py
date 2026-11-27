@@ -236,3 +236,41 @@ def test_api_jobs_state_active_returns_only_active_jobs_with_lesson_title(api_cl
     assert j_active in ids and j_done not in ids
     mine = next(j for j in active if j["id"] == j_active)
     assert mine["lesson_title"]
+
+
+def test_install_macos_dock_menu_registers_selector_and_builds_menu(monkeypatch):
+    import types
+    from rt import window as rt_window
+
+    added = []
+    fake_delegate_cls = type("AppDelegate", (), {})
+    fake_cocoa = types.SimpleNamespace(BrowserView=types.SimpleNamespace(AppDelegate=fake_delegate_cls))
+    fake_webview_platforms = types.SimpleNamespace(cocoa=fake_cocoa)
+    fake_webview = types.SimpleNamespace(platforms=fake_webview_platforms)
+    fake_objc = types.SimpleNamespace(
+        selector=lambda fn, selector, signature: (fn, selector, signature),
+        classAddMethods=lambda cls, methods: added.append((cls, methods)),
+    )
+    fake_foundation = types.SimpleNamespace(
+        NSObject=object,
+        NSAttributedString=MagicMock(),
+    )
+    fake_appkit = MagicMock()
+    monkeypatch.setitem(sys.modules, "objc", fake_objc)
+    monkeypatch.setitem(sys.modules, "webview", fake_webview)
+    monkeypatch.setitem(sys.modules, "webview.platforms", fake_webview_platforms)
+    monkeypatch.setitem(sys.modules, "webview.platforms.cocoa", fake_cocoa)
+    monkeypatch.setitem(sys.modules, "Foundation", fake_foundation)
+    monkeypatch.setitem(sys.modules, "AppKit", fake_appkit)
+    monkeypatch.setattr(menubar, "fetch_active_jobs", lambda url, timeout=0.5: ([], True))
+    monkeypatch.setattr(menubar, "read_start_at_login", lambda: True)
+
+    rt_window.install_macos_dock_menu(window=Mock(), base_url="http://127.0.0.1:8765")
+    assert len(added) == 1
+    cls, methods = added[0]
+    assert cls is fake_delegate_cls
+    fn, sel, sig = methods[0]
+    assert sel == b"applicationDockMenu:" and sig == b"@@:@"
+    result_menu = fn(None, None)
+    assert result_menu is not None
+    fake_appkit.NSMenu.alloc.return_value.init.return_value.setAutoenablesItems_.assert_called_with(False)

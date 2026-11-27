@@ -1277,6 +1277,81 @@ def _smoke(window) -> None:
         _destroy_window(window)
 
 
+_dock_menu_target = None
+
+
+def _get_dock_menu_target(window, base_url: str):
+    global _dock_menu_target
+    from Foundation import NSObject
+
+    class _DockMenuHandler(NSObject):
+        def onOpenRT_(self, _sender):
+            try:
+                from AppKit import NSApplication
+                NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+                native = getattr(window, "native", None)
+                if native is not None and hasattr(native, "makeKeyAndOrderFront_"):
+                    native.makeKeyAndOrderFront_(None)
+            except Exception as exc:
+                _log(f"Dock menu Apri RT non riuscito: {exc}")
+
+        def onToggleLogin_(self, _sender):
+            try:
+                from rt.menubar import toggle_start_at_login
+                toggle_start_at_login(base_url)
+            except Exception as exc:
+                _log(f"Dock menu avvio all'accesso non riuscito: {exc}")
+
+        def onQuitRT_(self, _sender):
+            def _confirm(message: str) -> bool:
+                return _confirm_quit_with_jobs(window, message)
+
+            def _stop_and_close():
+                try:
+                    from rt.desktop import stop_background
+                    stop_background(base_url)
+                    _destroy_window(window)
+                except Exception as exc:
+                    _log(f"Dock menu Esci da RT non riuscito: {exc}")
+
+            try:
+                from rt.menubar import fetch_active_jobs
+                jobs, _ = fetch_active_jobs(base_url, timeout=1.0)
+                warning = active_jobs_quit_message(jobs) if jobs is not None else None
+                if warning and not _confirm(warning):
+                    return
+                threading.Thread(target=_stop_and_close, name="rt-dock-quit", daemon=True).start()
+            except Exception as exc:
+                _log(f"Dock menu Esci da RT non riuscito: {exc}")
+
+    alloc_fn = getattr(_DockMenuHandler, "alloc", None)
+    _dock_menu_target = alloc_fn().init() if alloc_fn is not None else _DockMenuHandler()
+    return _dock_menu_target
+
+
+def install_macos_dock_menu(window=None, base_url: str = "") -> None:
+    """Registra applicationDockMenu: sul delegato di pywebview con le stesse azioni della barra dei menu."""
+    try:
+        import objc
+        from webview.platforms import cocoa
+
+        target = _get_dock_menu_target(window, base_url)
+        selector = b"applicationDockMenu:"
+
+        def dock_menu(self, _app):
+            from rt.menubar import build_nsmenu, fetch_active_jobs, menu_model, read_start_at_login
+            jobs, reachable = fetch_active_jobs(base_url, timeout=0.5)
+            model = menu_model(jobs, start_at_login=read_start_at_login(), api_reachable=reachable)
+            return build_nsmenu(model, target)
+
+        objc.classAddMethods(
+            cocoa.BrowserView.AppDelegate,
+            [objc.selector(dock_menu, selector=selector, signature=b"@@:@")],
+        )
+    except Exception as exc:
+        _log(f"Metodo applicationDockMenu non registrato: {exc}")
+
+
 def install_macos_open_files(window=None) -> None:
     """Registra application:openFiles: sul delegato dell'applicazione di pywebview."""
     try:
@@ -1395,6 +1470,10 @@ def open_window(base_url: str, path: str = "/") -> int:
                 install_macos_open_files(window)
             except Exception as exc:
                 _log(f"Open files macOS non configurato: {exc}")
+            try:
+                install_macos_dock_menu(window, base_url)
+            except Exception as exc:
+                _log(f"Menu Dock macOS non configurato: {exc}")
 
         def _watch_opened_files():
             while not stop_watcher.is_set():
