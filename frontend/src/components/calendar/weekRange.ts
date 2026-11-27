@@ -31,6 +31,44 @@ export function weekRangeLabel(range: WeekRange): string {
   const first = isoWeek(range.from), last = isoWeek(shiftWeekDate(range.to, -7))
   return first.year === last.year ? `Settimane ${first.number}–${last.number}` : `Settimane ${first.number} (${first.year})–${last.number} (${last.year})`
 }
+export function weekRangesLabel(ranges: readonly WeekRange[]): string {
+  return ranges.map(weekRangeLabel).join(', ')
+}
+export function rangeBetween(a: string, b: string): string[] {
+  const [from, to] = [a, b].sort()
+  const weeks: string[] = []
+  for (let week = from; week <= to; week = shiftWeekDate(week, 7)) weeks.push(week)
+  return weeks
+}
+export function toggleWeek(selected: ReadonlySet<string>, week: string): Set<string> {
+  const next = new Set(selected)
+  if (next.has(week)) next.delete(week)
+  else next.add(week)
+  return next
+}
+export function contiguousRuns(selected: Iterable<string>): WeekRange[] {
+  const sorted = [...new Set(selected)].sort()
+  if (!sorted.length) return []
+  const runs: WeekRange[] = []
+  let from = sorted[0], prev = sorted[0]
+  for (let i = 1; i < sorted.length; i++) {
+    const week = sorted[i]
+    if (shiftWeekDate(prev, 7) === week) { prev = week; continue }
+    runs.push({ from, to: shiftWeekDate(prev, 7) })
+    from = prev = week
+  }
+  runs.push({ from, to: shiftWeekDate(prev, 7) })
+  return runs
+}
+export function expandWeekRanges(initial?: WeekRange | readonly WeekRange[] | null): string[] {
+  if (!initial) return []
+  const ranges = Array.isArray(initial) ? initial : [initial]
+  const weeks = new Set<string>()
+  for (const range of ranges) {
+    for (let week = range.from; week < range.to; week = shiftWeekDate(week, 7)) weeks.add(week)
+  }
+  return [...weeks].sort()
+}
 export function weekOccupancy(entries: CalendarTemplateEntryView[], monday: string) {
   const valid = entries.filter(e => { const day = shiftWeekDate(monday, e.day_of_week); return e.valid_from <= day && (!e.valid_to || day < e.valid_to) })
   const hours = valid.reduce((n, e) => {
