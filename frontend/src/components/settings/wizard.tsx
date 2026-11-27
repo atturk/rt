@@ -10,6 +10,7 @@ import {
   useAssignPhase,
   useConnectionCatalog,
   useCostEstimate,
+  useSaveTranscription,
   type CatalogModel,
   type Settings,
 } from '@/api/settings'
@@ -19,6 +20,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { SecretInput } from '@/components/ui/secret-input'
 import { cn } from '@/lib/utils'
 import { SettingsDisclosure, SettingsInfoButton, SettingsRow, SettingsSelect as Select } from './ui'
 import { NewConnectionForm, PhaseRows } from './models'
@@ -379,47 +381,192 @@ const OPTIONAL_MODEL_ROWS: ReadonlyArray<{ job: 'image_description' | 'enrichmen
   },
 ]
 
-function WizardTranscriptionDownload({ settings }: { settings: Settings }) {
+type WizardEngine = 'macparakeet' | 'parakeet' | 'custom'
+
+const WIZARD_ENGINE_LABEL: Record<WizardEngine, string> = {
+  macparakeet: 'macparakeet',
+  parakeet: 'Parakeet ONNX',
+  custom: 'Server OpenAI-compatible',
+}
+
+function WizardTranscriptionCard({ settings, autoDownload = true }: { settings: Settings; autoDownload?: boolean }) {
   const components = useComponents()
   const download = useDownloadComponent()
-  const startedRef = useRef(false)
+  const save = useSaveTranscription()
+  const startedRef = useRef<Set<string>>(new Set())
+
+  const t = settings.transcription
+  const savedEngine = (t.engine || t.effective_engine || 'parakeet') as WizardEngine
+  const [selectedEngine, setSelectedEngine] = useState<WizardEngine | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [baseUrl, setBaseUrl] = useState(t.base_url ?? '')
+  const [model, setModel] = useState(t.model ?? '')
+  const [apiKey, setApiKey] = useState('')
+
+  const activeEngine = selectedEngine ?? savedEngine
+  const effectiveLocal =
+    activeEngine === 'custom'
+      ? null
+      : activeEngine === 'macparakeet' && t.effective_engine === 'parakeet' && !t.macparakeet_available
+        ? 'parakeet'
+        : activeEngine
+
   const items = Array.isArray(components.data) ? components.data : []
-  const transcription = items.find((c) => c.id === 'transcription')
-  const usesParakeet = settings.transcription.effective_engine === 'parakeet'
+  const targetId =
+    effectiveLocal === 'macparakeet'
+      ? 'macparakeet'
+      : effectiveLocal === 'parakeet'
+        ? 'transcription'
+        : null
+  const comp = targetId ? items.find((c) => c.id === targetId) : undefined
 
   useEffect(() => {
     if (
-      usesParakeet &&
-      transcription &&
-      transcription.available &&
-      transcription.state === 'not_downloaded' &&
-      !startedRef.current &&
+      autoDownload &&
+      comp &&
+      comp.available &&
+      comp.state === 'not_downloaded' &&
+      !startedRef.current.has(comp.id) &&
       !download.isPending
     ) {
-      startedRef.current = true
-      download.mutate('transcription')
+      startedRef.current.add(comp.id)
+      download.mutate(comp.id)
     }
-  }, [usesParakeet, transcription, download])
+  }, [autoDownload, comp, download])
 
-  if (!usesParakeet || !transcription) return null
+  const availableEngines: WizardEngine[] =
+    t.macparakeet_available || savedEngine === 'macparakeet'
+      ? ['macparakeet', 'parakeet', 'custom']
+      : ['parakeet', 'custom']
 
-  if (transcription.state === 'ready') {
-    return (
-      <div className="flex items-center gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-meta" data-testid="wizard-transcription-download">
-        <span className="font-semibold text-success">✓</span>
-        <span>Modello di trascrizione pronto</span>
-      </div>
+  function handleEnginePick(next: WizardEngine) {
+    setSelectedEngine(next)
+    if (next === 'custom') return
+    save.mutate(
+      { engine: next, base_url: baseUrl.trim(), model: model.trim(), api_key: null },
+      {
+        onSuccess: () => {
+          setSelectedEngine(null)
+        },
+      },
     )
   }
 
+  function handleSaveCustom() {
+    save.mutate(
+      { engine: 'custom', base_url: baseUrl.trim(), model: model.trim(), api_key: apiKey.trim() || null },
+      {
+        onSuccess: () => {
+          setApiKey('')
+          setSelectedEngine(null)
+          setPickerOpen(false)
+        },
+      },
+    )
+  }
+
+  if (!comp && activeEngine !== 'custom' && items.length === 0) return null
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3" data-testid="wizard-transcription-download">
-      <div className="min-w-0 flex-1 flex flex-col gap-1">
-        <span className="text-body font-medium text-foreground">Modello di trascrizione</span>
-        <ComponentProgressDetails component={transcription} />
+    <section
+      className="rounded-lg border bg-card"
+      aria-label="Trascrizione"
+      data-testid="wizard-transcription-download"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
+        <span className="text-body font-medium text-foreground">Trascrizione</span>
+        <button
+          type="button"
+          onClick={() => setPickerOpen((v) => !v)}
+          className="text-meta font-medium text-link hover:underline cursor-pointer"
+        >
+          {pickerOpen ? 'Chiudi' : 'Usa un altro motore'}
+        </button>
       </div>
-      <ComponentActions component={transcription} allowDelete={false} />
-    </div>
+
+      <div className="flex flex-col gap-3 px-4 py-3">
+        {pickerOpen && (
+          <div className="flex flex-col gap-2.5 rounded-md bg-muted/30 p-3">
+            <div role="radiogroup" aria-label="Motore di trascrizione" className="flex flex-col gap-1.5">
+              {availableEngines.map((eng) => (
+                <label key={eng} className="inline-flex cursor-pointer items-center gap-2 text-meta text-foreground">
+                  <input
+                    type="radio"
+                    name="wizard-stt-engine"
+                    value={eng}
+                    checked={activeEngine === eng}
+                    disabled={save.isPending}
+                    onChange={() => handleEnginePick(eng)}
+                    className="size-3.5 accent-primary"
+                  />
+                  <span>
+                    {WIZARD_ENGINE_LABEL[eng]}
+                    {eng === t.recommended ? ' · consigliato' : ''}
+                  </span>
+                </label>
+              ))}
+            </div>
+            {activeEngine === 'custom' && (
+              <div className="flex flex-col gap-2 border-t pt-2.5">
+                <Input
+                  aria-label="Base URL del server"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="http://localhost:8000/v1"
+                />
+                <Input
+                  aria-label="Modello del server"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder="whisper-1"
+                />
+                <SecretInput
+                  aria-label="Chiave API del server (facoltativa)"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={t.api_key_set ? 'Chiave già salvata (lascia vuoto)' : 'Chiave API (facoltativa)'}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={save.isPending || !baseUrl.trim() || !model.trim()}
+                    onClick={handleSaveCustom}
+                  >
+                    Salva server
+                  </Button>
+                </div>
+              </div>
+            )}
+            {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
+          </div>
+        )}
+
+        {activeEngine === 'custom' ? (
+          <div className="flex items-center justify-between gap-2 text-meta text-muted-foreground">
+            <span>
+              Server OpenAI-compatible
+              {t.base_url ? ` · ${t.base_url}` : ' · configura indirizzo e modello'}
+            </span>
+          </div>
+        ) : comp ? (
+          comp.state === 'ready' ? (
+            <div className="flex items-center gap-2 text-meta">
+              <span className="font-semibold text-success">✓</span>
+              <span>{comp.name} pronto</span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1 flex flex-col gap-1">
+                <span className="text-body font-medium text-foreground">{comp.name}</span>
+                <ComponentProgressDetails component={comp} />
+              </div>
+              <ComponentActions component={comp} allowDelete={false} />
+            </div>
+          )
+        ) : null}
+      </div>
+    </section>
   )
 }
 
@@ -669,7 +816,7 @@ function ModelsStep({ settings, onBack, onDone }: { settings: Settings; onBack: 
         </div>
       </section>
 
-      <WizardTranscriptionDownload settings={settings} />
+      <WizardTranscriptionCard settings={settings} />
 
       {mutationError && <Alert tone="danger">{mutationError}</Alert>}
 
@@ -787,7 +934,7 @@ function ProntoStep({ settings, onComplete }: { settings: Settings; onComplete: 
         </Link>
       </div>
 
-      <WizardTranscriptionDownload settings={settings} />
+      <WizardTranscriptionCard settings={settings} />
 
       <ul className="flex flex-col gap-1.5 rounded-lg bg-muted/30 px-4 py-3 text-meta" data-testid="wizard-summary">
         <li className="flex items-center gap-2">

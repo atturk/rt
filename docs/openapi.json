@@ -3801,6 +3801,7 @@
           "id": {
             "enum": [
               "transcription",
+              "macparakeet",
               "browser"
             ],
             "title": "Id",

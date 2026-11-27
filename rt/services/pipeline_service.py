@@ -254,7 +254,7 @@ def emit_stt_progress(ctx: RunContext, phase: str, msg: str) -> None:
     import re
     pct = None
     match = re.search(r"\b(\d{1,3})%", msg)
-    if match and ("Scarico" in msg or "modello di trascrizione" in msg):
+    if match and ("Scarico" in msg or "modello di trascrizione" in msg or "motore di trascrizione" in msg):
         pct = min(100, int(match.group(1)))
     ctx.progress(phase, pct, 100 if pct is not None else None, msg)
 
@@ -343,12 +343,12 @@ class TranscriptionUnavailable(RuntimeError):
 
 def transcription_unavailable_reason(mock: bool = False, skip_transcribe: bool = False) -> Optional[str]:
     """Motivo per cui l'ingest audio non può trascrivere qui (None se può). macparakeet-cli
-    esiste solo su macOS; il motore STT 'custom', Parakeet ONNX e la modalità mock girano ovunque."""
+    esiste solo su macOS Apple Silicon; il motore STT 'custom', Parakeet ONNX e la modalità mock girano ovunque."""
     import sys
     if mock or skip_transcribe:
         return None
     try:
-        from rt.core.config import effective_engine, load_config
+        from rt.core.config import effective_engine, is_apple_silicon, load_config
         engine = effective_engine(load_config().transcription)
         if engine == "custom":
             return None
@@ -358,12 +358,14 @@ def transcription_unavailable_reason(mock: bool = False, skip_transcribe: bool =
                 return None
             return ("Parakeet ONNX scelto ma il pacchetto onnx-asr non è installato. "
                     "Reinstalla RT oppure scegli un altro motore in Impostazioni.")
+        if is_apple_silicon():
+            return None
         if sys.platform == "darwin":
             from rt.pipeline.setup import find_macparakeet_binary
             if find_macparakeet_binary():
                 return None
-            return ("macparakeet-cli non trovato e Parakeet ONNX non è disponibile. "
-                    "Installa macparakeet-cli oppure reinstalla RT.")
+            return ("macparakeet funziona solo su Mac Apple Silicon e Parakeet ONNX non è disponibile. "
+                    "Reinstalla RT oppure scegli un server di trascrizione in Impostazioni.")
     except Exception:
         if sys.platform == "darwin":
             return None

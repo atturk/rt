@@ -21,7 +21,9 @@ import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { useUploadGuard } from '@/lib/uploadQueue'
 import { StudyZenContext, ZenContext, RsvpLayoutContext, IRLEN_COLORS, type RsvpLayoutState } from '@/lib/zen'
-import { UpdateNoticeDot } from '@/components/settings/UpdateNoticeDot'
+import { ComponentNoticeDot, UpdateNoticeDot } from '@/components/settings/UpdateNoticeDot'
+import { useUpdateNotice } from '@/components/settings/useAppUpdate'
+import { useComponentNotice } from '@/components/settings/useComponentNotice'
 import { cn } from '@/lib/utils'
 
 // Il riquadro di Salva/Condividi serve solo dopo un'esportazione: fuori dal JavaScript iniziale.
@@ -50,10 +52,16 @@ const CALENDAR: Section = {
 const JOBS: Section = { to: '/job', label: 'Job in corso', icon: Activity, match: (path) => /^\/(job|importa)(\/|$)/.test(path), badge: 'jobs' }
 const SETTINGS: Section = { to: '/impostazioni', label: 'Impostazioni', icon: Settings, match: (path) => /^\/(impostazioni|bot)(\/|$)/.test(path), badge: 'settings' }
 
+function SettingsBadge() {
+  const { notice } = useUpdateNotice()
+  if (notice) return <UpdateNoticeDot className="ring-2 ring-background" />
+  return <ComponentNoticeDot className="ring-2 ring-background" />
+}
+
 function Badge({ kind }: { kind: 'jobs' | 'settings' }) {
   return (
     <span className="pointer-events-none absolute -right-1 -top-1">
-      {kind === 'jobs' ? <JobsNavBadge /> : <UpdateNoticeDot className="ring-2 ring-background" />}
+      {kind === 'jobs' ? <JobsNavBadge /> : <SettingsBadge />}
     </span>
   )
 }
@@ -61,9 +69,17 @@ function Badge({ kind }: { kind: 'jobs' | 'settings' }) {
 function NavItem({ section, path, side, variant }: { section: Section; path: string; side: 'right' | 'top'; variant: 'rail' | 'ghost' }) {
   const active = section.match(path)
   const returnAddress = useReturnAddress()
+  const { notice: updateNotice } = useUpdateNotice()
+  const { missing: missingComponent } = useComponentNotice()
+  const target =
+    active && (section === JOBS || section === SETTINGS)
+      ? returnAddress
+      : section === SETTINGS && !updateNotice && missingComponent
+        ? '/impostazioni/lavorazione#componenti'
+        : section.to
   return (
     <IconLink
-      to={active && (section === JOBS || section === SETTINGS) ? returnAddress : section.to}
+      to={target}
       label={section.label}
       icon={section.icon}
       side={side}

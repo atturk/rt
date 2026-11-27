@@ -9,6 +9,7 @@ import {
   type ComponentStatus,
 } from '@/api/components'
 import { useConverters } from '@/api/converters'
+import { useSettings } from '@/api/settings'
 import { ProgressBar } from '@/components/jobs/JobParts'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -253,10 +254,24 @@ export function PresentationsRow() {
 
 export function ComponentsSection() {
   const components = useComponents()
+  const settings = useSettings()
   const remove = useDeleteComponent()
   const [confirmDelete, setConfirmDelete] = useState<ComponentStatus | null>(null)
 
-  const items = Array.isArray(components.data) ? components.data : []
+  const rawItems = Array.isArray(components.data) ? components.data : []
+  const stt = settings.data?.transcription
+  const items = rawItems.filter((c) => {
+    if (c.id === 'macparakeet') {
+      return c.available || c.state !== 'not_downloaded'
+    }
+    if (c.id === 'transcription') {
+      if (stt?.macparakeet_available) {
+        return stt.engine === 'parakeet' || stt.effective_engine === 'parakeet' || c.state === 'downloading'
+      }
+      return true
+    }
+    return true
+  })
 
   return (
     <SettingsGroup

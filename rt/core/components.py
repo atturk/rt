@@ -1,16 +1,18 @@
 """
 rt.core.components
 Gestione dei componenti scaricabili di RT:
+- macparakeet: Motore di trascrizione per Mac (macparakeet-cli + modello parakeet-v3, ~500 MB)
 - transcription: Modello di trascrizione (Parakeet ONNX + Silero VAD, ~670 MB)
-- browser: Browser per le catture (Chromium Playwright, facoltativo)
+- browser: Browser per PDF e catture (Chromium headless Playwright)
 
 Ogni componente ha un solo download attivo alla volta garantito da file lock in
-<models_dir>/.lock (e .browser.lock), scrive stato e progresso in <models_dir>/components.json
-letto da GET /api/v1/components e dai job del worker, e supporta pausa/ripresa (.part) e
-eliminazione.
+<models_dir>/.lock (.macparakeet.lock, .browser.lock), scrive stato e progresso in
+<models_dir>/components.json letto da GET /api/v1/components e dai job del worker, e supporta
+pausa/ripresa (.part) e eliminazione.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -19,20 +21,36 @@ import shutil
 import signal
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from rt.core import onnx_stt, paths
+from rt.core import config as rt_config, onnx_stt, paths
 from rt.core.filelock import _expired, acquire_file_lock, release_file_lock
 
+MACPARAKEET_ID = "macparakeet"
 TRANSCRIPTION_ID = "transcription"
 BROWSER_ID = "browser"
-VALID_COMPONENT_IDS = (TRANSCRIPTION_ID, BROWSER_ID)
+VALID_COMPONENT_IDS = (MACPARAKEET_ID, TRANSCRIPTION_ID, BROWSER_ID)
+
+MACPARAKEET_URL = (
+    "https://github.com/moona3k/macparakeet/releases/download/cli-v5.1.0/"
+    "macparakeet-cli-5.1.0-darwin-arm64.tar.gz"
+)
+MACPARAKEET_TARBALL_BYTES = 20_679_495
+MACPARAKEET_TARBALL_SHA256 = "b48210cb22eaf834fb4fea2201dab9334a1165ccaf4133991154c33123b43674"
+MACPARAKEET_TARBALL_MEMBER = "macparakeet-cli-5.1.0-darwin-arm64/macparakeet-cli"
+MACPARAKEET_BINARY_BYTES = 60_823_984
+MACPARAKEET_BINARY_SHA256 = "ef07692faca2364ac0a24345a96389dd97721f6683f7ccee285bb4b9231212f5"
+MACPARAKEET_MODEL_NAME = "parakeet-v3"
+MACPARAKEET_MODEL_APPROX_BYTES = 480 * 1024 * 1024
+MACPARAKEET_APPROX_BYTES = MACPARAKEET_TARBALL_BYTES + MACPARAKEET_MODEL_APPROX_BYTES
 
 TRANSCRIPTION_APPROX_BYTES = 670 * 1024 * 1024
-BROWSER_APPROX_BYTES = 170 * 1024 * 1024
+BROWSER_APPROX_BYTES = 110 * 1024 * 1024
 
 LOCK_STALE_SECONDS = 30.0
 
@@ -104,9 +122,98 @@ def _state_file() -> str:
 def lock_path_for(component_id: str) -> str:
     if component_id == TRANSCRIPTION_ID:
         return os.path.join(onnx_stt.models_dir(), ".lock")
+    if component_id == MACPARAKEET_ID:
+        return os.path.join(onnx_stt.models_dir(), ".macparakeet.lock")
     if component_id == BROWSER_ID:
         return os.path.join(onnx_stt.models_dir(), ".browser.lock")
     raise ComponentNotFound(f"Componente sconosciuto: {component_id}")
+
+
+def macparakeet_bin_dir() -> str:
+    return os.path.join(paths.data_dir(), "bin")
+
+
+def macparakeet_bin_path() -> str:
+    return os.path.join(macparakeet_bin_dir(), "macparakeet-cli")
+
+
+def macparakeet_part_path() -> str:
+    return os.path.join(macparakeet_bin_dir(), "macparakeet-cli.tar.gz.part")
+
+
+def macparakeet_models_root() -> str:
+    explicit = os.environ.get("RT_MACPARAKEET_MODELS_DIR", "").strip()
+    if explicit:
+        return os.path.abspath(os.path.expanduser(explicit))
+    return os.path.join(os.path.expanduser("~"), "Library", "Application Support", "FluidAudio", "Models")
+
+
+def _macparakeet_model_entries() -> List[str]:
+    root = macparakeet_models_root()
+    if not os.path.isdir(root):
+        return []
+    entries: List[str] = []
+    for name in os.listdir(root):
+        low = name.lower()
+        if ("parakeet" in low and "v3" in low) or low == MACPARAKEET_MODEL_NAME:
+            entries.append(os.path.join(root, name))
+    return entries
+
+
+def _entry_size(path: str) -> int:
+    if os.path.isdir(path):
+        return _dir_size(path)
+    try:
+        return os.path.getsize(path) if os.path.isfile(path) else 0
+    except OSError:
+        return 0
+
+
+def _macparakeet_models_bytes() -> int:
+    entries = _macparakeet_model_entries()
+    if entries:
+        return sum(_entry_size(p) for p in entries)
+    return _dir_size(macparakeet_models_root())
+
+
+def macparakeet_available() -> bool:
+    return rt_config.is_apple_silicon()
+
+
+def _macparakeet_binary_installed() -> Optional[str]:
+    local = macparakeet_bin_path()
+    if os.path.isfile(local) and os.access(local, os.X_OK):
+        return local
+    from rt.pipeline.setup import find_macparakeet_binary
+    return find_macparakeet_binary() or None
+
+
+def _macparakeet_incomplete_download() -> bool:
+    saved = _read_all_states().get(MACPARAKEET_ID) or {}
+    return bool(saved) and not saved.get("model_ready") and saved.get("state") in ("downloading", "paused", "error")
+
+
+def macparakeet_ready() -> bool:
+    if not _macparakeet_binary_installed():
+        return False
+    saved = _read_all_states().get(MACPARAKEET_ID) or {}
+    if saved.get("state") in ("paused", "error") and not saved.get("model_ready"):
+        return False
+    if saved.get("model_ready"):
+        return True
+    return bool(_macparakeet_model_entries() and _macparakeet_models_bytes() > 0)
+
+
+def _macparakeet_partial_bytes() -> int:
+    total = _entry_size(macparakeet_part_path()) + _entry_size(macparakeet_bin_path())
+    total += _macparakeet_models_bytes()
+    return total
+
+
+def _macparakeet_ready_bytes() -> int:
+    bin_path = _macparakeet_binary_installed()
+    bin_bytes = _entry_size(bin_path) if bin_path else 0
+    return bin_bytes + _macparakeet_models_bytes()
 
 
 def browsers_dir() -> str:
@@ -269,7 +376,27 @@ def _acquire_nonblocking(lock_path: str) -> bool:
         return False
 
 
+def _effective_engine_safe() -> str:
+    try:
+        return rt_config.effective_engine()
+    except Exception:
+        return rt_config.default_engine()
+
+
 def _component_meta(component_id: str) -> Dict[str, Any]:
+    effective = _effective_engine_safe()
+    if component_id == MACPARAKEET_ID:
+        avail = macparakeet_available()
+        return {
+            "id": MACPARAKEET_ID,
+            "name": "Motore di trascrizione",
+            "description": "necessario per trascrivere l'audio",
+            "detail": "macparakeet + modello parakeet-v3",
+            "approx_bytes": MACPARAKEET_APPROX_BYTES,
+            "required": bool(avail and effective == "macparakeet"),
+            "available": avail,
+            "unavailable_reason": None if avail else "Disponibile solo su Mac con Apple Silicon.",
+        }
     if component_id == TRANSCRIPTION_ID:
         return {
             "id": TRANSCRIPTION_ID,
@@ -277,7 +404,7 @@ def _component_meta(component_id: str) -> Dict[str, Any]:
             "description": "necessario per trascrivere l'audio",
             "detail": "Parakeet ONNX + VAD",
             "approx_bytes": TRANSCRIPTION_APPROX_BYTES,
-            "required": True,
+            "required": effective == "parakeet",
             "available": onnx_stt.available(),
             "unavailable_reason": None if onnx_stt.available() else "Pacchetto onnx-asr non installato.",
         }
@@ -285,8 +412,8 @@ def _component_meta(component_id: str) -> Dict[str, Any]:
         avail = browser_available()
         return {
             "id": BROWSER_ID,
-            "name": "Browser per le catture",
-            "description": "facoltativo",
+            "name": "Browser per PDF e catture",
+            "description": "serve per esportare in PDF e per le visualizzazioni",
             "detail": "Chromium Playwright",
             "approx_bytes": BROWSER_APPROX_BYTES,
             "required": False,
@@ -303,6 +430,9 @@ def get_component(component_id: str) -> Dict[str, Any]:
     if component_id == TRANSCRIPTION_ID:
         ready = (not active) and onnx_stt.model_ready()
         disk_bytes = _transcription_ready_bytes() if ready else _transcription_partial_bytes()
+    elif component_id == MACPARAKEET_ID:
+        ready = (not active) and macparakeet_ready()
+        disk_bytes = _macparakeet_ready_bytes() if ready else _macparakeet_partial_bytes()
     else:
         ready = (not active) and browser_ready()
         disk_bytes = _browser_disk_bytes() if ready else 0
@@ -333,7 +463,7 @@ def get_component(component_id: str) -> Dict[str, Any]:
         eta_seconds = None
         eta_label = None
         error = saved.get("error") or "Download non riuscito."
-    elif saved.get("state") == "paused" or (component_id == TRANSCRIPTION_ID and disk_bytes > 0):
+    elif saved.get("state") == "paused" or (component_id in (TRANSCRIPTION_ID, MACPARAKEET_ID) and disk_bytes > 0):
         state = "paused" if (saved.get("state") == "paused" or disk_bytes > 0) else "not_downloaded"
         downloaded = disk_bytes
         total = saved.get("total_bytes")
@@ -525,6 +655,435 @@ def ensure_transcription_model(
     )
 
 
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validate_safe_member_name(name: str) -> None:
+    if not name or os.path.isabs(name) or name.startswith("/"):
+        raise ComponentError(f"Percorso non sicuro nell'archivio macparakeet: {name!r}")
+    parts = PurePosixPath(name).parts
+    if any(part in ("", ".", "..") for part in parts):
+        raise ComponentError(f"Percorso non sicuro nell'archivio macparakeet: {name!r}")
+
+
+def _download_macparakeet_tarball(
+    part_path: str,
+    *,
+    on_bytes: Optional[Callable[[int, Optional[int]], None]] = None,
+    cancel_token: Optional[Any] = None,
+) -> None:
+    import requests
+
+    if os.environ.get("RT_MACPARAKEET_OFFLINE") == "1" and not MACPARAKEET_URL.startswith(("http://127.0.0.1", "http://localhost")):
+        raise ComponentError("Download di macparakeet-cli disattivato nei test.")
+
+    os.makedirs(os.path.dirname(part_path), exist_ok=True)
+    resume_from = os.path.getsize(part_path) if os.path.isfile(part_path) else 0
+    headers: Dict[str, str] = {"Range": f"bytes={resume_from}-"} if resume_from > 0 else {}
+
+    def _stream(resp: Any, start_at: int) -> None:
+        total_hint: Optional[int] = None
+        content_len = resp.headers.get("Content-Length")
+        if content_len and str(content_len).isdigit():
+            total_hint = start_at + int(content_len)
+        mode = "ab" if start_at > 0 else "wb"
+        downloaded = start_at
+        with open(part_path, mode) as stream:
+            for chunk in resp.iter_content(chunk_size=64 * 1024):
+                if cancel_token is not None and getattr(cancel_token, "cancelled", False):
+                    raise RuntimeError("Trascrizione annullata")
+                if not chunk:
+                    continue
+                stream.write(chunk)
+                downloaded += len(chunk)
+                if on_bytes:
+                    on_bytes(downloaded, total_hint)
+
+    try:
+        with requests.get(MACPARAKEET_URL, headers=headers, stream=True, timeout=(15, 60), allow_redirects=True) as resp:
+            if resp.status_code == 416 and resume_from > 0:
+                if _sha256_file(part_path) == MACPARAKEET_TARBALL_SHA256.lower():
+                    return
+                os.unlink(part_path)
+                with requests.get(MACPARAKEET_URL, stream=True, timeout=(15, 60), allow_redirects=True) as resp2:
+                    resp2.raise_for_status()
+                    _stream(resp2, 0)
+                return
+            resp.raise_for_status()
+            if resp.status_code == 206:
+                content_range = resp.headers.get("Content-Range", "")
+                if content_range and not content_range.startswith(f"bytes {resume_from}-"):
+                    resume_from = 0
+            elif resume_from > 0:
+                resume_from = 0
+            _stream(resp, resume_from)
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise ComponentError(f"Download di macparakeet-cli non riuscito: {exc}") from exc
+
+
+def _extract_and_verify_macparakeet(part_path: str, bin_path: str) -> None:
+    actual_tar_sha = _sha256_file(part_path)
+    if actual_tar_sha != MACPARAKEET_TARBALL_SHA256.lower():
+        try:
+            os.unlink(part_path)
+        except OSError:
+            pass
+        raise ComponentError("Verifica SHA256 dell'archivio macparakeet-cli non riuscita.")
+
+    _validate_safe_member_name(MACPARAKEET_TARBALL_MEMBER)
+    os.makedirs(os.path.dirname(bin_path), exist_ok=True)
+    tmp_bin = f"{bin_path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        with tarfile.open(part_path, "r:gz") as tar:
+            try:
+                member = tar.getmember(MACPARAKEET_TARBALL_MEMBER)
+            except KeyError:
+                raise ComponentError("Archivio macparakeet-cli incompleto: binario mancante.") from None
+            _validate_safe_member_name(member.name)
+            if not member.isreg():
+                raise ComponentError("Membro macparakeet-cli non valido nell'archivio.")
+            src = tar.extractfile(member)
+            if src is None:
+                raise ComponentError("Impossibile leggere macparakeet-cli dall'archivio.")
+            digest = hashlib.sha256()
+            with src, open(tmp_bin, "wb") as dst:
+                for chunk in iter(lambda: src.read(1024 * 1024), b""):
+                    digest.update(chunk)
+                    dst.write(chunk)
+        if digest.hexdigest() != MACPARAKEET_BINARY_SHA256.lower():
+            raise ComponentError("Verifica SHA256 del binario macparakeet-cli non riuscita.")
+        os.chmod(tmp_bin, 0o755)
+        os.replace(tmp_bin, bin_path)
+    except ComponentError:
+        if os.path.exists(tmp_bin):
+            try:
+                os.unlink(tmp_bin)
+            except OSError:
+                pass
+        try:
+            os.unlink(part_path)
+        except OSError:
+            pass
+        raise
+    except (OSError, tarfile.TarError) as exc:
+        if os.path.exists(tmp_bin):
+            try:
+                os.unlink(tmp_bin)
+            except OSError:
+                pass
+        try:
+            os.unlink(part_path)
+        except OSError:
+            pass
+        raise ComponentError(f"Estrazione di macparakeet-cli non riuscita: {exc}") from exc
+
+    try:
+        os.unlink(part_path)
+    except OSError:
+        pass
+
+
+def _download_macparakeet_model(
+    bin_path: str,
+    *,
+    tarball_bytes: int,
+    on_progress: Optional[Callable[[str], None]] = None,
+    cancel_token: Optional[Any] = None,
+    active_entry: Optional[_ActiveDownload] = None,
+) -> None:
+    models_root = macparakeet_models_root()
+    os.makedirs(models_root, exist_ok=True)
+    log_file_path = os.path.join(paths.data_dir(), "logs", "macparakeet-install.log")
+    os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+    kwargs: Dict[str, Any] = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+
+    proc = subprocess.Popen(
+        [bin_path, "models", "download", MACPARAKEET_MODEL_NAME],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
+        env={**os.environ, "MACPARAKEET_TELEMETRY": "0"},
+        **kwargs,
+    )
+    if active_entry is not None:
+        active_entry.process = proc
+    _write_component_state(MACPARAKEET_ID, {"pid": proc.pid, "helper_pid": os.getpid()})
+
+    shared: Dict[str, Any] = {"stdout_pct": None, "last_line": ""}
+    reader_lock = threading.Lock()
+
+    def _read_output() -> None:
+        assert proc.stdout is not None
+        buf = b""
+        with open(log_file_path, "a", encoding="utf-8") as log_stream:
+            while True:
+                chunk = proc.stdout.read(256)
+                if not chunk:
+                    break
+                log_stream.write(chunk.decode("utf-8", errors="replace"))
+                log_stream.flush()
+                buf += chunk
+                parts = re.split(rb"[\r\n]+", buf)
+                buf = parts.pop() if parts else b""
+                for raw_line in parts:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line:
+                        continue
+                    match = re.search(r"\b(\d{1,3})%", line)
+                    with reader_lock:
+                        shared["last_line"] = line
+                        if match:
+                            shared["stdout_pct"] = min(100, max(0, int(match.group(1))))
+            if buf.strip():
+                line = buf.decode("utf-8", errors="replace").strip()
+                match = re.search(r"\b(\d{1,3})%", line)
+                with reader_lock:
+                    shared["last_line"] = line
+                    if match:
+                        shared["stdout_pct"] = min(100, max(0, int(match.group(1))))
+
+    reader = threading.Thread(target=_read_output, daemon=True)
+    reader.start()
+
+    started = time.monotonic()
+    initial_model_bytes = _macparakeet_models_bytes()
+    last_emit = started - 1.5
+    last_pct = -1
+    cancelled = False
+    try:
+        while True:
+            if cancel_token is not None and getattr(cancel_token, "cancelled", False):
+                cancelled = True
+                proc.terminate()
+                break
+            now = time.monotonic()
+            model_bytes = _macparakeet_models_bytes()
+            with reader_lock:
+                stdout_pct = shared["stdout_pct"]
+            total_bytes = tarball_bytes + max(MACPARAKEET_MODEL_APPROX_BYTES, model_bytes)
+            if stdout_pct is not None:
+                model_done_est = max(model_bytes, int(MACPARAKEET_MODEL_APPROX_BYTES * stdout_pct / 100))
+                downloaded_bytes = tarball_bytes + model_done_est
+                pct = min(99, max(0, int(downloaded_bytes * 100 / total_bytes)))
+            else:
+                downloaded_bytes = tarball_bytes + model_bytes
+                pct = min(99, max(0, int(downloaded_bytes * 100 / total_bytes)))
+            if pct != last_pct and (now - last_emit >= 0.5 or pct in (0, 99)) or (now - last_emit >= 1.5):
+                last_emit = now
+                last_pct = pct
+                elapsed = now - started
+                session_bytes = max(0, model_bytes - initial_model_bytes)
+                remaining = max(0, total_bytes - downloaded_bytes)
+                eta_seconds: Optional[float] = None
+                eta_label: Optional[str] = None
+                eta_part = ""
+                if elapsed >= 2.0 and session_bytes > 0 and remaining > 0:
+                    speed = session_bytes / elapsed
+                    if speed > 0:
+                        eta_seconds = remaining / speed
+                        eta_label = onnx_stt._format_eta_short(eta_seconds)
+                        eta_part = f", {onnx_stt._format_eta(eta_seconds)}"
+                _write_component_state(MACPARAKEET_ID, {
+                    "state": "downloading",
+                    "auto_resume": True,
+                    "downloaded_bytes": downloaded_bytes,
+                    "total_bytes": total_bytes,
+                    "percent": pct,
+                    "eta_seconds": eta_seconds,
+                    "eta_label": eta_label,
+                    "error": None,
+                })
+                if on_progress:
+                    done_mb = round(downloaded_bytes / (1024 * 1024))
+                    total_mb = max(1, round(total_bytes / (1024 * 1024)))
+                    on_progress(f"Scarico il motore di trascrizione: {pct}% ({done_mb} di {total_mb} MB{eta_part})")
+            if proc.poll() is not None:
+                break
+            time.sleep(0.2)
+    finally:
+        reader.join(timeout=2.0)
+        rc = proc.wait()
+
+    if cancelled or (cancel_token is not None and getattr(cancel_token, "cancelled", False)):
+        raise RuntimeError("Trascrizione annullata")
+    if rc != 0:
+        with reader_lock:
+            detail = shared["last_line"]
+        raise ComponentError(detail or f"Download del modello parakeet-v3 non riuscito (codice {rc}).")
+
+
+def _download_macparakeet_under_lock(
+    on_progress: Optional[Callable[[str], None]] = None,
+    cancel_token: Optional[Any] = None,
+    active_entry: Optional[_ActiveDownload] = None,
+) -> str:
+    bin_path = macparakeet_bin_path()
+    part_path = macparakeet_part_path()
+    total_approx = MACPARAKEET_APPROX_BYTES
+
+    if not (os.path.isfile(bin_path) and os.access(bin_path, os.X_OK)):
+        started = time.monotonic()
+        last_emit = started - 1.5
+        last_pct = -1
+
+        def on_tar_bytes(done: int, total_hint: Optional[int]) -> None:
+            nonlocal last_emit, last_pct
+            tar_total = total_hint or MACPARAKEET_TARBALL_BYTES
+            overall_total = tar_total + MACPARAKEET_MODEL_APPROX_BYTES
+            pct = min(99, max(0, int(done * 100 / overall_total))) if overall_total else 0
+            now = time.monotonic()
+            if pct != last_pct and (now - last_emit >= 0.5 or pct == 0):
+                last_emit = now
+                last_pct = pct
+                _write_component_state(MACPARAKEET_ID, {
+                    "state": "downloading",
+                    "auto_resume": True,
+                    "pid": os.getpid(),
+                    "downloaded_bytes": done,
+                    "total_bytes": overall_total,
+                    "percent": pct,
+                    "eta_seconds": None,
+                    "eta_label": None,
+                    "error": None,
+                })
+                if on_progress:
+                    done_mb = round(done / (1024 * 1024))
+                    total_mb = max(1, round(overall_total / (1024 * 1024)))
+                    on_progress(f"Scarico il motore di trascrizione: {pct}% ({done_mb} di {total_mb} MB)")
+
+        _download_macparakeet_tarball(part_path, on_bytes=on_tar_bytes, cancel_token=cancel_token)
+        _extract_and_verify_macparakeet(part_path, bin_path)
+
+    tarball_bytes = os.path.getsize(bin_path) if os.path.isfile(bin_path) else MACPARAKEET_TARBALL_BYTES
+    _download_macparakeet_model(
+        bin_path,
+        tarball_bytes=tarball_bytes,
+        on_progress=on_progress,
+        cancel_token=cancel_token,
+        active_entry=active_entry,
+    )
+
+    ready_size = _macparakeet_ready_bytes() or total_approx
+    _write_component_state(MACPARAKEET_ID, {
+        "state": "ready",
+        "model_ready": True,
+        "auto_resume": False,
+        "pid": None,
+        "helper_pid": None,
+        "downloaded_bytes": ready_size,
+        "total_bytes": ready_size,
+        "percent": 100,
+        "eta_seconds": None,
+        "eta_label": None,
+        "error": None,
+    })
+    return bin_path
+
+
+def ensure_macparakeet(
+    on_progress: Optional[Callable[[str], None]] = None,
+    cancel_token: Optional[Any] = None,
+) -> str:
+    """Assicura che macparakeet-cli e il modello parakeet-v3 siano pronti su Mac Apple Silicon."""
+    from rt.pipeline.setup import find_macparakeet_binary
+
+    existing = find_macparakeet_binary()
+    local_bin = macparakeet_bin_path()
+    has_local = os.path.isfile(local_bin) and os.access(local_bin, os.X_OK)
+    if existing and not _macparakeet_incomplete_download() and not (has_local and not macparakeet_ready()):
+        return existing
+
+    if not macparakeet_available():
+        raise ComponentUnavailable("macparakeet funziona solo su Mac con Apple Silicon.")
+
+    lpath = lock_path_for(MACPARAKEET_ID)
+    last_emit = 0.0
+    last_pct = -1
+
+    while True:
+        existing = find_macparakeet_binary()
+        has_local = os.path.isfile(local_bin) and os.access(local_bin, os.X_OK)
+        if existing and not _macparakeet_incomplete_download() and not (has_local and not macparakeet_ready()):
+            return existing
+
+        if cancel_token is not None and hasattr(cancel_token, "raise_if_cancelled"):
+            cancel_token.raise_if_cancelled()
+        elif cancel_token is not None and getattr(cancel_token, "cancelled", False):
+            raise RuntimeError("Trascrizione annullata")
+
+        if _acquire_nonblocking(lpath):
+            stopped = threading.Event()
+            renewer = threading.Thread(target=_renew_lock_loop, args=(lpath, stopped), daemon=True)
+            renewer.start()
+            try:
+                existing = find_macparakeet_binary()
+                has_local = os.path.isfile(local_bin) and os.access(local_bin, os.X_OK)
+                if existing and not _macparakeet_incomplete_download() and not (has_local and not macparakeet_ready()):
+                    return existing
+                _write_component_state(MACPARAKEET_ID, {
+                    "state": "downloading",
+                    "auto_resume": True,
+                    "pid": os.getpid(),
+                    "error": None,
+                })
+                return _download_macparakeet_under_lock(on_progress=on_progress, cancel_token=cancel_token)
+            except RuntimeError as exc:
+                if "annullat" in str(exc).lower():
+                    _write_component_state(MACPARAKEET_ID, {
+                        "state": "paused",
+                        "auto_resume": False,
+                        "pid": None,
+                        "helper_pid": None,
+                        "error": None,
+                    })
+                else:
+                    _write_component_state(MACPARAKEET_ID, {
+                        "state": "error",
+                        "auto_resume": False,
+                        "pid": None,
+                        "helper_pid": None,
+                        "error": str(exc),
+                    })
+                raise
+            except Exception as exc:
+                _write_component_state(MACPARAKEET_ID, {
+                    "state": "error",
+                    "auto_resume": False,
+                    "pid": None,
+                    "helper_pid": None,
+                    "error": str(exc),
+                })
+                raise
+            finally:
+                stopped.set()
+                renewer.join(timeout=1.0)
+                release_file_lock(lpath)
+
+        if on_progress:
+            status = get_component(MACPARAKEET_ID)
+            pct = status.get("percent")
+            now = time.monotonic()
+            if (pct is not None and pct != last_pct) or (now - last_emit >= 1.5):
+                last_emit = now
+                if pct is not None:
+                    last_pct = pct
+                    done_mb = round((status.get("downloaded_bytes") or 0) / (1024 * 1024))
+                    total_mb = max(1, round((status.get("total_bytes") or MACPARAKEET_APPROX_BYTES) / (1024 * 1024)))
+                    eta = status.get("eta_label")
+                    eta_part = f", {eta}" if eta else ""
+                    on_progress(f"Scarico il motore di trascrizione: {pct}% ({done_mb} di {total_mb} MB{eta_part})")
+                else:
+                    on_progress("In attesa del motore di trascrizione…")
+        time.sleep(0.5)
+
+
 def _parse_playwright_progress(line: str) -> Tuple[Optional[int], Optional[int]]:
     pct_match = re.search(r"(\d{1,3})%", line)
     pct = min(100, max(0, int(pct_match.group(1)))) if pct_match else None
@@ -601,7 +1160,7 @@ def run_browser_download_sync(
     try:
         with open(log_file_path, "a", encoding="utf-8") as log_stream:
             proc = subprocess.Popen(
-                [sys.executable, "-m", "playwright", "install", "chromium"],
+                [sys.executable, "-m", "playwright", "install", "chromium", "--only-shell"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
@@ -788,6 +1347,74 @@ def _run_transcription_thread(active_entry: _ActiveDownload) -> None:
                 _active.pop(TRANSCRIPTION_ID, None)
 
 
+def _run_macparakeet_thread(active_entry: _ActiveDownload) -> None:
+    lpath = lock_path_for(MACPARAKEET_ID)
+    if not _acquire_nonblocking(lpath):
+        return
+    stopped = threading.Event()
+    renewer = threading.Thread(target=_renew_lock_loop, args=(lpath, stopped), daemon=True)
+    renewer.start()
+    try:
+        if macparakeet_ready():
+            ready_size = _macparakeet_ready_bytes()
+            _write_component_state(MACPARAKEET_ID, {
+                "state": "ready",
+                "model_ready": True,
+                "auto_resume": False,
+                "pid": None,
+                "helper_pid": None,
+                "downloaded_bytes": ready_size,
+                "total_bytes": ready_size,
+                "percent": 100,
+                "eta_seconds": None,
+                "eta_label": None,
+                "error": None,
+            })
+            return
+        _download_macparakeet_under_lock(
+            cancel_token=_CancelFlag(active_entry.cancel_event),
+            active_entry=active_entry,
+        )
+    except RuntimeError as exc:
+        if "annullat" in str(exc).lower():
+            _write_component_state(MACPARAKEET_ID, {
+                "state": "paused",
+                "auto_resume": False,
+                "pid": None,
+                "helper_pid": None,
+                "eta_seconds": None,
+                "eta_label": None,
+                "error": None,
+            })
+        else:
+            _write_component_state(MACPARAKEET_ID, {
+                "state": "error",
+                "auto_resume": False,
+                "pid": None,
+                "helper_pid": None,
+                "eta_seconds": None,
+                "eta_label": None,
+                "error": str(exc),
+            })
+    except Exception as exc:
+        _write_component_state(MACPARAKEET_ID, {
+            "state": "error",
+            "auto_resume": False,
+            "pid": None,
+            "helper_pid": None,
+            "eta_seconds": None,
+            "eta_label": None,
+            "error": str(exc),
+        })
+    finally:
+        stopped.set()
+        renewer.join(timeout=1.0)
+        release_file_lock(lpath)
+        with _active_lock:
+            if _active.get(MACPARAKEET_ID) is active_entry:
+                _active.pop(MACPARAKEET_ID, None)
+
+
 def _run_browser_thread(active_entry: _ActiveDownload) -> None:
     try:
         run_browser_download_sync(cancel_event=active_entry.cancel_event, active_entry=active_entry)
@@ -817,7 +1444,12 @@ def start_download(component_id: str) -> Dict[str, Any]:
             return get_component(component_id)
 
         cancel_event = threading.Event()
-        target = _run_transcription_thread if component_id == TRANSCRIPTION_ID else _run_browser_thread
+        if component_id == TRANSCRIPTION_ID:
+            target = _run_transcription_thread
+        elif component_id == MACPARAKEET_ID:
+            target = _run_macparakeet_thread
+        else:
+            target = _run_browser_thread
         entry = _ActiveDownload(thread=threading.Thread(), cancel_event=cancel_event)
         thread = threading.Thread(
             target=target,
@@ -857,10 +1489,11 @@ def cancel_download(component_id: str) -> Dict[str, Any]:
 
     saved = _read_all_states().get(component_id) or {}
     if entry is None and is_download_active(component_id):
-        if component_id == TRANSCRIPTION_ID:
+        if component_id in (TRANSCRIPTION_ID, MACPARAKEET_ID):
             # Lo scarica un altro processo (il worker, dentro una lezione): non si termina mai
             # un processo che potrebbe avere altri lavori in corso.
-            raise ComponentBusy("Il modello si sta scaricando per una lezione in corso: "
+            label = "Il modello" if component_id == TRANSCRIPTION_ID else "Il motore di trascrizione"
+            raise ComponentBusy(f"{label} si sta scaricando per una lezione in corso: "
                                 "per fermarlo annulla la lezione.")
         # Browser: si termina solo il processo dedicato lanciato da ensure_browser_detached, e
         # solo se è lui a tenere il lock (mai un PID salvato e magari riusato da altri).
@@ -871,9 +1504,16 @@ def cancel_download(component_id: str) -> Dict[str, Any]:
     if entry is not None and entry.thread.is_alive():
         entry.thread.join(timeout=2.0)
 
-    ready = onnx_stt.model_ready() if component_id == TRANSCRIPTION_ID else browser_ready()
+    if component_id == TRANSCRIPTION_ID:
+        ready = onnx_stt.model_ready()
+        partial = _transcription_partial_bytes()
+    elif component_id == MACPARAKEET_ID:
+        ready = macparakeet_ready()
+        partial = _macparakeet_partial_bytes()
+    else:
+        ready = browser_ready()
+        partial = 0
     if not ready:
-        partial = _transcription_partial_bytes() if component_id == TRANSCRIPTION_ID else 0
         _write_component_state(component_id, {
             "state": "paused" if partial > 0 or saved.get("state") == "downloading" else "not_downloaded",
             "auto_resume": False,
@@ -906,6 +1546,29 @@ def delete_component(component_id: str) -> Dict[str, Any]:
         ):
             shutil.rmtree(path, ignore_errors=True)
         onnx_stt.clear_loaded()
+    elif component_id == MACPARAKEET_ID:
+        for path in (macparakeet_bin_path(), macparakeet_part_path()):
+            if os.path.isfile(path) or os.path.islink(path):
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+        bin_dir = macparakeet_bin_dir()
+        if os.path.isdir(bin_dir):
+            for name in os.listdir(bin_dir):
+                if name.startswith("macparakeet-cli.") and name.endswith(".tmp"):
+                    try:
+                        os.unlink(os.path.join(bin_dir, name))
+                    except OSError:
+                        pass
+        for entry_path in _macparakeet_model_entries():
+            if os.path.isdir(entry_path):
+                shutil.rmtree(entry_path, ignore_errors=True)
+            else:
+                try:
+                    os.unlink(entry_path)
+                except OSError:
+                    pass
     else:
         folder = browsers_dir()
         if os.path.isdir(folder):
@@ -961,14 +1624,14 @@ def ensure_browser_detached(say: Callable[[str], None]) -> None:
             stdin=subprocess.DEVNULL,
             **kwargs,
         )
-        say("🌐 Scarico in background il browser per le catture delle visualizzazioni.")
+        say("🌐 Scarico in background il browser per PDF e catture.")
     except OSError as exc:
         _write_component_state(BROWSER_ID, {
             "state": "error",
             "auto_resume": False,
             "error": str(exc),
         })
-        say(f"⚠️  Browser per le catture non scaricato: {exc}")
+        say(f"⚠️  Browser per PDF e catture non scaricato: {exc}")
 
 
 def _main(argv: Optional[List[str]] = None) -> int:

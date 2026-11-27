@@ -264,12 +264,10 @@ def save_telegram_notify(project_root: Path, notify: dict[str, bool]) -> dict[st
 
 
 def transcription_engines(cfg: Any = None) -> Dict[str, Any]:
-    """Quali motori locali girano qui e quale consigliare (Parakeet ONNX ovunque; macparakeet
-    resta scelta avanzata su Mac se installato con Homebrew)."""
-    import sys
-
-    from rt.core import onnx_stt
-    from rt.core.config import default_engine, effective_engine, load_config
+    """Quali motori locali girano qui e quale consigliare (macparakeet su Mac Apple Silicon,
+    Parakeet ONNX sugli altri sistemi)."""
+    from rt.core import components, onnx_stt
+    from rt.core.config import default_engine, effective_engine, is_apple_silicon, load_config
     from rt.pipeline.setup import find_macparakeet_binary
 
     if cfg is None:
@@ -279,10 +277,13 @@ def transcription_engines(cfg: Any = None) -> Dict[str, Any]:
             cfg = default_engine()
     configured = cfg if isinstance(cfg, str) else getattr(cfg, "engine", default_engine())
     resolved = effective_engine(cfg)
-    mac_available = sys.platform == "darwin"
-    mac_installed = mac_available and bool(find_macparakeet_binary())
+    mac_available = is_apple_silicon()
+    mac_installed = mac_available and (
+        components.macparakeet_ready()
+        or (bool(find_macparakeet_binary()) and not components._macparakeet_incomplete_download())
+    )
     parakeet_available = onnx_stt.available()
-    recommended = "parakeet"
+    recommended = "macparakeet" if mac_available else "parakeet"
     return {
         "recommended": recommended,
         "effective_engine": resolved,

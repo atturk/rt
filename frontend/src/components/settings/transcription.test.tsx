@@ -40,10 +40,12 @@ describe('Trascrizione: motori per sistema', () => {
     expect(screen.queryByLabelText('Chiave API (facoltativa)')).toBeNull()
   })
 
-  it('sul Mac Parakeet ONNX consigliato, macparakeet scelta avanzata, cambio motore salva subito', async () => {
+  it('sul Mac macparakeet consigliato, cambio motore salva subito e niente Homebrew', async () => {
     const put = vi.spyOn(api, 'PUT').mockResolvedValue({ data: testSettings, response: new Response('{}', { status: 200 }) } as never)
-    renderSection({})
-    expect(await engineChoices()).toEqual(['Parakeet ONNX · consigliato', 'macparakeet (avanzato)', 'Server OpenAI-compatible'])
+    renderSection({ engine: 'macparakeet', recommended: 'macparakeet', macparakeet_available: true, macparakeet_installed: false })
+    expect(await engineChoices()).toEqual(['macparakeet · consigliato', 'Parakeet ONNX', 'Server OpenAI-compatible'])
+    expect(screen.getByTestId('stt-engine-hint')).toHaveTextContent('Componenti di RT')
+    expect(screen.getByTestId('stt-engine-hint').textContent).not.toMatch(/Homebrew/i)
     await userEvent.setup().click(screen.getByRole('menuitemradio', { name: 'Server OpenAI-compatible' }))
     expect(screen.getByTestId('stt-engine')).toHaveAttribute('data-value', 'custom')
     expect(put).toHaveBeenCalledWith('/api/v1/settings/transcription', {
@@ -61,20 +63,21 @@ describe('Trascrizione: motori per sistema', () => {
     expect(screen.getByRole('button', { name: 'Salva chiave' })).toBeDisabled()
   })
 
-  it('sul Mac senza macparakeet-cli non chiede Homebrew e spiega il ripiego su Parakeet ONNX', () => {
+  it('sul Mac Intel con fallback ONNX non chiede Homebrew e spiega il ripiego su Parakeet ONNX', () => {
     renderSection({
       engine: 'macparakeet',
       recommended: 'parakeet',
       effective_engine: 'parakeet',
       macparakeet_fallback: true,
-      macparakeet_available: true,
+      macparakeet_available: false,
       macparakeet_installed: false,
       parakeet_available: true,
     })
     const hint = screen.getByTestId('stt-engine-hint')
     expect(hint).toHaveTextContent(
-      'Scelta avanzata (se installato con Homebrew). Non è installato su questo Mac: RT usa Parakeet ONNX.',
+      'macparakeet richiede un Mac Apple Silicon: su questo computer RT usa Parakeet ONNX.',
     )
+    expect(hint.textContent).not.toMatch(/Homebrew/i)
     expect(screen.queryByRole('link', { name: 'Come?' })).toBeNull()
   })
 })

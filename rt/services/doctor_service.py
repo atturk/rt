@@ -52,7 +52,8 @@ def check_ffmpeg() -> Check:
 
 
 def check_transcription() -> Check:
-    from rt.core.config import load_config
+    from rt.core import components
+    from rt.core.config import is_apple_silicon, load_config
     engine = load_config().transcription.engine
     if engine == "custom":
         return Check("Trascrizione", OK, "motore personalizzato (custom)")
@@ -67,21 +68,32 @@ def check_transcription() -> Check:
     if sys.platform != "darwin":
         return Check("Trascrizione", WARN, "macparakeet funziona solo su macOS.",
                      "In Impostazioni scegli Parakeet ONNX (locale) o un server compatibile.")
-    # L'app aperta dal Finder non ha /opt/homebrew/bin nel PATH: si cerca come fa la trascrizione.
     from rt.pipeline.setup import find_macparakeet_binary
     if find_macparakeet_binary():
-        return Check("Trascrizione", OK, "macparakeet-cli installato (scelta avanzata)")
+        if components._macparakeet_incomplete_download():
+            return Check(
+                "Trascrizione",
+                OK,
+                "macparakeet: il modello si scarica alla prima trascrizione o da Impostazioni → Componenti",
+            )
+        return Check("Trascrizione", OK, "macparakeet-cli pronto")
+    if is_apple_silicon():
+        return Check(
+            "Trascrizione",
+            OK,
+            "macparakeet: motore e modello si scaricano alla prima trascrizione o da Impostazioni → Componenti (~500 MB)",
+        )
     from rt.core import onnx_stt
     if onnx_stt.available():
         if not onnx_stt.model_ready():
             return Check(
                 "Trascrizione",
                 OK,
-                "Parakeet ONNX (macparakeet-cli non installato) — modello da scaricare al primo uso",
+                "Parakeet ONNX (macparakeet richiede Apple Silicon) — modello da scaricare al primo uso",
             )
-        return Check("Trascrizione", OK, "Parakeet ONNX (macparakeet-cli non installato)")
-    return Check("Trascrizione", WARN, "macparakeet-cli non trovato e Parakeet ONNX non disponibile.",
-                 "Reinstalla RT oppure installa macparakeet-cli con Homebrew.")
+        return Check("Trascrizione", OK, "Parakeet ONNX (macparakeet richiede Apple Silicon)")
+    return Check("Trascrizione", WARN, "macparakeet richiede Apple Silicon e Parakeet ONNX non è disponibile.",
+                 "Reinstalla RT oppure scegli un server di trascrizione in Impostazioni.")
 
 
 def check_data_dir() -> Check:

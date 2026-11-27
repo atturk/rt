@@ -875,3 +875,49 @@ it('con audio e modello in download mostra la riga informativa con % e tempo sti
   )
   expect(screen.getByRole('button', { name: 'Avvia' })).toBeEnabled()
 })
+
+it('con audio e motore macparakeet mancante avvisa che si scaricherà all’avvio della lezione', async () => {
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+    if (path === '/api/v1/components') {
+      return Promise.resolve({
+        data: [
+          {
+            id: 'macparakeet',
+            name: 'Motore di trascrizione',
+            description: "necessario per trascrivere l'audio",
+            detail: 'macparakeet + modello parakeet-v3',
+            required: true,
+            state: 'not_downloaded',
+            downloaded_bytes: 0,
+            total_bytes: null,
+            approx_bytes: 500 * 1024 * 1024,
+            percent: null,
+            eta_seconds: null,
+            eta_label: null,
+            error: null,
+            available: true,
+            unavailable_reason: null,
+          },
+        ],
+        error: undefined,
+        response: new Response('[]', { status: 200 }),
+      })
+    }
+    if (path === '/api/v1/settings') {
+      return Promise.resolve({
+        data: { transcription: { effective_engine: 'macparakeet' } },
+        error: undefined,
+        response: new Response('{}', { status: 200 }),
+      })
+    }
+    return Promise.resolve({ data: { hours: [] }, error: undefined, response: new Response('{}', { status: 200 }) })
+  }) as never)
+
+  const audioFile = new File(['audio'], 'lezione.mp3', { type: 'audio/mpeg' })
+  renderDialog(true, vi.fn(), '2026-10-21', undefined, [audioFile])
+
+  const notice = await screen.findByTestId('transcription-download-notice')
+  expect(notice).toHaveTextContent(
+    'Il motore di trascrizione non è ancora pronto (~500 MB): si scaricherà all’avvio della lezione.',
+  )
+})

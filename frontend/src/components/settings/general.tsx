@@ -19,19 +19,22 @@ export function TranscriptionSection({ settings }: { settings: Settings }) {
 type Engine = 'macparakeet' | 'parakeet' | 'custom'
 
 const ENGINE_LABEL: Record<Engine, string> = {
+  macparakeet: 'macparakeet',
   parakeet: 'Parakeet ONNX',
-  macparakeet: 'macparakeet (avanzato)',
   custom: 'Server OpenAI-compatible',
 }
 
 function engineHint(t: Settings['transcription'], engine: Engine): ReactNode {
   if (engine === 'macparakeet') {
-    if (!t.macparakeet_available) return 'macparakeet funziona solo su macOS: scegli Parakeet ONNX.'
-    if (t.macparakeet_installed) return 'Scelta avanzata (installato con Homebrew): usa il Neural Engine del Mac.'
-    if (t.macparakeet_fallback || t.parakeet_available) {
-      return 'Scelta avanzata (se installato con Homebrew). Non è installato su questo Mac: RT usa Parakeet ONNX.'
+    if (!t.macparakeet_available) {
+      if (t.macparakeet_fallback && t.parakeet_available) {
+        return 'macparakeet richiede un Mac Apple Silicon: su questo computer RT usa Parakeet ONNX.'
+      }
+      return 'macparakeet funziona solo su Mac Apple Silicon: scegli Parakeet ONNX.'
     }
-    return 'Scelta avanzata (se installato con Homebrew): non trovato su questo Mac.'
+    return t.macparakeet_installed
+      ? 'Usa il Neural Engine del Mac, senza internet.'
+      : 'Usa il Neural Engine del Mac. Motore e modello (~500 MB) si scaricano qui sotto in «Componenti di RT» oppure alla prima trascrizione.'
   }
   if (engine === 'parakeet') {
     if (!t.parakeet_available) return 'Il motore non è installato: reinstalla RT.'
@@ -68,7 +71,7 @@ function TranscriptionFields({
   const model = modelDraft && modelDraft.base === savedModel ? modelDraft.value : savedModel
 
   const custom = engine === 'custom'
-  const engines: Engine[] = t.macparakeet_available || t.engine === 'macparakeet' ? ['parakeet', 'macparakeet', 'custom'] : ['parakeet', 'custom']
+  const engines: Engine[] = t.macparakeet_available || t.engine === 'macparakeet' ? ['macparakeet', 'parakeet', 'custom'] : ['parakeet', 'custom']
 
   const urlAuto = useAutoSave(
     save,

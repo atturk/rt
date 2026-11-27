@@ -36,6 +36,8 @@ def _isolate_encrypted_secret_store(tmp_path_factory):
     os.environ["RT_DEFAULT_STT_ENGINE"] = "macparakeet"
     # Nessun test deve scaricare modelli reali da Hugging Face (i test di download usano mock)
     os.environ["HF_HUB_OFFLINE"] = "1"
+    # Nessun test deve scaricare il vero macparakeet-cli da GitHub (i test usano un server finto locale)
+    os.environ["RT_MACPARAKEET_OFFLINE"] = "1"
     # GET /api/v1/system/update non deve interrogare GitHub dai test (i test dell'updater
     # sostituiscono _get_json con le loro release finte)
     from rt.core import app_update
@@ -99,6 +101,7 @@ def _isolate_data_dir(tmp_path_factory, monkeypatch):
     monkeypatch.delenv("RT_DATA_DIR", raising=False)
     monkeypatch.setenv("RT_API_PORT", "65432")
     monkeypatch.setenv("RT_LAUNCH_AGENTS_DIR", str(tmp_path_factory.mktemp("launch-agents")))
+    monkeypatch.setenv("RT_MACPARAKEET_MODELS_DIR", str(tmp_path_factory.mktemp("macparakeet-models")))
     empty_data = str(tmp_path_factory.mktemp("no-data-dir"))
     monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", empty_data)
     monkeypatch.setattr("rt.core.paths.PLATFORM_DATA_DIR", empty_data)
