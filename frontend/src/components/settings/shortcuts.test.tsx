@@ -72,12 +72,12 @@ it('su Mac registra il tasto fisico con Option e mostra i simboli', async () => 
   expect(button).toHaveTextContent('⌘⌥J')
 })
 
-it('la barra di formattazione è attiva per default e la scelta si salva sul server', async () => {
+it('la barra di formattazione è spenta per default e la scelta si salva sul server', async () => {
   const sw = screen.getByRole('switch', { name: 'Barra di formattazione' })
-  expect(sw).toHaveAttribute('aria-checked', 'true')
-  await userEvent.click(sw)
-  await waitFor(() => expect(api.PUT).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'editor.toolbar' } }, body: false }))
   expect(sw).toHaveAttribute('aria-checked', 'false')
+  await userEvent.click(sw)
+  await waitFor(() => expect(api.PUT).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'editor.toolbar' } }, body: true }))
+  expect(sw).toHaveAttribute('aria-checked', 'true')
 })
 
 it('non mostra più la preferenza per le immagini trascinate', () => {

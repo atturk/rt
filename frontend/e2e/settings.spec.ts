@@ -231,6 +231,8 @@ test('scorciatoie: registra, ritrova su un altro dispositivo e ripristina', asyn
 
 test('barra editor: comandi sul testo e una riga scorrevole sul telefono', async ({ page }) => {
   await pcKeyboard(page)
+  // la barra di formattazione è spenta per default: qui serve accesa
+  await page.request.put('/api/v1/preferences/editor.toolbar', { headers: authHeaders(), data: true })
   await loginViaLink(page)
   const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=BIOCHIMICA')
   await page.goto(`/lezioni/${lesson.id}`)

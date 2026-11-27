@@ -26,7 +26,7 @@ function recordedKey(event: KeyboardEvent): string | null {
 type Conflict = { command: EditorCommand; other: EditorCommand; key: string; previous: string | null }
 
 export function EditorShortcutsSection() {
-  const [toolbar, saveToolbar] = usePreference('editor.toolbar', true)
+  const [toolbar, saveToolbar] = usePreference('editor.toolbar', false)
   const [preferences, save] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
   const [search, setSearch] = useState('')
   const [recording, setRecording] = useState<string | null>(null)

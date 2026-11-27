@@ -188,6 +188,8 @@ test('formule: il LaTeX si vede reso nell’editor e torna in chiaro con il curs
 
 test('4.2.3.1: il pannello laterale non copre la barra dell’editor né il testo', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 700 })
+  // la barra di formattazione è spenta per default: qui serve accesa
+  await page.request.put('/api/v1/preferences/editor.toolbar', { headers: authHeaders(), data: true })
   await loginViaLink(page)
   await page.goto(`/lezioni/${await lessonId(page, 'BIOCHIMICA')}`)
   const toolbar = page.getByRole('toolbar', { name: 'Strumenti dell’editor' })

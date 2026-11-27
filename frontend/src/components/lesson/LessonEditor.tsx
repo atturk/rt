@@ -121,7 +121,7 @@ export function LessonEditor({
  lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange, unitTasks }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
-  const [showToolbar] = usePreference('editor.toolbar', true)
+  const [showToolbar] = usePreference('editor.toolbar', false)
   const [shortcuts] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
   const [shortcutCompartment] = useState(() => new Compartment())
   const [editor, setEditor] = useState<{ view: EditorView; state: EditorState } | null>(null)

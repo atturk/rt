@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { createRef } from 'react'
+import { PREFERENCES_KEY } from '@/lib/preferences'
 import { AudioProvider } from './audio'
 import { LessonEditor, type LessonEditorActions } from './LessonEditor'
 
@@ -47,6 +48,8 @@ it('attende la fine dei caricamenti prima di salvare e liberare il lease', async
 
 it('blocca il testo durante la classificazione e lo sblocca alla fine del job', () => {
   const query = new QueryClient()
+  // la barra di formattazione è spenta per default: qui la si accende dalle preferenze
+  query.setQueryData(PREFERENCES_KEY, { 'editor.toolbar': true })
   const component = (locked: boolean) => <QueryClientProvider client={query}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Testo completo', html: '', sections: [], final: false, pending: false }} hasAudio={false} ready locked={locked} /></AudioProvider></MemoryRouter></QueryClientProvider>
   const view = render(component(true))
   expect(screen.getByRole('img', { name: 'Sola lettura' })).toBeInTheDocument()
