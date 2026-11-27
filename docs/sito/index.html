@@ -128,9 +128,20 @@ a { color: inherit; }
 .scan.fatto .linea { display: none; }
 .sc-pk { position: absolute; right: 7%; top: 30%; width: calc(var(--th) * 2.1); height: calc(var(--th) * 1.9); transform: translateX(160%) rotate(8deg); opacity: 0; transition: transform .9s var(--ease), opacity .4s; z-index: 3; }
 .sc-pk .tile { position: absolute; box-shadow: var(--shadow); }
-.sc-pk .pg { left: 0; top: 0; transform: rotate(-5deg); }
+.sc-pk .sc-pdf { position: absolute; left: 0; top: 0; height: var(--th); aspect-ratio: 4 / 3; transform: rotate(-5deg); }
+.sc-pk .sc-pdf .tile { inset: 0; transition: transform .5s var(--ease); }
+.sc-pk .sc-pdf .b { transform: translate(5px, 5px); }
+.scan.split .sc-pk .sc-pdf .a { transform: translate(-62%, -38%) rotate(-7deg); }
+.scan.split .sc-pk .sc-pdf .b { transform: translate(-48%, 92%) rotate(6deg); }
 .sc-pk .ft { right: 0; bottom: 0; transform: rotate(6deg); }
-.sc-pk::after { content: "PDF"; position: absolute; left: -6px; top: -8px; font: 700 9px/1 var(--sans); color: #fff; background: #c2413a; padding: 3px 4px; border-radius: 3px; }
+.sc-pk .sc-pdf::after { content: "PDF"; position: absolute; z-index: 2; left: -6px; top: -8px; font: 700 9px/1 var(--sans); color: #fff; background: #c2413a; padding: 3px 4px; border-radius: 3px; transition: opacity .3s; }
+.scan.split .sc-pk .sc-pdf::after { opacity: 0; }
+.tile.pg2::after { left: 24%; right: 20%; top: 30%; bottom: 24%; border: 0; border-radius: 0; background: linear-gradient(var(--acc-strong), var(--acc-strong)) 0 100% / 20% 45% no-repeat, linear-gradient(var(--acc-strong), var(--acc-strong)) 50% 100% / 20% 85% no-repeat, linear-gradient(var(--acc-strong), var(--acc-strong)) 100% 100% / 20% 62% no-repeat; }
+/* Verifica: una barra scende sul testo e sottolinea in rosso le parole sbagliate */
+.sc-doc .vl { position: absolute; z-index: 2; left: 5%; right: 5%; top: 4%; height: 3px; margin-top: -1.5px; border-radius: 3px; background: var(--acc-strong); box-shadow: 0 0 22px 4px color-mix(in srgb, var(--acc-strong) 40%, transparent); opacity: 0; transition: opacity .25s; pointer-events: none; }
+.scan.ver .sc-doc .vl { opacity: 1; }
+.scan .u > i.e::before { content: ""; position: absolute; left: var(--el); width: var(--ew); bottom: -5px; height: 3px; border-radius: 2px; background: #d8463c; transform: scaleX(0); transform-origin: left; transition: transform .35s var(--ease); }
+.scan .u > i.e.on::before { transform: none; }
 .scan.pk .sc-pk { transform: none; opacity: 1; }
 .scan.pkvia .sc-pk { opacity: 0; transform: scale(.9); }
 .sc-doc { transition: transform .9s var(--ease-io), opacity .3s ease-in .7s, background .3s; }
@@ -223,6 +234,13 @@ a { color: inherit; }
 
 /* Atto 01 */
 .atto > .wrap { width: 100%; }
+/* Su schermi larghi titolo e testo stanno affiancati: titolo a sinistra, testo a destra */
+@media (min-width: 1000px) {
+  .atto > .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 64px; }
+  .atto > .wrap > * { grid-column: 1 / -1; min-width: 0; }
+  .atto > .wrap > h2:has(+ .intro) { grid-column: 1; align-self: end; }
+  .atto > .wrap > h2 + .intro { grid-column: 2; align-self: end; margin: 0; max-width: 56ch; }
+}
 .atto { min-height: calc(100svh - var(--testata)); display: flex; flex-direction: column; justify-content: center; padding-block: clamp(28px, 5vh, 64px); border-top: 1px solid var(--border); scroll-margin-top: var(--testata); scroll-snap-align: start; scroll-snap-stop: always; }
 .atto-num { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--acc); }
 .atto-num::after { content: ""; width: 80px; height: 1px; background: var(--border); }
@@ -393,7 +411,7 @@ a { color: inherit; }
 @keyframes vfscan { 0% { top: -46px; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
 
 /* Pannello Verifica */
-.vf-pan { min-width: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--soft); padding: 14px; display: grid; gap: 10px; align-content: start; }
+.vf-pan { min-width: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--soft); padding: 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-content: start; }
 .vf-pan > header { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; min-height: 24px; }
 .vf-pan > header .n { font: 600 11px/1 var(--mono); padding: 4px 7px; border-radius: 99px; background: var(--x1); color: var(--mute); transition: background .3s, color .3s; }
 .vf.uno .vf-pan > header .n { background: var(--warn-soft); color: var(--warn); }
@@ -929,6 +947,16 @@ a { color: inherit; }
   .cn-r > * { padding: 10px 14px; font-size: 13.5px; }
   .cn-h > b { display: none; }
 }
+/* Telefono: chat e RT uno sotto l'altro, così le righe restano leggibili */
+@media (max-width: 560px) {
+  .cn-h { display: none; }
+  .cn-r { grid-template-columns: minmax(0, 1fr); }
+  .cn-r > b { padding: 12px 14px 2px; }
+  .cn-r > .ch { padding-bottom: 6px; }
+  .cn-r > .ch::after { content: "Chat AI"; order: -1; flex: none; font: 600 9.5px/1.6 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+  .cn-r > .ch::before { display: none; }
+  .cn-r > .rt { padding-top: 8px; padding-bottom: 12px; }
+}
 
 /* ============ Scarica ============ */
 .dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 28px; }
@@ -1036,7 +1064,7 @@ a { color: inherit; }
         <div class="ev k2" style="--c:3;--r:3;--s:2;--d:.2s"><b>Biochimica</b><small>11:30–13:30</small></div>
         <div class="ev k1" style="--c:4;--r:1;--s:2;--d:.2s"><b>Fisiologia</b><small>09:30–11:30</small></div>
         <div class="ev" style="--c:4;--r:3;--s:2;--d:.25s"><b>Patologia generale 2</b><small>11:30–13:30</small></div>
-        <div class="ev k3 go" id="lGo" style="--c:4;--r:6;--s:2;--d:.3s"><b>Anatomia 2</b><small>14:30–16:30</small><em>Anatomia del cuore</em></div>
+        <div class="ev k3" style="--c:4;--r:6;--s:2;--d:.3s"><b>Anatomia 2</b><small>14:30–16:30</small></div>
         <div class="ev k4" style="--c:5;--r:0;--s:3;--d:.25s"><b>Patologia clinica 2</b><small>08:30–11:30</small></div>
         <div class="ev k5" style="--c:5;--r:3;--s:2;--d:.3s"><b>Farmacologia</b><small>11:30–13:30</small></div>
       </div>
@@ -1048,15 +1076,16 @@ a { color: inherit; }
           <div class="sc-doc" id="scD">
             <div class="bars" data-barre="56"></div>
             <div class="righe">
-              <div class="u"><i class="t"></i><i style="--w:96%"></i><i class="h" style="--w:84%;--l:30%;--hw:16%"></i><i style="--w:62%"></i><div class="sl"><b class="tile pg" id="scP"></b></div></div>
-              <div class="u"><i class="t" style="--w:40%"></i><i class="h h2" style="--w:92%;--l:6%;--hw:14%"></i><i class="h h3" style="--w:74%;--l:62%;--hw:18%"></i><div class="sl"><b class="tile ft" id="scF"></b></div></div>
+              <div class="u"><i class="t"></i><i class="e" style="--w:96%;--el:48%;--ew:22%"></i><i class="h" style="--w:84%;--l:30%;--hw:16%"></i><i class="e" style="--w:62%;--el:28%;--ew:30%"></i><div class="sl"><b class="tile pg" id="scP"></b></div></div>
+              <div class="u"><i class="t" style="--w:40%"></i><i class="h h2" style="--w:92%;--l:6%;--hw:14%"></i><i class="h h3 e" style="--w:74%;--l:62%;--hw:18%;--el:8%;--ew:26%"></i><div class="sl"><b class="tile pg pg2" id="scP2"></b><b class="tile ft" id="scF"></b></div></div>
             </div>
             <div class="linea"></div>
+            <div class="vl"></div>
           </div>
-          <div class="sc-pk" id="scK"><b class="tile pg"></b><b class="tile ft"></b></div>
+          <div class="sc-pk" id="scK"><div class="sc-pdf"><b class="tile pg pg2 b"></b><b class="tile pg a"></b></div><b class="tile ft"></b></div>
           <div class="sc-rip" id="scR"><div class="cr">
             <div class="mo"><span class="on">Mista</span><span class="qz">Quiz</span><span>Mirata</span><span>Caso clinico</span></div>
-            <span class="lb">QUIZ · unità 3.2 · domanda 4</span>
+            <span class="lb">QUIZ · unità 1.2 · domanda 4</span>
             <i class="q"></i><i class="q" style="--w:58%"></i>
             <div class="op"><span><em>A.</em><i style="--w:70%"></i></span><span class="ok"><em>B.</em><i style="--w:56%"></i></span><span><em>C.</em><i style="--w:78%"></i></span><span><em>D.</em><i style="--w:48%"></i></span></div>
             <div class="pd"><i></i><i></i><i class="t"></i></div>
@@ -1599,8 +1628,9 @@ a { color: inherit; }
   });
   (function () {
     var sc = document.getElementById('sc'), A = document.getElementById('scA'), D = document.getElementById('scD'), T = document.getElementById('scT');
-    var K = document.getElementById('scK'), P = document.getElementById('scP'), F = document.getElementById('scF'), R = document.getElementById('scR');
-    var L = document.querySelector('.landing'), C = document.getElementById('lCal'), B = document.getElementById('lTgt'), G = document.getElementById('lGo');
+    var K = document.getElementById('scK'), P = document.getElementById('scP'), P2 = document.getElementById('scP2'), F = document.getElementById('scF'), R = document.getElementById('scR');
+    var Es = [].slice.call(D.querySelectorAll('.u > i.e')), Vl = D.querySelector('.vl'), vr = 0;
+    var L = document.querySelector('.landing'), C = document.getElementById('lCal'), B = document.getElementById('lTgt');
     var posto = document.getElementById('scPosto'), Ev = document.getElementById('scEv');
     function relL(el) { var a = el.getBoundingClientRect(), b = L.getBoundingClientRect(); return { x: a.left - b.left, y: a.top - b.top, w: a.width, h: a.height }; }
     function posa(el, r) { el.style.left = r.x + 'px'; el.style.top = r.y + 'px'; el.style.width = r.w + 'px'; el.style.height = r.h + 'px'; }
@@ -1614,6 +1644,15 @@ a { color: inherit; }
     function dopo(ms, fn) { timers.push(setTimeout(fn, ms)); }
     function stop() { timers.forEach(clearTimeout); timers = []; inCorso = false; }
     function add(c) { sc.classList.add(c); }
+    function verifica() { // la barra scende e sottolinea le parole quando ci passa sopra
+      add('ver'); var t0 = performance.now(), dur = 2000;
+      (function passo(now) {
+        var k = Math.min(1, (now - t0) / dur); Vl.style.top = (4 + 92 * k) + '%';
+        var y = Vl.getBoundingClientRect().top;
+        Es.forEach(function (e) { if (!e.classList.contains('on') && e.getBoundingClientRect().top + 6 < y) e.classList.add('on'); });
+        if (k < 1) vr = requestAnimationFrame(passo); else sc.classList.remove('ver');
+      })(t0);
+    }
     function rel(el) { var a = el.getBoundingClientRect(), b = A.getBoundingClientRect(); return { x: a.left - b.left, y: a.top - b.top, w: a.width, h: a.height }; }
     function titolo(t) { T.style.opacity = 0; dopo(260, function () { T.textContent = t; T.style.opacity = 1; }); }
     function vola(tile, da) { // la tessera parte dal pacco e si posa nella sua unità
@@ -1655,11 +1694,11 @@ a { color: inherit; }
       dopo(1400, function () { sc.classList.add('subito', 'via'); sc.classList.remove('muove'); void sc.offsetWidth; sc.classList.remove('subito'); poi && poi(); });
     }
     function pulisci() {
-      cancelAnimationFrame(tw); tw = 0; B.classList.remove('assente'); G.classList.remove('assente'); sc.className = 'scan libero via subito'; fissa(); void sc.offsetWidth; sc.classList.remove('subito'); T.textContent = 'lezione-12.mp3'; T.style.opacity = 1; Fa.textContent = '';
+      cancelAnimationFrame(tw); tw = 0; B.classList.remove('assente'); cancelAnimationFrame(vr); Vl.style.top = ''; Es.forEach(function (e) { e.classList.remove('on'); }); sc.className = 'scan libero via subito'; fissa(); void sc.offsetWidth; sc.classList.remove('subito'); T.textContent = 'lezione-12.mp3'; T.style.opacity = 1; Fa.textContent = '';
       [D, R].forEach(function (e) { e.style.transition = 'none'; e.style.transform = ''; e.style.opacity = ''; });
       if (audio) { audio.remove(); audio = null; }
       C.className = 'l-cal on'; Bem.textContent = 'lezione-12.mp3';
-      [P, F].forEach(function (e) { e.className = e.className.replace(' in', ''); e.style.transform = ''; e.style.opacity = ''; });
+      [P, P2, F].forEach(function (e) { e.className = e.className.replace(' in', ''); e.style.transform = ''; e.style.opacity = ''; });
       void sc.offsetWidth; D.style.transition = ''; R.style.transition = '';
     }
     function ciclo() {
@@ -1679,32 +1718,29 @@ a { color: inherit; }
       dopo(3500, function () { fase('Trascrizione'); });
       // 1. trascrizione: la linea trasforma l'onda in testo
       dopo(4000, function () { add('p1'); });
-      dopo(6800, function () { add('fatto'); titolo('Fisiopatologia della febbre'); fase('Arricchimento'); });
-      // 2. arricchimento: PDF e foto arrivano e vanno nelle unità
-      dopo(7200, function () { add('pk'); });
-      dopo(8200, function () { add('aperto'); });
-      dopo(8750, function () { vola(P, K.querySelector('.pg')); add('pkvia'); });
-      dopo(8950, function () { vola(F, K.querySelector('.ft')); });
-      // 3. studio: si evidenziano le parole chiave
-      dopo(9900, function () { fase('Studio'); });
-      dopo(10200, function () { add('studio'); });
-      // 4. il box torna nel suo blocco del calendario
-      dopo(12300, function () { piazzaCal(); Bem.textContent = 'Fisiopatologia della febbre'; C.className = 'l-cal on ok'; });
-      dopo(12500, function () { chiudi(B, function () { C.classList.add('posa'); }); });
-      // 5. si apre un'altra lezione dal calendario e parte il quiz
-      dopo(14400, function () { C.classList.add('punta'); });
-      dopo(15200, function () {
-        D.style.opacity = 0; add('rip'); T.textContent = 'Anatomia del cuore'; Fa.textContent = 'Ripasso';
-        apri(G);
-      });
-      dopo(16800, function () { add('risp'); });
-      dopo(17300, function () { add('voto'); });
-      // 6. il quiz torna nel suo blocco: il giro ricomincia dal calendario
-      dopo(19400, function () { C.className = 'l-cal on ok posa'; });
-      dopo(19600, function () { chiudi(G); });
-      dopo(21600, function () { if (visibile) ciclo(); else stop(); });
+      // pausa di 500 ms alla fine di ogni fase
+      dopo(7300, function () { add('fatto'); titolo('Fisiopatologia della febbre'); fase('Arricchimento'); });
+      // 2. arricchimento: arrivano il PDF e la foto; il PDF si divide in due pagine mentre il testo si apre, poi tutto va al suo posto
+      dopo(7500, function () { add('pk'); });
+      dopo(8400, function () { add('split'); add('aperto'); });
+      dopo(8900, function () { vola(P, K.querySelector('.sc-pdf .a')); add('pkvia'); });
+      dopo(8980, function () { vola(P2, K.querySelector('.sc-pdf .b')); });
+      dopo(9060, function () { vola(F, K.querySelector('.ft')); });
+      // 3. verifica: la barra scende e sottolinea gli errori
+      dopo(10360, function () { fase('Verifica'); });
+      dopo(10600, verifica);
+      // 4. studio: spariscono le sottolineature rosse e si evidenziano le parole chiave
+      dopo(13100, function () { Es.forEach(function (e) { e.classList.remove('on'); }); fase('Studio'); add('studio'); });
+      // 5. ripasso nella stessa finestra
+      dopo(14850, function () { fase('Ripasso'); D.style.transition = 'opacity .35s'; D.style.opacity = 0; add('rip'); });
+      dopo(16050, function () { add('risp'); });
+      dopo(16550, function () { add('voto'); });
+      // 6. la lezione torna nel suo blocco del calendario e il giro ricomincia
+      dopo(17400, function () { piazzaCal(); Bem.textContent = 'Fisiopatologia della febbre'; C.className = 'l-cal on ok'; });
+      dopo(17600, function () { chiudi(B, function () { C.classList.add('posa'); }); });
+      dopo(19500, function () { if (visibile) ciclo(); else stop(); });
     }
-    function finale() { stop(); pulisci(); C.className = 'l-cal'; Fa.textContent = 'Studio'; sc.className = 'scan libero fatto aperto studio'; fissa(); sc.style.setProperty('--x', '100%'); T.textContent = 'Fisiopatologia della febbre'; P.className += ' in'; F.className += ' in'; P.style.opacity = F.style.opacity = 1; }
+    function finale() { stop(); pulisci(); C.className = 'l-cal'; Fa.textContent = 'Studio'; sc.className = 'scan libero fatto aperto studio'; fissa(); sc.style.setProperty('--x', '100%'); T.textContent = 'Fisiopatologia della febbre'; [P, P2, F].forEach(function (e) { e.className += ' in'; e.style.opacity = 1; }); }
     if (riduci) finale();
     else new IntersectionObserver(function (v) { visibile = v[0].isIntersecting; if (visibile && !inCorso) ciclo(); }, { threshold: 0.3 }).observe(posto);
     var lw3 = innerWidth;
