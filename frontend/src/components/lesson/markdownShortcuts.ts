@@ -6,6 +6,7 @@ import { EditorView, keymap } from '@codemirror/view'
 import { undo, redo } from '@codemirror/commands'
 import { openSearchPanel } from '@codemirror/search'
 
+import { isMacKeyboard } from '@/lib/platform'
 import { timecodeSpans } from './timecodeLock'
 
 /**
@@ -475,7 +476,7 @@ export const editorCommands: readonly EditorCommand[] = [
   { id: 'study-copy-unit-keywords', etichetta: "Copia le keywords dell'unità", gruppo: 'Studio', predefinita: 'Mod-k', run: () => false },
 ]
 
-export function isMacKeyboard(): boolean { return /Mac|iPhone|iPad/.test(navigator.platform) }
+export { isMacKeyboard }
 
 /** Una sola forma per ordine dei modificatori, maiuscole e sinonimi di Mod. */
 export function normalizeShortcut(value: string, mac = isMacKeyboard()): string {

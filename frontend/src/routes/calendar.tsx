@@ -51,7 +51,7 @@ import { CalendarDayList } from '@/components/calendar/CalendarDayList'
 import { CalendarYearView } from '@/components/calendar/CalendarYearView'
 import { CalendarClipboardActions } from '@/components/calendar/CalendarClipboardActions'
 import { WeekRangePopup } from '@/components/calendar/WeekRangePopup'
-import { academicYear, academicWeeks, weekRangeLabel, type WeekRange } from '@/components/calendar/weekRange'
+import { academicYear, academicWeeks, weekRangesLabel, type WeekRange } from '@/components/calendar/weekRange'
 import { useHoverExpand } from '@/lib/useHoverExpand'
 
 // Date in ora locale: toISOString() passa per UTC e sbaglia giorno vicino a mezzanotte e al cambio d'ora.
@@ -105,6 +105,7 @@ export function CalendarPage() {
     setDesktopView(view)
     try { sessionStorage.setItem('rt:calendar-view', view) } catch { /* La vista resta nella pagina. */ }
     setEditing(null)
+    setRangeEdit([])
     setMultiple(false)
     setMenuOpen(false)
     closeAllPopups()
@@ -117,7 +118,7 @@ export function CalendarPage() {
   const year = Math.max(2025, Math.min(2035, academicYear(currentDate)))
   const yearQuery = useCalendarYear(academicWeeks(year)[0], annual)
   const [editing, setEditing] = useState<'week' | 'tpl' | 'range' | null>(null)
-  const [rangeEdit, setRangeEdit] = useState<WeekRange | null>(null)
+  const [rangeEdit, setRangeEdit] = useState<WeekRange[]>([])
   const [rangeAnchor, setRangeAnchor] = useState<PopupAnchor | null>(null)
 
   // Popups state: dell'ora si tiene solo la chiave, i dati si leggono sempre dalla settimana aggiornata
@@ -167,9 +168,9 @@ export function CalendarPage() {
 
   const week = weekQuery.data
   const days = week?.days ?? []
-  const outsideRange = editing === 'range' && (!rangeEdit || !week || week.start_date < rangeEdit.from || week.start_date >= rangeEdit.to)
+  const outsideRange = editing === 'range' && (!week || !rangeEdit.some(r => week.start_date >= r.from && week.start_date < r.to))
   const gridEditing = outsideRange ? null : editing
-  const templateDates: { from: string; to?: string } | null = editing === 'range' ? rangeEdit : week ? { from: week.start_date } : null
+  const targetRanges: Array<{ from: string; to?: string }> = editing === 'range' ? rangeEdit : week ? [{ from: week.start_date }] : []
   const liveEvent = activeEventRef
     ? days
         .flatMap((d) => d.events)
@@ -225,7 +226,16 @@ export function CalendarPage() {
     } else if (editing === 'tpl' || editing === 'range') {
       if (ev.template_entry_id) {
         // Si applica solo alla validità scelta; gli stati prima e dopo restano conservati.
-        deleteTpl.mutate({ id: ev.template_entry_id, ...templateDates })
+        const entryId = ev.template_entry_id
+        void (async () => {
+          try {
+            for (const range of targetRanges) {
+              await deleteTpl.mutateAsync({ id: entryId, ...range })
+            }
+          } catch {
+            // Come per aggiungere e togliere ore, la settimana mostrata resta quella salvata sul server.
+          }
+        })()
       } else if (ev.override_id) {
         deleteOv.mutate(ev.override_id)
       }
@@ -253,18 +263,19 @@ export function CalendarPage() {
         // La nuova ora vale nelle date scelte, ma solo dove valeva la vecchia; poi si toglie
         // la versione precedente.
         const old = templateQuery.data?.find(t => t.id === ev.template_entry_id)
-        const chosenFrom = templateDates?.from ?? week.start_date
-        const from = old?.valid_from && old.valid_from > chosenFrom ? old.valid_from : chosenFrom
-        const ends = [templateDates?.to, old?.valid_to].filter((d): d is string => !!d).sort()
-        const to = ends[0]
-        if (to && to <= from) return
-        await createTpl.mutateAsync({
-          ...fields,
-          day_of_week: ev.day_of_week,
-          valid_from: from,
-          ...(to ? { valid_to: to } : {}),
-        })
-        await deleteTpl.mutateAsync({ id: ev.template_entry_id, ...templateDates })
+        for (const range of targetRanges) {
+          const from = old?.valid_from && old.valid_from > range.from ? old.valid_from : range.from
+          const ends = [range.to, old?.valid_to].filter((d): d is string => !!d).sort()
+          const to = ends[0]
+          if (to && to <= from) continue
+          await createTpl.mutateAsync({
+            ...fields,
+            day_of_week: ev.day_of_week,
+            valid_from: from,
+            ...(to ? { valid_to: to } : {}),
+          })
+          await deleteTpl.mutateAsync({ id: ev.template_entry_id, ...range })
+        }
       } else if (ev.template_entry_id) {
         // Solo questa settimana: una modifica puntuale dell'ora della settimana tipo, che
         // sostituisce quella eventualmente già presente per lo stesso giorno.
@@ -306,7 +317,7 @@ export function CalendarPage() {
   function beginEditing(mode: 'week' | 'tpl') {
     closeAllPopups()
     setEditing(mode)
-    setRangeEdit(null)
+    setRangeEdit([])
   }
 
   return (
@@ -326,9 +337,9 @@ export function CalendarPage() {
           <span data-testid="calendar-week-label" className="block truncate font-mono text-sm font-semibold text-foreground max-md:text-[11px]">
             {annual ? `${year}/${String(year + 1).slice(-2)}` : week?.label || 'Caricamento…'}
           </span>
-          {editing === 'range' && rangeEdit && <button type="button" onClick={openRange}
+          {editing === 'range' && rangeEdit.length > 0 && <button type="button" onClick={openRange}
             className="mx-auto block max-w-40 truncate rounded-full bg-muted px-2 text-[10px]" aria-label="Cambia intervallo di settimane">
-            {weekRangeLabel(rangeEdit)}
+            {weekRangesLabel(rangeEdit)}
           </button>}
         </div>
 
@@ -375,7 +386,7 @@ export function CalendarPage() {
               <IconButton label="Modifica solo questa settimana" icon={CalendarRange} active={editing === 'week'} onClick={() => beginEditing('week')} />
             </>}
             {(editing || multiple || menuOpen) && <IconButton label="Fatto" icon={Check} onClick={() => {
-              closeAllPopups(); setEditing(null); setRangeEdit(null); setMultiple(false); setMenuOpen(false)
+              closeAllPopups(); setEditing(null); setRangeEdit([]); setMultiple(false); setMenuOpen(false)
             }} />}
           </div>
         </div>
@@ -475,8 +486,8 @@ export function CalendarPage() {
         onClose={() => setJumpAnchor(null)} onConfirm={range => { closeAllPopups(); setCurrentDate(range.from); if (annual) setView('week') }} />}
 
       {rangeAnchor && <WeekRangePopup anchor={rangeAnchor} currentDate={currentDate} entries={templateQuery.data ?? []} initial={rangeEdit}
-        onClose={() => setRangeAnchor(null)} onConfirm={range => {
-          closeAllPopups(); setRangeEdit(range); setEditing('range'); setCurrentDate(range.from)
+        onClose={() => setRangeAnchor(null)} onConfirm={ranges => {
+          closeAllPopups(); setRangeEdit(ranges); setEditing('range'); setCurrentDate(ranges[0].from)
         }} />}
 
       {activeEvent && (
@@ -544,7 +555,7 @@ export function CalendarPage() {
       {addSlot && editing && week && !outsideRange && (
         <AddEventPopup
           scope={editing}
-          rangeLabel={rangeEdit ? weekRangeLabel(rangeEdit) : undefined}
+          rangeLabel={rangeEdit.length ? weekRangesLabel(rangeEdit) : undefined}
           weekNumber={week.week_number}
           defaultStartTime={`${String(Math.floor(addSlot.hour)).padStart(2, '0')}:${String(
             Math.round((addSlot.hour - Math.floor(addSlot.hour)) * 60),
@@ -562,15 +573,23 @@ export function CalendarPage() {
                 docente,
               })
             } else if (editing === 'tpl' || editing === 'range') {
-              createTpl.mutate({
-                day_of_week: addSlot.day.day_of_week,
-                start_time: startTime,
-                end_time: endTime,
-                materia,
-                docente,
-                valid_from: templateDates?.from ?? week.start_date,
-                ...(templateDates?.to ? { valid_to: templateDates.to } : {}),
-              })
+              void (async () => {
+                try {
+                  for (const range of targetRanges) {
+                    await createTpl.mutateAsync({
+                      day_of_week: addSlot.day.day_of_week,
+                      start_time: startTime,
+                      end_time: endTime,
+                      materia,
+                      docente,
+                      valid_from: range.from,
+                      ...(range.to ? { valid_to: range.to } : {}),
+                    })
+                  }
+                } catch {
+                  // Come per aggiungere e togliere ore, la settimana mostrata resta quella salvata sul server.
+                }
+              })()
             }
           }}
         />
@@ -580,7 +599,7 @@ export function CalendarPage() {
         <AddEventPopup
           key={`${editSlot.event.date}-${editSlot.event.key}`}
           scope={editing}
-          rangeLabel={rangeEdit ? weekRangeLabel(rangeEdit) : undefined}
+          rangeLabel={rangeEdit.length ? weekRangesLabel(rangeEdit) : undefined}
           weekNumber={week.week_number}
           initial={{
             materia: editSlot.event.materia,
