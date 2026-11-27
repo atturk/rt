@@ -344,6 +344,7 @@ def _serve_bytes(payload: bytes):
     return srv, f"http://127.0.0.1:{srv.server_address[1]}/macparakeet-cli.tar.gz"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macparakeet esiste solo su macOS: il finto eseguibile è uno script shell")
 def test_macparakeet_download_verifies_sha256_extracts_member_and_deletes(api_client, isolated_data, monkeypatch):
     import hashlib
     import os as _os
@@ -460,6 +461,7 @@ def test_macparakeet_rejects_path_traversal_member(isolated_data, monkeypatch):
         srv.server_close()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macparakeet esiste solo su macOS: il finto eseguibile è uno script shell")
 def test_macparakeet_folder_growth_progress_and_pause_resume(isolated_data, monkeypatch):
     import hashlib
     from rt.pipeline import setup

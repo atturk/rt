@@ -23,7 +23,6 @@ import { useUploadGuard } from '@/lib/uploadQueue'
 import { StudyZenContext, ZenContext, RsvpLayoutContext, IRLEN_COLORS, type RsvpLayoutState } from '@/lib/zen'
 import { ComponentNoticeDot, UpdateNoticeDot } from '@/components/settings/UpdateNoticeDot'
 import { useUpdateNotice } from '@/components/settings/useAppUpdate'
-import { useComponentNotice } from '@/components/settings/useComponentNotice'
 import { cn } from '@/lib/utils'
 
 // Il riquadro di Salva/Condividi serve solo dopo un'esportazione: fuori dal JavaScript iniziale.
@@ -69,14 +68,10 @@ function Badge({ kind }: { kind: 'jobs' | 'settings' }) {
 function NavItem({ section, path, side, variant }: { section: Section; path: string; side: 'right' | 'top'; variant: 'rail' | 'ghost' }) {
   const active = section.match(path)
   const returnAddress = useReturnAddress()
-  const { notice: updateNotice } = useUpdateNotice()
-  const { missing: missingComponent } = useComponentNotice()
   const target =
     active && (section === JOBS || section === SETTINGS)
       ? returnAddress
-      : section === SETTINGS && !updateNotice && missingComponent
-        ? '/impostazioni/lavorazione#componenti'
-        : section.to
+      : section.to
   return (
     <IconLink
       to={target}

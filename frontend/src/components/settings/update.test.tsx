@@ -349,11 +349,10 @@ describe('Avviso e pallino aggiornamenti', () => {
     const sectionsNav = screen.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
     const workLink = within(sectionsNav).getByRole('link', { name: /Lavorazione delle lezioni/ })
     expect(await within(workLink).findByLabelText('Motore di trascrizione da scaricare')).toBeInTheDocument()
-    expect(workLink).toHaveAttribute('href', '/impostazioni/lavorazione#componenti')
+    expect(workLink).toHaveAttribute('href', '/impostazioni/lavorazione')
 
     await userEvent.click(workLink)
     expect(router.state.location.pathname).toBe('/impostazioni/lavorazione')
-    expect(router.state.location.hash).toBe('#componenti')
   })
 
   it('nasconde il pallino del componente quando è in download o pronto', async () => {
