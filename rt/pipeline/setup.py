@@ -585,6 +585,24 @@ def run_setup(
                     cli_hint=f"Usa --force per sovrascrivere o avvia 'rt run {target_folder_path}'.",
                 )
 
+    from rt.core.archive import find, original_path, register_file, cached_transcript, store_transcript, transcript_engine
+    from rt.core.idempotency import compute_file_sha256
+    upload_sha = compute_file_sha256(primary_audio) if len(cleaned_audios) == 1 else None
+    archived = find(upload_sha) if upload_sha else None
+    engine = transcript_engine(mock_asr)
+    cached = cached_transcript(archived['impronta'], engine) if archived else None
+
+    # Controllo motore prima di creare la lezione, così un fallimento iniziale non lascia una lezione vuota.
+    # Se l'audio è già nell'archivio per il motore attivo, la trascrizione si riusa senza controllare il binario.
+    if not mock_asr and not skip_transcribe and not cached:
+        from rt.core.config import effective_engine, load_config
+        stt_cfg = load_config().transcription
+        if effective_engine(stt_cfg) == "macparakeet" and not find_macparakeet_binary():
+            raise SetupError(
+                "macparakeet-cli non trovato. Installalo con 'brew install moona3k/tap/macparakeet-cli' "
+                "oppure scegli il motore Parakeet ONNX in Impostazioni."
+            )
+
     if fs.is_db_lesson(target_folder_path) or (not os.path.isdir(target_folder_path) and fs.new_lessons_use_db()):
         # Lezione nel database: nessuna cartella, i media vanno nella cartella media di RT.
         target_folder_path = fs.create_db_lesson(target_folder_path)
@@ -613,10 +631,6 @@ def run_setup(
 
     # La conversione è opzionale e non modifica mai il file sorgente. Il nome definitivo
     # serve anche nei metadati del trascritto, compresi i rami mock e skip-transcribe.
-    from rt.core.archive import find, original_path, register_file, cached_transcript, store_transcript, transcript_engine
-    from rt.core.idempotency import compute_file_sha256
-    upload_sha = compute_file_sha256(primary_audio) if len(cleaned_audios) == 1 else None
-    archived = find(upload_sha) if upload_sha else None
     transcoded_audio = False
     if archived:
         primary_audio_name = os.path.splitext(primary_audio_name)[0] + archived['estensione']
@@ -633,8 +647,6 @@ def run_setup(
                 fs.copy2(converted_path, os.path.join(target_folder_path, converted_name))
                 primary_audio_name = converted_name
                 transcoded_audio = True
-    engine = transcript_engine(mock_asr)
-    cached = cached_transcript(archived['impronta'], engine) if archived else None
 
     # 5. ESECUZIONE TRASCRIZIONE ASR
     json_path = os.path.join(target_folder_path, "trascritto grezzo.json")
@@ -680,12 +692,14 @@ def run_setup(
         current_status = "pronto_per_rielaborazione"
 
     elif not skip_transcribe:
-        from rt.core.config import load_config, load_env_file
+        from rt.core.config import effective_engine, load_config, load_env_file
         from rt.core.custom_stt import transcribe_custom
 
         stt = load_config().transcription
-        use_custom_stt = stt.engine == "custom"
-        use_onnx = stt.engine == "parakeet"
+        resolved_engine = effective_engine(stt)
+        use_custom_stt = resolved_engine == "custom"
+        use_onnx = resolved_engine == "parakeet"
+        macparakeet_fallback = use_onnx and stt.engine == "macparakeet"
         parakeet_bin = None if use_custom_stt or use_onnx else find_macparakeet_binary()
         if not use_custom_stt and not use_onnx and not parakeet_bin:
             raise SetupError(
@@ -702,6 +716,7 @@ def run_setup(
         import logging
         logging.getLogger(__name__).info(
             "[2/9] TRASCRIZIONE STT CUSTOM..." if use_custom_stt
+            else "[2/9] TRASCRIZIONE PARAKEET ONNX (macparakeet-cli non trovato)..." if macparakeet_fallback
             else "[2/9] TRASCRIZIONE PARAKEET ONNX..." if use_onnx
             else "[2/9] MACPARAKEET TRANSCRIPTION (ASR Timecoded)..."
         )
@@ -735,7 +750,10 @@ def run_setup(
                     from rt.core.stt_slot import local_transcription_slot
                     try:
                         with local_transcription_slot(on_wait=on_progress, cancel_token=cancel_token):
-                            raw_data = transcribe_onnx(aud_abs, on_percent=on_transcription_progress, on_progress=on_progress)
+                            onnx_kw = {"on_percent": on_transcription_progress, "on_progress": on_progress}
+                            if cancel_token is not None:
+                                onnx_kw["cancel_token"] = cancel_token
+                            raw_data = transcribe_onnx(aud_abs, **onnx_kw)
                     except RuntimeError as exc:
                         raise SetupError(str(exc)) from None
                 else:

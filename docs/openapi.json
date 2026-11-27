@@ -13251,6 +13251,11 @@
             ],
             "title": "Base Url"
           },
+          "effective_engine": {
+            "description": "Motore effettivo usato a runtime",
+            "title": "Effective Engine",
+            "type": "string"
+          },
           "engine": {
             "title": "Engine",
             "type": "string"
@@ -13258,6 +13263,11 @@
           "macparakeet_available": {
             "description": "macparakeet può girare qui (solo macOS)",
             "title": "Macparakeet Available",
+            "type": "boolean"
+          },
+          "macparakeet_fallback": {
+            "description": "True se su macOS manca macparakeet-cli e si usa Parakeet ONNX",
+            "title": "Macparakeet Fallback",
             "type": "boolean"
           },
           "macparakeet_installed": {
@@ -13294,6 +13304,8 @@
           "engine",
           "api_key_set",
           "recommended",
+          "effective_engine",
+          "macparakeet_fallback",
           "macparakeet_available",
           "macparakeet_installed",
           "parakeet_available",

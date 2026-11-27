@@ -9,6 +9,8 @@ export const testSettings: Settings = {
     engine: 'macparakeet',
     api_key_set: false,
     recommended: 'macparakeet',
+    effective_engine: 'macparakeet',
+    macparakeet_fallback: false,
     macparakeet_available: true,
     macparakeet_installed: true,
     parakeet_available: true,

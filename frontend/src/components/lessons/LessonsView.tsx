@@ -4,7 +4,8 @@ import { Archive, Check, Brain, Calendar, CalendarRange, FileText, Info, List, L
 import { useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
-import { api, errorMessage, unwrap } from '@/api/client'
+import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
+import { RetryButton } from '@/components/jobs/JobParts'
 import { exportLessonsMultiple } from '@/lib/fileStatus'
 import { useSettings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
@@ -240,10 +241,11 @@ function StatusDot({ status }: { status: LessonStatus }) {
   )
 }
 
-export function LessonRow({ lesson, grouping, running, selecting, selected, onSelect, highlighted }: {
+export function LessonRow({ lesson, grouping, running, failedJob, selecting, selected, onSelect, highlighted }: {
   lesson: Lesson
   grouping: LessonsGrouping
   running: boolean
+  failedJob?: Schemas['Job']
   selecting: boolean
   selected: boolean
   onSelect: (checked: boolean) => void
@@ -251,6 +253,8 @@ export function LessonRow({ lesson, grouping, running, selecting, selected, onSe
 }) {
   const title = lessonTitle(lesson)
   const subtitle = lessonSubtitle(lesson, grouping)
+  const failed = !running && Boolean(failedJob)
+  const failedText = failed ? (failedJob?.error_message || failedJob?.error || 'Elaborazione non riuscita.') : null
   const titleId = useId()
   const row = 'relative flex items-start gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-muted max-md:px-2 max-md:py-2.5'
   const text = (
@@ -260,6 +264,11 @@ export function LessonRow({ lesson, grouping, running, selecting, selected, onSe
       {subtitle && (
         <span className="block text-meta text-muted-foreground" data-testid="lesson-subtitle">
           {subtitle}
+        </span>
+      )}
+      {failedText && (
+        <span className="block text-meta text-danger" data-testid="lesson-row-error">
+          {failedText}
         </span>
       )}
     </span>
@@ -274,9 +283,10 @@ export function LessonRow({ lesson, grouping, running, selecting, selected, onSe
         </label>
       ) : (
         <div className={cn(row, highlighted ? 'bg-accent' : 'transition-colors duration-500 motion-reduce:transition-none')}>
-          <StatusDot status={lessonStatus(lesson, running)} />
+          <StatusDot status={lessonStatus(lesson, running, failed)} />
           {text}
-          <div className="relative z-1 flex shrink-0 self-center items-center" data-testid="lesson-indicators">
+          <div className="relative z-1 flex shrink-0 self-center items-center gap-2" data-testid="lesson-indicators">
+            {failed && failedJob && !failedJob.retried_by && <RetryButton jobId={failedJob.id} />}
             <div className="flex size-[34px] items-center justify-center max-md:size-10"><StudyRing lesson={lesson} /></div>
           </div>
         </div>
@@ -377,6 +387,7 @@ export function LessonsList({
   groups,
   grouping,
   running,
+  failedJobs,
   selecting,
   selected,
   onSelected,
@@ -388,6 +399,7 @@ export function LessonsList({
   groups: LessonGroup[]
   grouping: LessonsGrouping
   running: Set<number>
+  failedJobs?: ReadonlyMap<number, Schemas['Job']>
   selecting: boolean
   selected: Set<number>
   onSelected: (next: Set<number>) => void
@@ -435,6 +447,7 @@ export function LessonsList({
                 lesson={lesson}
                 grouping={grouping}
                 running={running.has(lesson.id)}
+                failedJob={failedJobs?.get(lesson.id)}
                 selecting={selecting}
                 selected={selected.has(lesson.id)}
                 onSelect={(on) => toggle([lesson.id], on)}

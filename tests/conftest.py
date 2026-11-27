@@ -26,6 +26,8 @@ def _isolate_encrypted_secret_store(tmp_path_factory):
     legge segreti reali né interroga il portachiavi. I test di rt.security usano il loro file."""
     # Stesso motore di trascrizione predefinito su Mac, Linux e Windows (vedi default_engine)
     os.environ["RT_DEFAULT_STT_ENGINE"] = "macparakeet"
+    # Nessun test deve scaricare modelli reali da Hugging Face (i test di download usano mock)
+    os.environ["HF_HUB_OFFLINE"] = "1"
     # GET /api/v1/system/update non deve interrogare GitHub dai test (i test dell'updater
     # sostituiscono _get_json con le loro release finte)
     from rt.core import app_update

@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
+import { Link } from 'react-router'
 
 import { useSaveTranscription, type Settings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
@@ -24,10 +25,21 @@ const ENGINE_LABEL: Record<Engine, string> = {
   custom: 'Server OpenAI-compatible',
 }
 
-function engineHint(t: Settings['transcription'], engine: Engine): string {
+function engineHint(t: Settings['transcription'], engine: Engine): ReactNode {
   if (engine === 'macparakeet') {
     if (!t.macparakeet_available) return 'macparakeet funziona solo su macOS: qui scegli Parakeet ONNX.'
-    return t.macparakeet_installed ? 'Usa il Neural Engine del Mac: il più veloce.' : 'macparakeet-cli non è installato su questo Mac.'
+    if (t.macparakeet_installed) return 'Usa il Neural Engine del Mac: il più veloce.'
+    if (t.macparakeet_fallback || t.parakeet_available) {
+      return (
+        <>
+          macparakeet-cli non è installato: RT usa Parakeet ONNX, che funziona senza installare nulla. Per la massima velocità puoi installare macparakeet-cli con Homebrew.{' '}
+          <Link to="/guida/installazione" className="underline">
+            Come?
+          </Link>
+        </>
+      )
+    }
+    return 'macparakeet-cli non è installato su questo Mac.'
   }
   if (engine === 'parakeet') {
     if (!t.parakeet_available) return 'Il motore non è installato: reinstalla RT.'

@@ -200,9 +200,12 @@ def _engine_key(motore):
 
 
 def transcript_engine(mock=False):
-    from rt.core.config import load_config
+    from rt.core.config import effective_engine, load_config
+    if mock:
+        return 'mock'
     stt = load_config().transcription
-    return 'mock' if mock else (f'custom-{stt.model}-{stt.base_url}' if stt.engine == 'custom' else stt.engine)
+    engine = effective_engine(stt)
+    return f'custom-{stt.model}-{stt.base_url}' if engine == 'custom' else engine
 
 
 def store_transcript(sha, motore, data):

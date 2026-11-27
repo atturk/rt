@@ -20,7 +20,7 @@ def configure_worker_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--poll", type=float, default=1.0, help="Attesa tra due controlli della coda vuota (secondi)")
     p.add_argument("--mock", action="store_true", help="Esegue ogni job in mock (LLM e risposte vocali): per i test")
     p.add_argument("--stt", default=os.environ.get("RT_WORKER_STT", "auto"),
-                   help="Motore di trascrizione di questo worker: auto (default), macparakeet, custom o none. "
+                   help="Motore di trascrizione di questo worker: auto (default), macparakeet, parakeet, custom o none. "
                         "Un worker senza trascrizione non prende i job che devono trascrivere audio")
 
 

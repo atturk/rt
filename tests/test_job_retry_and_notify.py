@@ -133,6 +133,59 @@ def test_failed_upload_job_keeps_files_for_retry(api_client, ws, worker, rt_db, 
     assert not os.listdir(uploads)
 
 
+def test_retry_after_setup_transcription_failure_reruns_setup(api_client, ws, worker, rt_db, monkeypatch):
+    """Se run_pipeline crea la lezione provvisoria e fallisce la trascrizione, Riprova rifà il setup."""
+    from rt.pipeline import setup
+    from rt.services.jobs import job_needs_stt
+    from tests.golden_support import AUDIO_FIXTURE
+
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "")
+    monkeypatch.setattr("rt.core.onnx_stt.available", lambda: True)
+
+    calls = []
+
+    def flaky_onnx(audio_path, on_percent=None, on_progress=None, cancel_token=None):
+        calls.append(audio_path)
+        if len(calls) == 1:
+            raise RuntimeError("Download del modello nemo non riuscito")
+        return {
+            "rawTranscript": "Testo riprovato.",
+            "text": "Testo riprovato.",
+            "transcriptSegments": [{"startMs": 0.0, "endMs": 1000.0, "text": "Testo riprovato.", "confidence": 0.9}],
+            "wordTimestamps": [],
+            "model": "Parakeet ONNX",
+        }
+
+    monkeypatch.setattr("rt.core.onnx_stt.transcribe_onnx", flaky_onnx)
+    with open(AUDIO_FIXTURE, "rb") as f:
+        res = api_client.post(
+            "/api/v1/lessons",
+            files={"audio": ("lezione.wav", f, "audio/wav")},
+            data={"date": "2026-09-05", "materia": "BIOCHIMICA", "full": "true"},
+        )
+    assert res.status_code == 202, res.text
+    first_id = res.json()["job_id"]
+    drain(worker)
+    first = job(api_client, first_id)
+    assert first["state"] == "failed"
+    assert first["lesson_id"] is not None
+    assert job_needs_stt("run_pipeline", first["payload"], first["lesson_path"]) is True
+
+    # Riprova: la trascrizione riparte invece di fermarsi a "Trascrizione non disponibile".
+    monkeypatch.setattr("rt.pipeline.prepare.run_prepare", lambda *a, **kw: {"status": "prepared"})
+    monkeypatch.setattr("rt.pipeline.outline.run_outline", lambda *a, **kw: {"status": "ok"})
+    monkeypatch.setattr("rt.pipeline.outline_review.outline_needs_approval", lambda *a, **kw: False)
+    monkeypatch.setattr("rt.pipeline.rewrite.run_rewrite", lambda *a, **kw: {"status": "ok", "failed_units": []})
+    monkeypatch.setattr("rt.pipeline.build.run_build", lambda *a, **kw: {"status": "built", "lesson_dir": first["lesson_path"]})
+    retry = api_client.post(f"/api/v1/jobs/{first_id}/retry")
+    assert retry.status_code == 202, retry.text
+    drain(worker)
+    retried = job(api_client, retry.json()["job_id"])
+    assert retried["state"] == "succeeded", retried.get("error")
+    assert len(calls) == 2
+
+
 def test_sweep_stale_uploads(tmp_path, rt_db):
     import time
     from rt.services.api_jobs import sweep_stale_uploads
