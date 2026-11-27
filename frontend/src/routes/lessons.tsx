@@ -257,14 +257,28 @@ export function DashboardPage() {
 }
 
 /** Caricamento: righe grigie della forma dell'elenco, non uno spinner. */
+/** Caricamento: la forma della pagina vera (gruppi a card, titolo del gruppo, righe con titolo
+ * e sottotitolo) con barre che luccicano, senza testo. */
+const SKELETON_GROUPS = [
+  { title: 18, rows: [[82, 22], [64, 26], [74, 20], [58, 24]] },
+  { title: 14, rows: [[70, 18], [86, 24], [62, 22]] },
+]
+
 function LessonsSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Carico le lezioni" role="status">
-      <div className="mb-4 h-2.5 w-48 rounded-md bg-muted" />
-      {[72, 56, 64, 48].map((width) => (
-        <div key={width} className="flex min-h-14 items-center gap-3 px-2.5">
-          <span className="size-1.5 rounded-full bg-muted" />
-          <span className="h-2.5 rounded-md bg-muted" style={{ width: `${width}%` }} />
+    <div aria-busy="true" aria-label="Carico le lezioni" role="status" data-testid="lessons-skeleton" className="space-y-4">
+      {SKELETON_GROUPS.map((group, g) => (
+        <div key={g} className="rounded-xl bg-muted/40 px-1.5 pt-2.5 pb-1.5" aria-hidden>
+          <div className="px-2.5 pt-1 pb-2"><div className="rt-skeleton h-2.5 rounded-md" style={{ width: `${group.title}%` }} /></div>
+          {group.rows.map(([title, meta], r) => (
+            <div key={r} className="flex items-start gap-3 px-2.5 py-3">
+              <span className="rt-skeleton mt-1.5 size-1.5 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="rt-skeleton h-3 rounded-md" style={{ width: `${title}%` }} />
+                <div className="rt-skeleton h-2 rounded-md" style={{ width: `${meta}%` }} />
+              </div>
+            </div>
+          ))}
         </div>
       ))}
     </div>
