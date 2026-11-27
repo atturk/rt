@@ -247,6 +247,18 @@ def notify_review_completed(lesson_dir: str, pending_count: int, ctx: RunContext
             ctx.emit(Notice(message=f"Notifica di fine verifica inviata ({getattr(notifier, 'channel', 'notifica')})."))
 
 
+def _setup_progress(ctx: RunContext, msg: str) -> None:
+    if msg.startswith("✔"):
+        ctx.emit(Notice(message=msg))
+        return
+    import re
+    pct = None
+    match = re.search(r"\b(\d{1,3})%", msg)
+    if match and "Scarico" in msg:
+        pct = min(100, int(match.group(1)))
+    ctx.progress("setup", pct, 100 if pct is not None else None, msg)
+
+
 def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> Dict[str, Any]:
     from rt.pipeline.setup import DEFAULT_MODEL
     setup_res = run_setup(
@@ -261,7 +273,7 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> 
         force=options.force,
         mock_asr=options.mock,
         interactive=False,
-        on_progress=lambda msg: ctx.emit(Notice(message=msg)),
+        on_progress=lambda msg: _setup_progress(ctx, msg),
         on_lesson_created=lambda d: _lesson_created(ctx, d),
         # Percentuale di macparakeet: la barra del job avanza durante la trascrizione.
         on_transcription_progress=lambda pct: ctx.progress("setup", pct, 100, f"Trascrizione audio: {pct}%"),

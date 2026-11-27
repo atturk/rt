@@ -91,3 +91,22 @@ def test_ingest_emits_lesson_created_before_setup_completes(tmp_path):
     assert created.message == "Lezione creata"
     assert created.lesson_dir == completed.result["lesson_dir"]
     assert rep.events.index(created) < rep.events.index(completed)
+
+
+def test_setup_progress_reports_model_download_to_phase_progress():
+    from rt.services.events import Notice, PhaseProgress
+    from rt.services.pipeline_service import _setup_progress
+
+    rep = ListReporter()
+    ctx = RunContext(reporter=rep)
+    _setup_progress(ctx, "✔ Cartella lezione: /tmp/x")
+    _setup_progress(ctx, "Scarico il modello di trascrizione (circa 700 MB, solo la prima volta)...")
+    _setup_progress(ctx, "Scarico il modello di trascrizione: 63% (410 di 652 MB, circa 20 minuti)")
+
+    notices = [e for e in rep.events if isinstance(e, Notice)]
+    progresses = [e for e in rep.events if isinstance(e, PhaseProgress)]
+    assert [n.message for n in notices] == ["✔ Cartella lezione: /tmp/x"]
+    assert len(progresses) == 2
+    assert progresses[0].phase == "setup" and "700 MB" in progresses[0].message
+    assert progresses[1].phase == "setup" and progresses[1].current == 63 and progresses[1].total == 100
+    assert "circa 20 minuti" in progresses[1].message

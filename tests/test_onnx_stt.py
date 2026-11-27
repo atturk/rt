@@ -169,3 +169,119 @@ def test_mac_without_macparakeet_uses_parakeet_fallback(monkeypatch, tmp_path):
             dest_dir=str(tmp_path / "lezioni"),
             interactive=False,
         )
+
+
+def test_resumable_download_uses_part_and_range_and_reports_eta(tmp_path, monkeypatch):
+    import requests
+
+    monkeypatch.setenv("RT_STT_MODELS_DIR", str(tmp_path))
+    monkeypatch.setattr(onnx_stt, "_model_patterns", lambda name, q, vad=False: ("fake/repo", ["*.bin"]))
+
+    files_data = {
+        "encoder.bin": b"A" * 1000,
+        "vocab.txt": b"B" * 200,
+    }
+    monkeypatch.setattr(
+        onnx_stt,
+        "_list_repo_files",
+        lambda repo_id, patterns: [(k, len(v)) for k, v in files_data.items()],
+    )
+    monkeypatch.setattr("huggingface_hub.hf_hub_url", lambda repo_id, filename: f"https://example.test/{filename}")
+
+    # Pre-popoliamo un .part interrotto a 400 byte per encoder.bin
+    partial_dir = tmp_path / f"{onnx_stt.MODEL_NAME}.partial"
+    partial_dir.mkdir(parents=True)
+    (partial_dir / "encoder.bin.part").write_bytes(files_data["encoder.bin"][:400])
+
+    seen_headers = []
+
+    class FakeResp:
+        def __init__(self, status_code, body, content_range=""):
+            self.status_code = status_code
+            self._body = body
+            self.headers = {"Content-Range": content_range} if content_range else {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"HTTP {self.status_code}")
+
+        def iter_content(self, chunk_size=65536):
+            for i in range(0, len(self._body), 200):
+                yield self._body[i : i + 200]
+
+    def fake_get(url, headers=None, stream=True, timeout=None, allow_redirects=True):
+        fname = url.rsplit("/", 1)[-1]
+        seen_headers.append((fname, dict(headers or {})))
+        if fname == "encoder.bin":
+            rng = (headers or {}).get("Range")
+            assert rng == "bytes=400-"
+            return FakeResp(206, files_data[fname][400:], content_range="bytes 400-999/1000")
+        return FakeResp(200, files_data[fname])
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    # Verifica anche rate-limit a 1/s e formato ETA
+    clock = [100.0]
+    monkeypatch.setattr(onnx_stt.time, "monotonic", lambda: clock[0])
+
+    progress_msgs = []
+    # Avanziamo il clock ad ogni chunk simulato tramite wrapper
+    orig_stream = onnx_stt._stream_response
+
+    def ticking_stream(resp, part_file, dest_file, expected_size, resume_from, on_chunk, cancel_token):
+        def wrapped_chunk(n):
+            clock[0] += 1.0
+            on_chunk(n)
+        return orig_stream(resp, part_file, dest_file, expected_size, resume_from, wrapped_chunk, cancel_token)
+
+    monkeypatch.setattr(onnx_stt, "_stream_response", ticking_stream)
+
+    final = onnx_stt._download_resumable(onnx_stt.MODEL_NAME, onnx_stt.QUANTIZATION, on_progress=progress_msgs.append)
+    assert final == str(tmp_path / onnx_stt.MODEL_NAME)
+    assert (tmp_path / onnx_stt.MODEL_NAME / "encoder.bin").read_bytes() == files_data["encoder.bin"]
+    assert (tmp_path / onnx_stt.MODEL_NAME / "vocab.txt").read_bytes() == files_data["vocab.txt"]
+    assert not (tmp_path / f"{onnx_stt.MODEL_NAME}.partial").exists()
+    assert ("encoder.bin", {"Range": "bytes=400-"}) in seen_headers
+    assert any("Scarico il modello di trascrizione:" in m and "%" in m and "MB" in m for m in progress_msgs)
+    assert any("100%" in m for m in progress_msgs)
+    assert any("pochi secondi" in m or "circa" in m for m in progress_msgs)
+
+
+def test_resumable_download_keeps_part_on_network_failure(tmp_path, monkeypatch):
+    import requests
+
+    monkeypatch.setenv("RT_STT_MODELS_DIR", str(tmp_path))
+    monkeypatch.setattr(onnx_stt, "_model_patterns", lambda name, q, vad=False: ("fake/repo", ["*.bin"]))
+    monkeypatch.setattr(onnx_stt, "_list_repo_files", lambda repo_id, patterns: [("encoder.bin", 1000)])
+    monkeypatch.setattr("huggingface_hub.hf_hub_url", lambda repo_id, filename: f"https://example.test/{filename}")
+
+    class FailingResp:
+        status_code = 200
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size=65536):
+            yield b"X" * 350
+            raise requests.ConnectionError("rete assente")
+
+    monkeypatch.setattr(requests, "get", lambda *a, **kw: FailingResp())
+    with pytest.raises(onnx_stt.OnnxSttUnavailable, match="connessione"):
+        onnx_stt._download_resumable(onnx_stt.MODEL_NAME, onnx_stt.QUANTIZATION)
+
+    part = tmp_path / f"{onnx_stt.MODEL_NAME}.partial" / "encoder.bin.part"
+    assert part.is_file() and part.stat().st_size == 350
+    assert not (tmp_path / onnx_stt.MODEL_NAME).exists()

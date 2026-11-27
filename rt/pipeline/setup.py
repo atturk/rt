@@ -738,7 +738,10 @@ def run_setup(
                     from rt.core.stt_slot import local_transcription_slot
                     try:
                         with local_transcription_slot(on_wait=on_progress, cancel_token=cancel_token):
-                            raw_data = transcribe_onnx(aud_abs, on_percent=on_transcription_progress, on_progress=on_progress)
+                            onnx_kw = {"on_percent": on_transcription_progress, "on_progress": on_progress}
+                            if cancel_token is not None:
+                                onnx_kw["cancel_token"] = cancel_token
+                            raw_data = transcribe_onnx(aud_abs, **onnx_kw)
                     except RuntimeError as exc:
                         raise SetupError(str(exc)) from None
                 else:

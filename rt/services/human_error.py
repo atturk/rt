@@ -20,8 +20,14 @@ def human_error(text: Optional[str]) -> str:
 
     has_suffix = SUFFIX in text
 
+    # Download modello Parakeet ONNX fallito (rete assente al primo avvio)
+    if "Download del modello" in text and "non riuscito" in text:
+        base = (
+            "Serve internet la prima volta per scaricare il modello di trascrizione "
+            "(circa 700 MB). Riprova quando sei connesso."
+        )
     # Punto 1: errore di rete o disconnessione
-    if any(k in text for k in ("network_error", "RemoteDisconnected", "Connection aborted")):
+    elif any(k in text for k in ("network_error", "RemoteDisconnected", "Connection aborted")):
         base = "Connessione al modello interrotta."
     # Punto 2: SetupError trascrizione macparakeet fallita
     elif "macparakeet" in text and "fallita" in text:

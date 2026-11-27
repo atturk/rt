@@ -44,3 +44,14 @@ def test_human_error_preserves_suffix():
 def test_human_error_empty():
     assert human_error(None) == ""
     assert human_error("") == ""
+
+
+def test_human_error_onnx_download_offline():
+    err = (
+        "SetupError: Download del modello nemo-parakeet-tdt-0.6b-v3 non riuscito: "
+        "controlla la connessione e riprova (('Connection aborted.', RemoteDisconnected('x')))."
+    )
+    assert human_error(err) == (
+        "Serve internet la prima volta per scaricare il modello di trascrizione "
+        "(circa 700 MB). Riprova quando sei connesso."
+    )
