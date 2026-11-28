@@ -63,7 +63,7 @@ def check_transcription() -> Check:
             return Check("Trascrizione", FAIL, "Parakeet ONNX scelto ma il pacchetto onnx-asr non è installato.",
                          "Reinstalla RT oppure scegli un altro motore in Impostazioni.")
         if not onnx_stt.model_ready():
-            return Check("Trascrizione", OK, "Parakeet ONNX: il modello si scarica alla prima trascrizione o da Impostazioni (~670 MB)")
+            return Check("Trascrizione", OK, "Parakeet ONNX: il modello si scarica alla prima trascrizione o da Impostazioni (~900 MB)")
         return Check("Trascrizione", OK, "Parakeet ONNX pronto")
     if sys.platform != "darwin":
         return Check("Trascrizione", WARN, "macparakeet funziona solo su macOS.",

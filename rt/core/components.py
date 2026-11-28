@@ -2,7 +2,7 @@
 rt.core.components
 Gestione dei componenti scaricabili di RT:
 - macparakeet: Motore di trascrizione per Mac (macparakeet-cli + modello parakeet-v3, ~500 MB)
-- transcription: Modello di trascrizione (Parakeet ONNX + Silero VAD, ~670 MB)
+- transcription: Modello di trascrizione per Windows e alternativa sul Mac (Parakeet TDT 0.6B v3 ONNX, ~900 MB)
 - browser: Browser per PDF e catture (Chromium headless Playwright)
 
 Ogni componente ha un solo download attivo alla volta garantito da file lock in
@@ -49,7 +49,7 @@ MACPARAKEET_MODEL_NAME = "parakeet-v3"
 MACPARAKEET_MODEL_APPROX_BYTES = 480 * 1024 * 1024
 MACPARAKEET_APPROX_BYTES = MACPARAKEET_TARBALL_BYTES + MACPARAKEET_MODEL_APPROX_BYTES
 
-TRANSCRIPTION_APPROX_BYTES = 670 * 1024 * 1024
+TRANSCRIPTION_APPROX_BYTES = 900 * 1024 * 1024
 BROWSER_APPROX_BYTES = 110 * 1024 * 1024
 
 LOCK_STALE_SECONDS = 30.0
@@ -336,17 +336,11 @@ def _dir_size(path: str) -> int:
 
 
 def _transcription_partial_bytes() -> int:
-    return (
-        _dir_size(onnx_stt._model_dir(onnx_stt.MODEL_NAME) + ".partial")
-        + _dir_size(onnx_stt._model_dir(onnx_stt.VAD_NAME) + ".partial")
-    )
+    return _dir_size(onnx_stt.model_dir() + ".partial")
 
 
 def _transcription_ready_bytes() -> int:
-    return (
-        _dir_size(onnx_stt._model_dir(onnx_stt.MODEL_NAME))
-        + _dir_size(onnx_stt._model_dir(onnx_stt.VAD_NAME))
-    )
+    return _dir_size(onnx_stt.model_dir())
 
 
 def _browser_disk_bytes() -> int:
@@ -402,9 +396,10 @@ def _component_meta(component_id: str) -> Dict[str, Any]:
         return {
             "id": TRANSCRIPTION_ID,
             "name": "Modello di trascrizione",
-            "description": ("usato da RT per trascrivere l'audio" if effective == "parakeet"
+            "description": ("Modello di trascrizione per Windows" if sys.platform == "win32"
+                            else "usato da RT per trascrivere l'audio" if effective == "parakeet"
                             else "alternativa a macparakeet: non serve, puoi eliminarlo"),
-            "detail": "Parakeet ONNX + VAD",
+            "detail": "Parakeet TDT 0.6B v3 di NVIDIA, CC-BY-4.0",
             "approx_bytes": TRANSCRIPTION_APPROX_BYTES,
             "required": effective == "parakeet",
             "available": onnx_stt.available(),
@@ -501,54 +496,30 @@ def list_components() -> List[Dict[str, Any]]:
 def _download_transcription_under_lock(
     on_progress: Optional[Callable[[str], None]] = None,
     cancel_token: Optional[Any] = None,
-) -> Tuple[str, str]:
-    """Scarica modello + VAD assumendo il lock .lock già acquisito."""
-    model_done = os.path.isdir(onnx_stt._model_dir(onnx_stt.MODEL_NAME))
-    vad_done = os.path.isdir(onnx_stt._model_dir(onnx_stt.VAD_NAME))
+) -> str:
+    """Scarica il modello q8pc assumendo il lock .lock già acquisito."""
 
     def handle_model_stats(stats: Dict[str, Any]) -> None:
-        pct = int(stats.get("percent") or 0)
-        if not vad_done and pct >= 100:
-            pct = 99
         _write_component_state(TRANSCRIPTION_ID, {
             "state": "downloading",
             "auto_resume": True,
             "pid": os.getpid(),
             "downloaded_bytes": stats.get("downloaded_bytes") or 0,
             "total_bytes": stats.get("total_bytes"),
-            "percent": pct,
+            "percent": int(stats.get("percent") or 0),
             "eta_seconds": stats.get("eta_seconds"),
             "eta_label": stats.get("eta_label"),
             "error": None,
         })
 
-    def handle_vad_stats(stats: Dict[str, Any]) -> None:
-        pct = 99 if model_done is False else int(stats.get("percent") or 0)
-        if int(stats.get("percent") or 0) >= 100:
-            pct = 100
-        _write_component_state(TRANSCRIPTION_ID, {
-            "state": "downloading",
-            "auto_resume": True,
-            "pid": os.getpid(),
-            "percent": pct,
-            "error": None,
-        })
-
     model_path = onnx_stt._download_resumable(
-        onnx_stt.MODEL_NAME,
+        onnx_stt.MODEL_DIR_NAME,
         onnx_stt.QUANTIZATION,
         on_progress=on_progress,
         on_stats=handle_model_stats,
         cancel_token=cancel_token,
     )
-    vad_path = onnx_stt._download_resumable(
-        onnx_stt.VAD_NAME,
-        None,
-        vad=True,
-        on_progress=on_progress if model_done else None,
-        on_stats=handle_vad_stats,
-        cancel_token=cancel_token,
-    )
+    onnx_stt._cleanup_legacy_models()
     if onnx_stt.model_ready():
         ready_size = _transcription_ready_bytes()
         _write_component_state(TRANSCRIPTION_ID, {
@@ -562,20 +533,18 @@ def _download_transcription_under_lock(
             "eta_label": None,
             "error": None,
         })
-    return model_path, vad_path
+    return model_path
 
 
 def ensure_transcription_model(
     on_progress: Optional[Callable[[str], None]] = None,
     cancel_token: Optional[Any] = None,
-) -> Tuple[str, str]:
-    """Assicura che modello e VAD siano su disco: attende se un altro processo sta scaricando,
+) -> str:
+    """Assicura che il modello ONNX sia su disco: attende se un altro processo sta scaricando,
     altrimenti acquisisce <models>/.lock e scarica aggiornando components.json."""
     if onnx_stt.model_ready():
-        return (
-            onnx_stt._model_dir(onnx_stt.MODEL_NAME),
-            onnx_stt._model_dir(onnx_stt.VAD_NAME),
-        )
+        onnx_stt._cleanup_legacy_models()
+        return onnx_stt.model_dir()
 
     lpath = lock_path_for(TRANSCRIPTION_ID)
     last_emit = 0.0
@@ -593,10 +562,8 @@ def ensure_transcription_model(
             renewer.start()
             try:
                 if onnx_stt.model_ready():
-                    return (
-                        onnx_stt._model_dir(onnx_stt.MODEL_NAME),
-                        onnx_stt._model_dir(onnx_stt.VAD_NAME),
-                    )
+                    onnx_stt._cleanup_legacy_models()
+                    return onnx_stt.model_dir()
                 _write_component_state(TRANSCRIPTION_ID, {
                     "state": "downloading",
                     "auto_resume": True,
@@ -651,18 +618,11 @@ def ensure_transcription_model(
                     on_progress("In attesa del modello di trascrizione…")
         time.sleep(0.5)
 
-    return (
-        onnx_stt._model_dir(onnx_stt.MODEL_NAME),
-        onnx_stt._model_dir(onnx_stt.VAD_NAME),
-    )
+    onnx_stt._cleanup_legacy_models()
+    return onnx_stt.model_dir()
 
 
-def _sha256_file(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+_sha256_file = onnx_stt._sha256_file
 
 
 def _validate_safe_member_name(name: str) -> None:
@@ -1541,12 +1501,11 @@ def delete_component(component_id: str) -> Dict[str, Any]:
 
     if component_id == TRANSCRIPTION_ID:
         for path in (
-            onnx_stt._model_dir(onnx_stt.MODEL_NAME),
-            onnx_stt._model_dir(onnx_stt.MODEL_NAME) + ".partial",
-            onnx_stt._model_dir(onnx_stt.VAD_NAME),
-            onnx_stt._model_dir(onnx_stt.VAD_NAME) + ".partial",
+            onnx_stt.model_dir(),
+            onnx_stt.model_dir() + ".partial",
         ):
             shutil.rmtree(path, ignore_errors=True)
+        onnx_stt._cleanup_legacy_models()
         onnx_stt.clear_loaded()
     elif component_id == MACPARAKEET_ID:
         for path in (macparakeet_bin_path(), macparakeet_part_path()):

@@ -1,12 +1,15 @@
 """
 rt.core.onnx_stt
 Motore di trascrizione locale "parakeet": Parakeet TDT 0.6B v3 (multilingue, italiano
-compreso) in formato ONNX tramite onnx-asr. Gira su Windows, Linux e macOS senza GPU; su Mac
-resta consigliato macparakeet, più veloce sul Neural Engine.
+compreso) in formato ONNX tramite onnx-asr (quantizzato int8 per canale, solo MatMul).
+Gira su Windows, Linux e macOS senza GPU; su Mac Apple Silicon resta consigliato
+macparakeet, più veloce sul Neural Engine.
 
-Il modello (circa 670 MB, quantizzato int8) e il VAD Silero si scaricano da Hugging Face la
-prima volta in <cartella dati>/models/ e poi funzionano offline. L'audio viene decodificato
-con ffmpeg a 16 kHz mono, diviso in frasi dal VAD e trascritto a blocchi.
+Il modello (~900 MB, CC-BY-4.0 NVIDIA) si scarica dagli asset della release GitHub
+``stt-models-1`` in <cartella dati>/models/parakeet-v3-q8pc/ la prima volta e poi
+funziona offline. L'audio viene decodificato con ffmpeg a blocchi a 16 kHz mono s16le,
+normalizzato con guadagno globale e trascritto in finestre fisse da 6 s con
+sovrapposizione di 1,5 s e cucitura per parole.
 
 L'uscita ha lo stesso formato di macparakeet-cli (millisecondi, wordTimestamps con
 confidenza e wordRange per segmento), così il rilevamento statistico del rischio ASR
@@ -14,20 +17,57 @@ funziona anche con questo motore.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import os
+import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 MODEL_NAME = "nemo-parakeet-tdt-0.6b-v3"
+MODEL_DIR_NAME = "parakeet-v3-q8pc"
 MODEL_LABEL = "Parakeet TDT 0.6B v3 (ONNX)"
-QUANTIZATION = "int8"
-VAD_NAME = "silero"
+QUANTIZATION = "q8pc"
+LEGACY_MODEL_NAME = "nemo-parakeet-tdt-0.6b-v3"
+LEGACY_VAD_NAME = "silero"
 SAMPLE_RATE = 16_000
+
+WINDOW_SECONDS = 6.0
+OVERLAP_SECONDS = 1.5
+DECODE_CHUNK_SECONDS = 60
+MAX_SEGMENT_SECONDS = 30.0
+SEGMENT_PAUSE_SECONDS = 0.8
+
+MODEL_RELEASE_BASE_URL = "https://github.com/atturk/rt/releases/download/stt-models-1"
+
+# File della release stt-models-1 (quantizzati dal fp32 di istupakov/parakeet-tdt-0.6b-v3-onnx,
+# revisione 8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce, con onnx 1.23.2 + onnxruntime 1.31.0).
+ENCODER_FILENAME = "encoder-model.q8pc.onnx"
+ENCODER_URL = f"{MODEL_RELEASE_BASE_URL}/{ENCODER_FILENAME}"
+ENCODER_BYTES = 881_498_240
+ENCODER_SHA256 = "f5230a6587582aa5d0ea05b7b27185efdf911dc0bcb8a9b1928891c8045fed15"
+
+DECODER_FILENAME = "decoder_joint-model.q8pc.onnx"
+DECODER_URL = f"{MODEL_RELEASE_BASE_URL}/{DECODER_FILENAME}"
+DECODER_BYTES = 53_639_765
+DECODER_SHA256 = "6cc5e3ef27047ff2344cfbf11d60fd4f11e0191e647010115c620ce58c99617f"
+
+VOCAB_FILENAME = "vocab.txt"
+VOCAB_URL = f"{MODEL_RELEASE_BASE_URL}/{VOCAB_FILENAME}"
+VOCAB_BYTES = 93_939
+VOCAB_SHA256 = "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
+
+CONFIG_FILENAME = "config.json"
+CONFIG_URL = f"{MODEL_RELEASE_BASE_URL}/{CONFIG_FILENAME}"
+CONFIG_BYTES = 97
+CONFIG_SHA256 = "666903c76b9798caf2c210afd4f6cd60b08a8dbf9800ec8d7a3bc0d2148ac466"
+
+_SENTENCE_END_RE = re.compile(r"[.!?…][\"'”»)\]]*$")
+_WORD_STRIP_CHARS = ".,;:!?"
 
 _lock = threading.Lock()
 _loaded: Dict[str, Any] = {}
@@ -46,6 +86,20 @@ def _model_dir(name: str) -> str:
     return os.path.join(models_dir(), name)
 
 
+def model_dir() -> str:
+    return _model_dir(MODEL_DIR_NAME)
+
+
+def _model_files() -> List[Tuple[str, str, int, str]]:
+    """Elenco (filename, url, bytes, sha256) dei file del modello q8pc."""
+    return [
+        (ENCODER_FILENAME, ENCODER_URL, ENCODER_BYTES, ENCODER_SHA256),
+        (DECODER_FILENAME, DECODER_URL, DECODER_BYTES, DECODER_SHA256),
+        (VOCAB_FILENAME, VOCAB_URL, VOCAB_BYTES, VOCAB_SHA256),
+        (CONFIG_FILENAME, CONFIG_URL, CONFIG_BYTES, CONFIG_SHA256),
+    ]
+
+
 def available() -> bool:
     """Il pacchetto onnx-asr è installato (il modello si scarica al primo uso)."""
     try:
@@ -56,7 +110,36 @@ def available() -> bool:
 
 
 def model_ready() -> bool:
-    return os.path.isdir(_model_dir(MODEL_NAME)) and os.path.isdir(_model_dir(VAD_NAME))
+    return os.path.isdir(model_dir())
+
+
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _cleanup_legacy_models() -> None:
+    """Elimina il vecchio modello int8 e il VAD Silero non più usati, se presenti."""
+    legacy_names = [LEGACY_VAD_NAME]
+    if LEGACY_MODEL_NAME != MODEL_DIR_NAME:
+        legacy_names.append(LEGACY_MODEL_NAME)
+    for name in legacy_names:
+        base = _model_dir(name)
+        for path in (base, base + ".partial"):
+            if os.path.exists(path):
+                shutil.rmtree(path, ignore_errors=True)
+
+
+def _check_cancelled(cancel_token: Optional[Any]) -> None:
+    if cancel_token is None:
+        return
+    if hasattr(cancel_token, "raise_if_cancelled"):
+        cancel_token.raise_if_cancelled()
+    elif getattr(cancel_token, "cancelled", False):
+        raise RuntimeError("Trascrizione annullata")
 
 
 def _format_eta(seconds: float) -> str:
@@ -140,54 +223,38 @@ class _DownloadProgressReporter:
             )
 
 
-def _model_patterns(name: str, quantization: Optional[str], *, vad: bool = False) -> Tuple[str, List[str]]:
-    from onnx_asr.loader import create_asr_resolver, create_vad_resolver
-
-    resolver = (
-        create_vad_resolver(name, offline=True)
-        if vad
-        else create_asr_resolver(name, offline=True)
-    )
-    if not resolver.repo_id:
-        raise OnnxSttUnavailable(f"Repository non trovato per il modello {name}.")
-    files = list(resolver.model_type._get_model_files(quantization).values())
-    files = [
-        *files,
-        *(f.removeprefix("**/") for f in files if f.startswith("**/")),
-    ]
-    patterns = [
-        "config.json",
-        "config.yaml",
-        *files,
-        *(str(Path(f).with_suffix(".onnx?data")) for f in files if Path(f).suffix == ".onnx"),
-    ]
-    return resolver.repo_id, patterns
-
-
-def _list_repo_files(repo_id: str, patterns: List[str]) -> List[Tuple[str, Optional[int]]]:
-    from huggingface_hub import HfApi
-    from huggingface_hub.hf_api import RepoFile
-    from huggingface_hub.utils import filter_repo_objects
-
-    api = HfApi()
-    entries = {
-        f.path: f.size
-        for f in api.list_repo_tree(repo_id, recursive=True)
-        if isinstance(f, RepoFile)
-    }
-    matched = list(filter_repo_objects(items=entries.keys(), allow_patterns=patterns))
-    return [(path, entries[path]) for path in matched]
+def _verify_and_promote(
+    part_file: str,
+    dest_file: str,
+    expected_size: Optional[int],
+    expected_sha256: Optional[str],
+) -> None:
+    actual_size = os.path.getsize(part_file)
+    if expected_size is not None and actual_size != expected_size:
+        if actual_size > expected_size:
+            os.unlink(part_file)
+        raise OSError(f"Dimensione inattesa per {os.path.basename(dest_file)}: {actual_size} != {expected_size}")
+    if expected_sha256:
+        actual_sha = _sha256_file(part_file)
+        if actual_sha != expected_sha256.lower():
+            os.unlink(part_file)
+            raise OSError(f"Verifica SHA256 non riuscita per {os.path.basename(dest_file)}.")
+    os.replace(part_file, dest_file)
 
 
 def _download_file_resumable(
     url: str,
     dest_file: str,
     expected_size: Optional[int],
+    expected_sha256: Optional[str] = None,
     *,
     on_chunk: Optional[Callable[[int], None]] = None,
     cancel_token: Optional[Any] = None,
 ) -> None:
     import requests
+
+    if os.environ.get("RT_ONNX_OFFLINE") == "1" and not url.startswith(("http://127.0.0.1", "http://localhost")):
+        raise OSError("Download del modello ONNX disattivato nei test.")
 
     part_file = dest_file + ".part"
     os.makedirs(os.path.dirname(dest_file), exist_ok=True)
@@ -196,7 +263,7 @@ def _download_file_resumable(
         os.unlink(part_file)
         resume_from = 0
     if expected_size is not None and resume_from == expected_size and expected_size > 0:
-        os.replace(part_file, dest_file)
+        _verify_and_promote(part_file, dest_file, expected_size, expected_sha256)
         return
 
     headers: Dict[str, str] = {}
@@ -205,27 +272,33 @@ def _download_file_resumable(
 
     with requests.get(url, headers=headers, stream=True, timeout=(15, 60), allow_redirects=True) as resp:
         if resp.status_code == 416 and resume_from > 0:
+            if expected_sha256 and _sha256_file(part_file) == expected_sha256.lower():
+                os.replace(part_file, dest_file)
+                return
             os.unlink(part_file)
             if on_chunk:
                 on_chunk(-resume_from)
             resume_from = 0
-            resp2 = requests.get(url, stream=True, timeout=(15, 60), allow_redirects=True)
-            resp2.raise_for_status()
-            return _stream_response(resp2, part_file, dest_file, expected_size, 0, on_chunk, cancel_token)
+            with requests.get(url, stream=True, timeout=(15, 60), allow_redirects=True) as resp2:
+                resp2.raise_for_status()
+                _stream_response(
+                    resp2, part_file, dest_file, expected_size, expected_sha256, 0, on_chunk, cancel_token,
+                )
+            return
         resp.raise_for_status()
         if resp.status_code == 206:
             content_range = resp.headers.get("Content-Range", "")
             if content_range and not content_range.startswith(f"bytes {resume_from}-"):
-                # Server returned an unexpected range; restart safely from 0.
                 if on_chunk:
                     on_chunk(-resume_from)
                 resume_from = 0
         elif resume_from > 0:
-            # Server ignored Range and sent 200 OK from byte 0.
             if on_chunk:
                 on_chunk(-resume_from)
             resume_from = 0
-        _stream_response(resp, part_file, dest_file, expected_size, resume_from, on_chunk, cancel_token)
+        _stream_response(
+            resp, part_file, dest_file, expected_size, expected_sha256, resume_from, on_chunk, cancel_token,
+        )
 
 
 def _stream_response(
@@ -233,6 +306,7 @@ def _stream_response(
     part_file: str,
     dest_file: str,
     expected_size: Optional[int],
+    expected_sha256: Optional[str],
     resume_from: int,
     on_chunk: Optional[Callable[[int], None]],
     cancel_token: Optional[Any],
@@ -240,66 +314,59 @@ def _stream_response(
     mode = "ab" if resume_from > 0 else "wb"
     with open(part_file, mode) as stream:
         for chunk in resp.iter_content(chunk_size=64 * 1024):
-            if cancel_token is not None and getattr(cancel_token, "cancelled", False):
-                raise RuntimeError("Trascrizione annullata")
+            _check_cancelled(cancel_token)
             if not chunk:
                 continue
             stream.write(chunk)
             if on_chunk:
                 on_chunk(len(chunk))
-    actual_size = os.path.getsize(part_file)
-    if expected_size is not None and actual_size != expected_size:
-        if actual_size > expected_size:
-            os.unlink(part_file)
-        raise OSError(f"Dimensione inattesa per {os.path.basename(dest_file)}: {actual_size} != {expected_size}")
-    os.replace(part_file, dest_file)
+    _verify_and_promote(part_file, dest_file, expected_size, expected_sha256)
 
 
 def _download_resumable(
-    name: str,
-    quantization: Optional[str],
+    name: str = MODEL_DIR_NAME,
+    quantization: Optional[str] = QUANTIZATION,
     *,
-    vad: bool = False,
     on_progress: Optional[Callable[[str], None]] = None,
     on_stats: Optional[Callable[[Dict[str, Any]], None]] = None,
     cancel_token: Optional[Any] = None,
 ) -> str:
-    """Scarica il modello da Hugging Face con file .part riprendibili e verifica della dimensione."""
+    """Scarica i file del modello q8pc con ripresa Range, verifica SHA256 e sostituzione atomica."""
     final = _model_dir(name)
     if os.path.isdir(final):
+        _cleanup_legacy_models()
         return final
     partial = final + ".partial"
     os.makedirs(partial, exist_ok=True)
     try:
-        from huggingface_hub import hf_hub_url
+        files = _model_files()
+        if not files:
+            raise OSError(f"Nessun file configurato per il modello {name}")
 
-        repo_id, patterns = _model_patterns(name, quantization, vad=vad)
-        repo_files = _list_repo_files(repo_id, patterns)
-        if not repo_files:
-            raise OSError(f"Nessun file trovato in {repo_id}")
-
-        total_bytes = sum(size or 0 for _, size in repo_files)
+        total_bytes = sum(size or 0 for _, _, size, _ in files)
         downloaded_bytes = 0
-        pending: List[Tuple[str, Optional[int], str]] = []
-        for rel_path, expected_size in repo_files:
+        pending: List[Tuple[str, str, Optional[int], Optional[str], str]] = []
+        for rel_path, url, expected_size, expected_sha in files:
             dest_file = os.path.join(partial, rel_path)
             part_file = dest_file + ".part"
-            if os.path.isfile(dest_file) and (expected_size is None or os.path.getsize(dest_file) == expected_size):
-                downloaded_bytes += expected_size or os.path.getsize(dest_file)
-                continue
             if os.path.isfile(dest_file):
+                size_ok = expected_size is None or os.path.getsize(dest_file) == expected_size
+                sha_ok = not expected_sha or _sha256_file(dest_file) == expected_sha.lower()
+                if size_ok and sha_ok:
+                    downloaded_bytes += expected_size or os.path.getsize(dest_file)
+                    continue
                 os.unlink(dest_file)
             if os.path.isfile(part_file):
                 part_size = os.path.getsize(part_file)
                 if expected_size is not None and part_size == expected_size and expected_size > 0:
-                    os.replace(part_file, dest_file)
+                    _verify_and_promote(part_file, dest_file, expected_size, expected_sha)
                     downloaded_bytes += expected_size
                     continue
                 if expected_size is not None and part_size > expected_size:
                     os.unlink(part_file)
                 else:
                     downloaded_bytes += part_size
-            pending.append((rel_path, expected_size, dest_file))
+            pending.append((rel_path, url, expected_size, expected_sha, dest_file))
 
         reporter = _DownloadProgressReporter(on_progress, total_bytes, downloaded_bytes, on_stats=on_stats)
         if pending and downloaded_bytes > 0:
@@ -310,18 +377,18 @@ def _download_resumable(
             downloaded_bytes = max(0, downloaded_bytes + delta)
             reporter.update(downloaded_bytes)
 
-        for rel_path, expected_size, dest_file in pending:
-            url = hf_hub_url(repo_id, filename=rel_path)
+        for _rel_path, url, expected_size, expected_sha, dest_file in pending:
             _download_file_resumable(
                 url,
                 dest_file,
                 expected_size,
+                expected_sha,
                 on_chunk=on_chunk,
                 cancel_token=cancel_token,
             )
         reporter.update(downloaded_bytes, force=True)
     except RuntimeError as exc:
-        if "annullata" in str(exc).lower():
+        if "annullat" in str(exc).lower():
             raise
         raise OnnxSttUnavailable(
             f"Download del modello {name} non riuscito: controlla la connessione e riprova ({exc})."
@@ -331,80 +398,8 @@ def _download_resumable(
             f"Download del modello {name} non riuscito: controlla la connessione e riprova ({exc})."
         ) from None
     os.replace(partial, final)
+    _cleanup_legacy_models()
     return final
-
-
-def _download(load, name: str, quantization: Optional[str]) -> str:
-    """Scarica in una cartella temporanea e la rinomina solo a download finito: onnx-asr
-    considera completa (e usa offline) qualunque cartella esistente."""
-    final = _model_dir(name)
-    if os.path.isdir(final):
-        return final
-    partial = final + ".partial"
-    shutil.rmtree(partial, ignore_errors=True)
-    os.makedirs(os.path.dirname(final), exist_ok=True)
-    try:
-        if quantization:
-            load(name, partial, quantization=quantization)
-        else:
-            load(name, partial)
-    except Exception as exc:
-        shutil.rmtree(partial, ignore_errors=True)
-        raise OnnxSttUnavailable(
-            f"Download del modello {name} non riuscito: controlla la connessione e riprova ({exc})."
-        ) from None
-    os.replace(partial, final)
-    return final
-
-
-def _pad_vad_segments(
-    segments: Any,
-    waveform_len: int,
-    sample_rate: int,
-    *,
-    end_pad_ms: int = 400,
-    tail_extend_s: float = 1.0,
-) -> List[Tuple[int, int]]:
-    """Allunga la coda dei segmenti VAD (di solito Silero chiude troppo presto le sillabe finali)
-    e aggancia l'ultimo segmento alla fine dell'audio se finisce entro `tail_extend_s`."""
-    raw = list(segments)
-    if not raw or waveform_len <= 0:
-        return []
-    end_pad = int(end_pad_ms * sample_rate // 1000)
-    tail_extend = int(tail_extend_s * sample_rate)
-    out: List[Tuple[int, int]] = []
-    last_idx = len(raw) - 1
-    for i, (start, end) in enumerate(raw):
-        limit = raw[i + 1][0] if i + 1 < len(raw) else waveform_len
-        padded_end = min(end + end_pad, limit, waveform_len)
-        if i == last_idx and waveform_len - padded_end <= tail_extend:
-            padded_end = waveform_len
-        out.append((start, max(start, padded_end)))
-    return out
-
-
-def _wrap_vad(vad: Any, *, end_pad_ms: int = 400, tail_extend_s: float = 1.0) -> Any:
-    """Wrapper attorno a un VAD onnx-asr che aggiunge padding finale ai segmenti."""
-    from onnx_asr.vad import BaseVad
-
-    class _PaddedVad(BaseVad):
-        def __init__(self, inner: Any):
-            self._inner = inner
-
-        def segment_batch(self, waveforms, waveforms_len, sample_rate, **kwargs):
-            raw_batch = self._inner.segment_batch(waveforms, waveforms_len, sample_rate, **kwargs)
-            for segs, wlen in zip(raw_batch, waveforms_len, strict=True):
-                yield iter(
-                    _pad_vad_segments(
-                        segs,
-                        int(wlen),
-                        sample_rate,
-                        end_pad_ms=end_pad_ms,
-                        tail_extend_s=tail_extend_s,
-                    )
-                )
-
-    return _PaddedVad(vad)
 
 
 def clear_loaded() -> None:
@@ -414,7 +409,7 @@ def clear_loaded() -> None:
 
 
 def _models(on_progress: Optional[Callable[[str], None]] = None, cancel_token: Optional[Any] = None):
-    """ASR con VAD e timestamp, caricato una volta per processo."""
+    """ASR con timestamp, caricato una volta per processo con le opzioni predefinite."""
     with _lock:
         if "asr" in _loaded:
             return _loaded["asr"]
@@ -423,15 +418,14 @@ def _models(on_progress: Optional[Callable[[str], None]] = None, cancel_token: O
         except ImportError:
             raise OnnxSttUnavailable("Motore Parakeet ONNX non installato (pacchetto onnx-asr).") from None
         if not model_ready() and on_progress:
-            on_progress("Scarico il modello di trascrizione (circa 670 MB, solo la prima volta)...")
+            on_progress("Scarico il modello di trascrizione (circa 900 MB, solo la prima volta)...")
         from rt.core import components
-        model_path, vad_path = components.ensure_transcription_model(
+        model_path = components.ensure_transcription_model(
             on_progress=on_progress,
             cancel_token=cancel_token,
         )
         model = onnx_asr.load_model(MODEL_NAME, model_path, quantization=QUANTIZATION)
-        vad = _wrap_vad(onnx_asr.load_vad(VAD_NAME, vad_path))
-        _loaded["asr"] = model.with_vad(vad, batch_size=4, max_speech_duration_s=25).with_timestamps()
+        _loaded["asr"] = model.with_timestamps()
         return _loaded["asr"]
 
 
@@ -440,86 +434,355 @@ def ensure_model(on_progress: Optional[Callable[[str], None]] = None) -> None:
     _models(on_progress)
 
 
+def _iter_pcm_chunks(
+    audio_path: str,
+    chunk_samples: int = DECODE_CHUNK_SECONDS * SAMPLE_RATE,
+    cancel_token: Optional[Any] = None,
+) -> Iterator[Any]:
+    """Decodifica l'audio con ffmpeg in streaming a blocchi float32 a 16 kHz mono."""
+    import numpy as np
+
+    from rt.core.media_tools import require_ffmpeg
+
+    cmd = [
+        require_ffmpeg(),
+        "-nostdin",
+        "-v",
+        "error",
+        "-i",
+        os.path.abspath(audio_path),
+        "-ac",
+        "1",
+        "-ar",
+        str(SAMPLE_RATE),
+        "-f",
+        "s16le",
+        "pipe:1",
+    ]
+    kwargs: Dict[str, Any] = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            **kwargs,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"Impossibile leggere l'audio '{os.path.basename(audio_path)}': {exc}") from None
+
+    chunk_bytes = max(2, int(chunk_samples) * 2)
+    carry = b""
+    assert proc.stdout is not None
+    try:
+        while True:
+            _check_cancelled(cancel_token)
+            raw = proc.stdout.read(chunk_bytes)
+            if not raw:
+                break
+            data = carry + raw
+            even_len = (len(data) // 2) * 2
+            carry = data[even_len:]
+            if even_len:
+                samples = np.frombuffer(data[:even_len], dtype="<i2")
+                yield samples.astype(np.float32) / 32768.0
+        stderr_bytes = proc.stderr.read() if proc.stderr else b""
+        returncode = proc.wait(timeout=60)
+        if returncode != 0:
+            err = stderr_bytes.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(
+                f"Impossibile leggere l'audio '{os.path.basename(audio_path)}': "
+                f"{err or f'ffmpeg terminato con codice {returncode}'}"
+            )
+    except BaseException:
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.kill()
+                    proc.wait(timeout=2)
+                except Exception:
+                    pass
+        raise
+    finally:
+        if proc.stdout:
+            proc.stdout.close()
+        if proc.stderr:
+            proc.stderr.close()
+
+
 def _decode(audio_path: str):
     """PCM float32 a 16 kHz mono, letto da ffmpeg."""
     import numpy as np
 
-    from rt.core.media_tools import require_ffmpeg
-    try:
-        result = subprocess.run(
-            [require_ffmpeg(), "-nostdin", "-v", "error", "-i", os.path.abspath(audio_path),
-             "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "s16le", "pipe:1"],
-            capture_output=True, check=True, timeout=3600,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise RuntimeError(f"Impossibile leggere l'audio '{os.path.basename(audio_path)}': {exc}") from None
-    samples = np.frombuffer(result.stdout[: len(result.stdout) // 2 * 2], dtype="<i2")
-    return samples.astype(np.float32) / 32768.0
+    chunks = list(_iter_pcm_chunks(audio_path))
+    if not chunks:
+        return np.empty(0, dtype=np.float32)
+    if len(chunks) == 1:
+        return chunks[0]
+    return np.concatenate(chunks)
 
 
-def _words(tokens: List[str], timestamps: List[float], logprobs: Optional[List[float]],
-           offset: float, end: float) -> List[Dict[str, Any]]:
-    """Parole dai token SentencePiece: un token che inizia con uno spazio apre una parola.
-    La confidenza della parola è la probabilità media dei suoi token."""
+def _compute_gain(rms: float, peak: float) -> float:
+    """Guadagno globale min(0.1 / rms, 4 / picco)."""
+    rms_safe = rms if rms > 0.0 else 1e-6
+    peak_safe = peak if peak > 0.0 else 1.0
+    return min(0.1 / rms_safe, 4.0 / peak_safe)
+
+
+def _measure_audio(
+    audio_path: str,
+    *,
+    chunk_samples: int = DECODE_CHUNK_SECONDS * SAMPLE_RATE,
+    cancel_token: Optional[Any] = None,
+) -> Tuple[int, float, float]:
+    """Primo passaggio in streaming: calcola campioni totali, RMS e picco senza tenere la waveform."""
+    import numpy as np
+
+    total_samples = 0
+    sum_sq = 0.0
+    peak = 0.0
+    for chunk in _iter_pcm_chunks(audio_path, chunk_samples=chunk_samples, cancel_token=cancel_token):
+        if len(chunk) == 0:
+            continue
+        chunk_f64 = chunk.astype(np.float64)
+        sum_sq += float(np.dot(chunk_f64, chunk_f64))
+        chunk_peak = float(np.max(np.abs(chunk)))
+        if chunk_peak > peak:
+            peak = chunk_peak
+        total_samples += len(chunk)
+    rms = math.sqrt(sum_sq / total_samples) if total_samples > 0 else 0.0
+    return total_samples, rms, peak
+
+
+def _iter_audio_windows(
+    audio_path: str,
+    win_samples: int,
+    step_samples: int,
+    gain: float,
+    *,
+    chunk_samples: int = DECODE_CHUNK_SECONDS * SAMPLE_RATE,
+    min_samples: int = SAMPLE_RATE // 2,
+    cancel_token: Optional[Any] = None,
+) -> Iterator[Tuple[int, Any, bool]]:
+    """Secondo passaggio in streaming: produce finestre normalizzate da 6 s con passo 4,5 s."""
+    import numpy as np
+
+    buf = np.empty(0, dtype=np.float32)
+    start_sample = 0
+    eof = False
+    chunk_iter = iter(_iter_pcm_chunks(audio_path, chunk_samples=chunk_samples, cancel_token=cancel_token))
+
+    while True:
+        _check_cancelled(cancel_token)
+        while not eof and len(buf) <= win_samples:
+            try:
+                nxt = next(chunk_iter)
+                if len(nxt):
+                    buf = np.concatenate([buf, nxt]) if len(buf) else nxt
+            except StopIteration:
+                eof = True
+        if len(buf) < min_samples:
+            break
+        last = eof and len(buf) <= win_samples
+        raw_win = buf[:win_samples]
+        norm_win = np.clip(raw_win * gain, -1.0, 1.0).astype(np.float32)
+        yield start_sample, norm_win, last
+        if last:
+            break
+        buf = buf[step_samples:]
+        start_sample += step_samples
+
+
+def _extract_window_words(
+    tokens: Sequence[str],
+    timestamps: Sequence[float],
+    logprobs: Optional[Sequence[float]],
+    offset: float,
+    window_end: float,
+) -> List[Dict[str, Any]]:
+    """Parole dai token SentencePiece: un token che inizia con spazio apre una parola."""
     words: List[Dict[str, Any]] = []
     current: Optional[Dict[str, Any]] = None
-    for i, token in enumerate(tokens):
-        start = offset + (timestamps[i] if i < len(timestamps) else 0.0)
+    for i, token in enumerate(tokens or []):
+        start = offset + (float(timestamps[i]) if timestamps and i < len(timestamps) else 0.0)
         prob = math.exp(logprobs[i]) if logprobs and i < len(logprobs) else None
         if current is None or token.startswith(" "):
             if current is not None:
                 words.append(current)
-            current = {"word": token.strip(), "start": start, "probs": []}
+            current = {
+                "word": token.strip(),
+                "start": start,
+                "last_token_start": start,
+                "probs": [],
+                "window_end": window_end,
+            }
         else:
             current["word"] += token
+            current["last_token_start"] = start
         if prob is not None:
             current["probs"].append(prob)
     if current is not None:
         words.append(current)
-    out = []
-    for i, word in enumerate(words):
+
+    out: List[Dict[str, Any]] = []
+    for word in words:
         if not word["word"]:
             continue
-        stop = words[i + 1]["start"] if i + 1 < len(words) else end
         probs = word.pop("probs")
-        out.append({"word": word["word"], "startMs": round(word["start"] * 1000, 1),
-                    "endMs": round(max(stop, word["start"]) * 1000, 1),
-                    "confidence": round(sum(probs) / len(probs), 4) if probs else None})
+        word["confidence"] = round(sum(probs) / len(probs), 4) if probs else None
+        out.append(word)
     return out
 
 
-def transcribe_onnx(audio_path: str, on_percent: Optional[Callable[[int], None]] = None,
-                    on_progress: Optional[Callable[[str], None]] = None,
-                    cancel_token: Optional[Any] = None) -> Dict[str, Any]:
+def _clean_word_key(word: str) -> str:
+    return word.lower().strip(_WORD_STRIP_CHARS)
+
+
+def _stitch_window_words(
+    kept: List[Dict[str, Any]],
+    win_words: List[Dict[str, Any]],
+    prev_cut: float,
+    cut: float,
+) -> None:
+    """Cucitura per parole tra finestre sovrapposte (come onnx_finestre_riferimento.py)."""
+    new = [w for w in win_words if prev_cut - 0.6 <= w["start"] < cut]
+    while new and kept:
+        tail = [_clean_word_key(w["word"]) for w in kept[-3:]]
+        w0 = new[0]
+        if w0["start"] < prev_cut or (
+            _clean_word_key(w0["word"]) in tail and abs(w0["start"] - kept[-1]["start"]) < 1.5
+        ):
+            new.pop(0)
+        else:
+            break
+    kept.extend(new)
+
+
+def _build_segments(
+    words: List[Dict[str, Any]],
+    duration: float,
+    *,
+    max_segment_s: float = MAX_SEGMENT_SECONDS,
+    pause_s: float = SEGMENT_PAUSE_SECONDS,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Costruisce wordTimestamps e transcriptSegments (chiusura su ., !, ?, pausa > 0.8s o ~30s)."""
+    if not words:
+        return [], []
+
+    word_timestamps: List[Dict[str, Any]] = []
+    word_ends: List[float] = []
+    for i, w in enumerate(words):
+        last_tok = w.get("last_token_start", w["start"])
+        if i + 1 < len(words):
+            next_start = words[i + 1]["start"]
+            gap = next_start - last_tok
+            if gap <= pause_s:
+                w_end = max(w["start"], next_start)
+            else:
+                w_end = min(next_start, max(w["start"] + 0.1, last_tok + 0.4))
+        else:
+            w_end = min(duration, max(w["start"] + 0.1, last_tok + 0.4))
+            if w_end < w["start"]:
+                w_end = w["start"]
+        word_ends.append(w_end)
+        word_timestamps.append({
+            "word": w["word"],
+            "startMs": round(w["start"] * 1000, 1),
+            "endMs": round(w_end * 1000, 1),
+            "confidence": w["confidence"],
+        })
+
+    segments: List[Dict[str, Any]] = []
+    seg_start_idx = 0
+    for i, w in enumerate(words):
+        seg_start = words[seg_start_idx]["start"]
+        is_last = i == len(words) - 1
+        close = is_last or bool(_SENTENCE_END_RE.search(w["word"]))
+        if not close and not is_last:
+            next_w = words[i + 1]
+            pause = next_w["start"] - w.get("last_token_start", w["start"])
+            if pause > pause_s:
+                close = True
+            elif (word_ends[i + 1] - seg_start) > max_segment_s or (word_ends[i] - seg_start) >= max_segment_s:
+                close = True
+        if close:
+            seg_words = words[seg_start_idx : i + 1]
+            seg_end = max(seg_start + 0.1 if seg_start == word_ends[i] else word_ends[i], seg_start)
+            confs = [sw["confidence"] for sw in seg_words if sw["confidence"] is not None]
+            segments.append({
+                "startMs": round(seg_start * 1000, 1),
+                "endMs": round(seg_end * 1000, 1),
+                "text": " ".join(sw["word"] for sw in seg_words),
+                "confidence": round(sum(confs) / len(confs), 4) if confs else None,
+                "wordRange": {"startIndex": seg_start_idx, "endIndexExclusive": i + 1},
+            })
+            seg_start_idx = i + 1
+
+    return segments, word_timestamps
+
+
+def transcribe_onnx(
+    audio_path: str,
+    on_percent: Optional[Callable[[int], None]] = None,
+    on_progress: Optional[Callable[[str], None]] = None,
+    cancel_token: Optional[Any] = None,
+) -> Dict[str, Any]:
     """Trascrive un file audio e restituisce il formato interno RT (come macparakeet-cli)."""
+    _check_cancelled(cancel_token)
     asr = _models(on_progress) if cancel_token is None else _models(on_progress, cancel_token=cancel_token)
-    waveform = _decode(audio_path)
-    duration = len(waveform) / SAMPLE_RATE
+    total_samples, rms, peak = _measure_audio(audio_path, cancel_token=cancel_token)
+    duration = total_samples / SAMPLE_RATE
     if duration <= 0:
         raise RuntimeError(f"L'audio '{os.path.basename(audio_path)}' è vuoto.")
-    segments: List[Dict[str, Any]] = []
-    words: List[Dict[str, Any]] = []
+
+    gain = _compute_gain(rms, peak)
+    win_samples = int(WINDOW_SECONDS * SAMPLE_RATE)
+    ovl_samples = int(OVERLAP_SECONDS * SAMPLE_RATE)
+    step_samples = win_samples - ovl_samples
+
+    kept: List[Dict[str, Any]] = []
+    prev_cut = 0.0
     last_percent = -1
-    for result in asr.recognize(waveform, sample_rate=SAMPLE_RATE):
-        text = (result.text or "").strip()
-        if text:
-            seg_words = _words(result.tokens or [], result.timestamps or [], result.logprobs,
-                               float(result.start), float(result.end))
-            confidences = [w["confidence"] for w in seg_words if w["confidence"] is not None]
-            segment = {"startMs": round(float(result.start) * 1000, 1), "endMs": round(float(result.end) * 1000, 1),
-                       "text": text, "confidence": round(sum(confidences) / len(confidences), 4) if confidences else None}
-            if seg_words:
-                segment["wordRange"] = {"startIndex": len(words), "endIndexExclusive": len(words) + len(seg_words)}
-                words.extend(seg_words)
-            segments.append(segment)
-        percent = min(99, int(float(result.end) / duration * 100))
+
+    for start_sample, norm_win, is_last in _iter_audio_windows(
+        audio_path, win_samples, step_samples, gain, cancel_token=cancel_token,
+    ):
+        _check_cancelled(cancel_token)
+        res = asr.recognize(norm_win, sample_rate=SAMPLE_RATE)
+        off = start_sample / SAMPLE_RATE
+        win_end = off + len(norm_win) / SAMPLE_RATE
+        cut = float("inf") if is_last else off + (WINDOW_SECONDS - OVERLAP_SECONDS) + OVERLAP_SECONDS / 2
+
+        win_words = _extract_window_words(
+            getattr(res, "tokens", None) or [],
+            getattr(res, "timestamps", None) or [],
+            getattr(res, "logprobs", None),
+            off,
+            win_end,
+        )
+        _stitch_window_words(kept, win_words, prev_cut, cut)
+        prev_cut = cut
+
+        processed_s = min(duration, win_end)
+        percent = min(99, int(processed_s / duration * 100))
         if on_percent and percent != last_percent:
             on_percent(percent)
             last_percent = percent
-    if not segments:
+
+    if not kept:
         raise RuntimeError(f"Nessuna voce riconosciuta in '{os.path.basename(audio_path)}'.")
+
+    segments, words = _build_segments(kept, duration)
     if on_percent:
         on_percent(100)
     text = " ".join(s["text"] for s in segments)
-    return {"rawTranscript": text, "text": text, "transcriptSegments": segments, "wordTimestamps": words,
-            "model": MODEL_LABEL}
+    return {
+        "rawTranscript": text,
+        "text": text,
+        "transcriptSegments": segments,
+        "wordTimestamps": words,
+        "model": MODEL_LABEL,
+    }

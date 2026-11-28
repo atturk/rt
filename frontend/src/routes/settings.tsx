@@ -17,7 +17,7 @@ import {
   Wand2,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 
 import { api, errorMessage } from '@/api/client'
@@ -29,6 +29,7 @@ import { CloseActionSection, StartAtLoginSection, TranscriptionSection } from '@
 import { NotificationsCard, TelegramConnectScreen, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
 import { ComponentNoticeDot, UpdateNoticeDot } from '@/components/settings/UpdateNoticeDot'
+import { useComponentNotice } from '@/components/settings/useComponentNotice'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
 import { AppearanceSection, OutlineSettingsSection, SourceDefaultsSection, SpeedSection } from '@/components/settings/preferences'
 import { WebSearchSection } from '@/components/settings/websearch'
@@ -224,6 +225,22 @@ export function SupportSettingsPage() {
   )
 }
 
+/** Sulla pagina Lavorazione senza #: se manca il componente del motore (pallino acceso), porta
+ * una volta ai Componenti. Gli href restano fissi, così la navigazione non cambia col pallino. */
+function ScrollToMissingComponent() {
+  const { hash } = useLocation()
+  const { missing } = useComponentNotice()
+  const done = useRef(false)
+  useEffect(() => {
+    if (hash || !missing || done.current) return
+    const target = document.getElementById('componenti')
+    if (!target) return
+    done.current = true
+    target.scrollIntoView?.({ block: 'start' })
+  }, [hash, missing])
+  return null
+}
+
 function ScrollToHash() {
   const { hash } = useLocation()
   useEffect(() => {
@@ -283,6 +300,7 @@ export function ProcessingSettingsPage() {
           <WebSearchSection settings={s} />
           <SpeedSection settings={s} />
           <ScrollToHash />
+          <ScrollToMissingComponent />
         </SettingsPage>
       )}
     </WithSettings>

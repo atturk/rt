@@ -40,7 +40,7 @@ function engineHint(t: Settings['transcription'], engine: Engine): ReactNode {
     if (!t.parakeet_available) return 'Il motore non è installato: reinstalla RT.'
     return t.parakeet_model_ready
       ? 'Gira su questo computer, senza internet.'
-      : 'Gira su questo computer. Il modello (~670 MB) si scarica qui sotto in «Componenti di RT» oppure alla prima trascrizione.'
+      : 'Gira su questo computer. Il modello (~900 MB) si scarica qui sotto in «Componenti di RT» oppure alla prima trascrizione.'
   }
   return 'Un tuo server di trascrizione, con risposta verbose_json e segmenti temporizzati.'
 }

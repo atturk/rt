@@ -127,5 +127,5 @@ def test_human_error_onnx_download_offline():
     )
     assert human_error(err) == (
         "Serve internet la prima volta per scaricare il modello di trascrizione "
-        "(circa 700 MB). Riprova quando sei connesso."
+        "(circa 900 MB). Riprova quando sei connesso."
     )

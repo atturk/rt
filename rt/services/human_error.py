@@ -24,7 +24,7 @@ def human_error(text: Optional[str]) -> str:
     if "Download del modello" in text and "non riuscito" in text:
         base = (
             "Serve internet la prima volta per scaricare il modello di trascrizione "
-            "(circa 700 MB). Riprova quando sei connesso."
+            "(circa 900 MB). Riprova quando sei connesso."
         )
     # Punto 1: errore di rete o disconnessione
     elif any(k in text for k in ("network_error", "RemoteDisconnected", "Connection aborted")):
