@@ -309,6 +309,7 @@ export function ComponentsSection() {
                 <span>{c.name}</span>
                 {showDot && (
                   <span
+                    role="img"
                     aria-label={`${c.name} da scaricare`}
                     data-testid={`component-row-dot-${c.id}`}
                     className="inline-block size-2.5 shrink-0 rounded-full bg-success"

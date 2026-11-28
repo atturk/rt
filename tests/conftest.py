@@ -106,6 +106,8 @@ def _isolate_data_dir(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("RT_API_PORT", "65432")
     monkeypatch.setenv("RT_LAUNCH_AGENTS_DIR", str(tmp_path_factory.mktemp("launch-agents")))
     monkeypatch.setenv("RT_MACPARAKEET_MODELS_DIR", str(tmp_path_factory.mktemp("macparakeet-models")))
+    # i test usano macparakeet-cli finti nel PATH: l'app vera ignora quello di sistema (vedi find_macparakeet_binary)
+    monkeypatch.setenv("RT_USE_SYSTEM_MACPARAKEET", "1")
     empty_data = str(tmp_path_factory.mktemp("no-data-dir"))
     monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", empty_data)
     monkeypatch.setattr("rt.core.paths.PLATFORM_DATA_DIR", empty_data)
