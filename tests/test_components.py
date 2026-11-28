@@ -15,6 +15,12 @@ from rt.services.context import CancelToken, RunCancelled, RunContext
 from rt.services.pipeline_service import emit_stt_progress
 
 
+@pytest.fixture(autouse=True)
+def _playwright_revision(monkeypatch):
+    # I test usano chromium_headless_shell-1243: la revisione non dipende dal playwright installato.
+    monkeypatch.setattr(components, "current_playwright_headless_revision", lambda: "1243")
+
+
 @pytest.fixture
 def isolated_data(tmp_path, monkeypatch):
     fake_home = tmp_path / "fake_home"
@@ -660,16 +666,16 @@ def test_launch_capture_browser_priority_fallback_and_missing(isolated_data, mon
     with caplog.at_level("INFO"):
         res = enrichment_media.launch_capture_browser(make_p())
     assert res is fake_browser
-    assert calls == [{"headless": True}]
+    assert calls == [{"headless": True, "executable_path": str(shell_bin)}]
     assert any("uso browser scaricato" in r.message for r in caplog.records)
 
     # 2. Componente che non parte -> passa a Edge (sistema)
     calls.clear()
     caplog.clear()
     with caplog.at_level("WARNING"):
-        res = enrichment_media.launch_capture_browser(make_p(fail_on=("component",)))
+        res = enrichment_media.launch_capture_browser(make_p(fail_on=(str(shell_bin),)))
     assert res is fake_browser
-    assert calls == [{"headless": True}, {"headless": True, "channel": "msedge"}]
+    assert calls == [{"headless": True, "executable_path": str(shell_bin)}, {"headless": True, "channel": "msedge"}]
     assert any("browser scaricato non si avvia" in r.message for r in caplog.records)
 
     # 3. Componente assente -> usa subito canale di sistema (Edge)

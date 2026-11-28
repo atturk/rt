@@ -257,8 +257,10 @@ def launch_capture_browser(p, **kwargs):
     if override:
         candidates.append(("RT_ENRICHMENT_CHROMIUM", lambda path=override: p.chromium.launch(headless=True, executable_path=path, **kwargs), "override"))
 
-    if _find_headless_shell_executable(p):
-        candidates.append(("browser scaricato", lambda: p.chromium.launch(headless=True, **kwargs), "component"))
+    shell = _find_headless_shell_executable(p)
+    if shell:
+        # Percorso esplicito: una revisione diversa da quella attesa da Playwright parte lo stesso.
+        candidates.append(("browser scaricato", lambda path=shell: p.chromium.launch(headless=True, executable_path=path, **kwargs), "component"))
 
     for sb, _disk_path in _iter_system_browser_candidates():
         if sb.channel:

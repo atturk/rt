@@ -108,6 +108,9 @@ def ensure_capture_browser(say: Optional[Callable[[str], None]] = None) -> None:
     """Non scarica più il browser all'avvio: ripulisce in background eventuali vecchie
     installazioni di Chromium completo o di revisioni obsolete di headless shell."""
     target = _browsers_dir()
+    if not target:
+        # Fuori dall'app impacchettata la cartella può essere la cache condivisa di Playwright: non si tocca.
+        return
     from rt.core import components
 
     def _cleanup() -> None:

@@ -250,6 +250,13 @@ def browser_ready(target: Optional[str] = None) -> bool:
     from rt.llm.enrichment_media import find_headless_shell_in_dir
 
     folder = target or browsers_dir()
+    rev = current_playwright_headless_revision()
+    if rev:
+        # Una revisione diversa da quella del Playwright installato non parte con launch():
+        # non conta come pronta (la pulizia all'avvio la rimuove).
+        rev_dir = f"chromium_headless_shell-{rev}"
+        return os.path.isdir(os.path.join(folder, rev_dir)) and \
+            find_headless_shell_in_dir(folder, preferred_revision=rev) is not None
     return find_headless_shell_in_dir(folder) is not None
 
 
