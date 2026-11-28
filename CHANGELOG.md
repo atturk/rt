@@ -8,7 +8,7 @@ Sesta beta della 4.3.10: Parakeet ONNX rifatto per Windows e macparakeet più af
 
 - **Parakeet ONNX (Windows, alternativa sul Mac)**: nuovo modello int8 più preciso scaricato dalla release stt-models-1 (con controllo SHA256), audio letto a blocchi e trascritto in finestre da 6 secondi con cucitura per parole. Non perde più le parti a basso volume, non ripete parole ai confini e usa molta meno memoria. Il vecchio modello e il VAD si cancellano dopo il primo download.
 - **macparakeet**: RT usa sempre la propria copia verificata (5.1.0) invece di quella di Homebrew, che dopo un aggiornamento di MacParakeet poteva non funzionare più. Se la trascrizione fallisce, RT mostra il messaggio d'errore vero di macparakeet.
-- **Componenti**: la descrizione dice quale motore di trascrizione usa RT e quale è solo un'alternativa che si può eliminare; «Elimina» non cancella il modello se è installata l'app MacParakeet. Il pallino sull'ingranaggio porta alla sezione Componenti.
+- **Componenti**: solo il componente del motore scelto è segnato come necessario, l'altro è indicato come alternativa che si può eliminare; «Elimina» non cancella il modello se è installata l'app MacParakeet. Il pallino sull'ingranaggio porta alla sezione Componenti ed è ben visibile anche in modalità chiara.
 
 ## 4.3.10b5 — 2026-11-27
 
