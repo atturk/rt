@@ -78,7 +78,8 @@ Niente download all'avvio dell'app.
 ## 6. Font (dalle prove sul Pro 28/11 08:10)
 LibreOffice --headless su macOS usa il backend senza schermo (svp) con fontconfig, che vede solo i font inclusi
 nell'app: Helvetica, Georgia, Arial Black, Avenir, Cambria Math… diventano Linux Libertine (serif).
-Correzione da implementare (Claude la verifica sul Pro prima della review):
+Correzione VERIFICATA sul Pro (08:19): con FONTCONFIG_FILE tutti i font veri e anche le emoji a colori; 6,8 s a
+freddo, poi cache. NON usare SAL_USE_VCLPLUGIN=osx (pedici sovrapposti).
 - RT scrive `<dati>/components/libreoffice-fonts.conf` con le cartelle dei font di sistema e lo passa con la
   variabile `FONTCONFIG_FILE` (solo all'ambiente del processo soffice):
   macOS: `/System/Library/Fonts`, `/System/Library/Fonts/Supplemental`, `/Library/Fonts`, `~/Library/Fonts`
@@ -86,5 +87,7 @@ Correzione da implementare (Claude la verifica sul Pro prima della review):
   `<dati>/components/libreoffice-fontcache`).
   Windows: non serve (headless usa i font di Windows); verificarlo comunque nella prova su Windows.
 - Tabella di sostituzione nel profilo RT (registrymodifications.xcu, VCL.xcu FontSubstitutions) solo per i font
-  Microsoft che mancano sul Mac: Calibri→Carlito, Cambria→Caladea, Arial/Helvetica→Liberation Sans se mancano.
-- Emoji: le emoji a colori di Apple non si possono rendere da LibreOffice headless; si accetta (raro nelle slide).
+  Microsoft che mancano sul Mac: Calibri→Carlito, Cambria→Caladea, Cambria Math→STIX Two Math (di sistema su
+  macOS; senza, fontconfig sceglie HiraMaruPro).
+- Emoji: con FONTCONFIG_FILE escono a colori (Apple Color Emoji).
+- La cachedir fissa in `<dati>/components/libreoffice-fontcache` evita i 6,8 s a ogni conversione; Elimina la toglie.
