@@ -5499,7 +5499,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "transcription" | "macparakeet" | "browser";
+            id: "transcription" | "macparakeet" | "browser" | "libreoffice";
             /** In Use */
             in_use?: ("component" | "system") | null;
             /** Name */
@@ -5513,6 +5513,8 @@ export interface components {
              * @enum {string}
              */
             state: "not_downloaded" | "downloading" | "paused" | "ready" | "error";
+            /** System App */
+            system_app?: string | null;
             /** System Browser */
             system_browser?: string | null;
             /** Total Bytes */

@@ -6,6 +6,7 @@ from rt.core import materials
 
 def test_available_slide_methods_excludes_quicklook():
     with (
+        patch("rt.core.materials._component_soffice", return_value=None),
         patch("rt.core.materials._soffice", return_value=None),
         patch("rt.core.materials._has_powerpoint", return_value=False),
         patch("rt.core.materials._has_keynote", return_value=False),
@@ -16,11 +17,24 @@ def test_available_slide_methods_excludes_quicklook():
 
 def test_available_slide_methods_collects_reliable_tools():
     with (
+        patch("rt.core.materials._component_soffice", return_value=None),
         patch("rt.core.materials._soffice", return_value="/usr/bin/soffice"),
         patch("rt.core.materials._has_powerpoint", return_value=False),
         patch("rt.core.materials._has_keynote", return_value=True),
+        patch("rt.core.materials._is_keynote_blocked", return_value=False),
     ):
-        assert materials.available_slide_methods() == ["LibreOffice", "Keynote"]
+        assert materials.available_slide_methods() == ["Keynote", "LibreOffice"]
+
+
+def test_available_slide_methods_counts_component_and_skips_blocked_keynote():
+    with (
+        patch("rt.core.materials._component_soffice", return_value="/data/components/libreoffice/soffice"),
+        patch("rt.core.materials._soffice", return_value=None),
+        patch("rt.core.materials._has_powerpoint", return_value=False),
+        patch("rt.core.materials._has_keynote", return_value=True),
+        patch("rt.core.materials._is_keynote_blocked", return_value=True),
+    ):
+        assert materials.available_slide_methods() == ["LibreOffice"]
 
 
 def test_system_converters_endpoint_available_and_missing(api_client):

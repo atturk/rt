@@ -82,6 +82,7 @@ def test_permissions_status_non_blocking(tmp_path, monkeypatch):
     monkeypatch.setattr(desktop, "_lessons_root", lambda: str(desktop_dir))
     monkeypatch.setattr(wp.os, "listdir", Mock(side_effect=PermissionError("denied")))
     monkeypatch.setattr(wp, "mic_status", lambda: "authorized")
+    monkeypatch.setattr(materials, "_component_soffice", lambda: None)
     monkeypatch.setattr(materials, "_soffice", lambda: None)
     monkeypatch.setattr(sm, "background_disabled", lambda: True)
     monkeypatch.setattr(lan, "lan_enabled", lambda: True)
@@ -96,3 +97,6 @@ def test_permissions_status_non_blocking(tmp_path, monkeypatch):
     assert res["automazione_keynote"]["rilevante"] is True
     assert res["elementi_background"]["stato"] == "denied"
     assert res["rete_locale"]["attivo"] is True
+
+    monkeypatch.setattr(materials, "_component_soffice", lambda: "/tmp/components/libreoffice/soffice")
+    assert wp.permissions_status()["automazione_keynote"]["rilevante"] is False

@@ -12,7 +12,7 @@ router = APIRouter(tags=["componenti"])
 
 
 class ComponentStatus(BaseModel):
-    id: Literal["transcription", "macparakeet", "browser"]
+    id: Literal["transcription", "macparakeet", "browser", "libreoffice"]
     name: str
     description: str
     detail: str
@@ -28,6 +28,7 @@ class ComponentStatus(BaseModel):
     available: bool = True
     unavailable_reason: Optional[str] = None
     system_browser: Optional[str] = None
+    system_app: Optional[str] = None
     in_use: Optional[Literal["component", "system"]] = None
 
 

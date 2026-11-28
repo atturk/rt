@@ -4,9 +4,10 @@ Gestione dei componenti scaricabili di RT:
 - macparakeet: Motore di trascrizione per Mac (macparakeet-cli + modello parakeet-v3, ~500 MB)
 - transcription: Modello di trascrizione per Windows e alternativa sul Mac (Parakeet TDT 0.6B v3 ONNX, ~900 MB)
 - browser: Browser per PDF e catture (Chromium headless Playwright)
+- libreoffice: Convertitore delle presentazioni (LibreOffice portabile, ~300 MB)
 
 Ogni componente ha un solo download attivo alla volta garantito da file lock in
-<models_dir>/.lock (.macparakeet.lock, .browser.lock), scrive stato e progresso in
+<models_dir>/.lock (.macparakeet.lock, .browser.lock, .libreoffice.lock), scrive stato e progresso in
 <models_dir>/components.json letto da GET /api/v1/components e dai job del worker, e supporta
 pausa/ripresa (.part) e eliminazione.
 """
@@ -22,11 +23,13 @@ import signal
 import subprocess
 import sys
 import tarfile
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from xml.sax.saxutils import escape as xml_escape
 
 from rt.core import config as rt_config, onnx_stt, paths
 from rt.core.filelock import _expired, acquire_file_lock, release_file_lock
@@ -34,7 +37,8 @@ from rt.core.filelock import _expired, acquire_file_lock, release_file_lock
 MACPARAKEET_ID = "macparakeet"
 TRANSCRIPTION_ID = "transcription"
 BROWSER_ID = "browser"
-VALID_COMPONENT_IDS = (MACPARAKEET_ID, TRANSCRIPTION_ID, BROWSER_ID)
+LIBREOFFICE_ID = "libreoffice"
+VALID_COMPONENT_IDS = (MACPARAKEET_ID, TRANSCRIPTION_ID, BROWSER_ID, LIBREOFFICE_ID)
 
 MACPARAKEET_URL = (
     "https://github.com/moona3k/macparakeet/releases/download/cli-v5.1.0/"
@@ -51,6 +55,21 @@ MACPARAKEET_APPROX_BYTES = MACPARAKEET_TARBALL_BYTES + MACPARAKEET_MODEL_APPROX_
 
 TRANSCRIPTION_APPROX_BYTES = 900 * 1024 * 1024
 BROWSER_APPROX_BYTES = 110 * 1024 * 1024
+
+LIBREOFFICE_VERSION = "26.8.3"
+LIBREOFFICE_MAC_URL = (
+    f"https://download.documentfoundation.org/libreoffice/stable/{LIBREOFFICE_VERSION}/mac/aarch64/"
+    f"LibreOffice_{LIBREOFFICE_VERSION}_MacOS_aarch64.dmg"
+)
+LIBREOFFICE_MAC_BYTES = 299_927_705
+LIBREOFFICE_MAC_SHA256 = "de943203795e5057785f65515063e2db5eb60b0bb6d8e2534fec59e5cc5fb988"
+LIBREOFFICE_WIN_URL = (
+    f"https://download.documentfoundation.org/libreoffice/stable/{LIBREOFFICE_VERSION}/win/x86_64/"
+    f"LibreOffice_{LIBREOFFICE_VERSION}_Win_x86-64.msi"
+)
+LIBREOFFICE_WIN_BYTES = 376_311_808
+LIBREOFFICE_WIN_SHA256 = "0e6918c273eabbdbbd800ee0dacbbf130a14c13c2e4cec861b06dd59e015bf94"
+KEYNOTE_BLOCK_SECONDS = 7 * 24 * 60 * 60
 
 LOCK_STALE_SECONDS = 30.0
 
@@ -126,6 +145,8 @@ def lock_path_for(component_id: str) -> str:
         return os.path.join(onnx_stt.models_dir(), ".macparakeet.lock")
     if component_id == BROWSER_ID:
         return os.path.join(onnx_stt.models_dir(), ".browser.lock")
+    if component_id == LIBREOFFICE_ID:
+        return os.path.join(onnx_stt.models_dir(), ".libreoffice.lock")
     raise ComponentNotFound(f"Componente sconosciuto: {component_id}")
 
 
@@ -305,6 +326,240 @@ def cleanup_old_browsers(target: Optional[str] = None) -> int:
         except OSError:
             pass
     return freed
+
+
+def components_dir() -> str:
+    return os.path.join(paths.data_dir(), "components")
+
+
+def libreoffice_dir() -> str:
+    return os.path.join(components_dir(), "libreoffice")
+
+
+def libreoffice_partial_dir() -> str:
+    return os.path.join(components_dir(), "libreoffice.partial")
+
+
+def libreoffice_profile_dir() -> str:
+    return os.path.join(components_dir(), "libreoffice-profile")
+
+
+def libreoffice_fonts_conf_path() -> str:
+    return os.path.join(components_dir(), "libreoffice-fonts.conf")
+
+
+def libreoffice_fontcache_dir() -> str:
+    return os.path.join(components_dir(), "libreoffice-fontcache")
+
+
+def _libreoffice_platform_spec() -> Optional[Tuple[str, int, str, str]]:
+    if sys.platform == "darwin" and rt_config.is_apple_silicon():
+        return (LIBREOFFICE_MAC_URL, LIBREOFFICE_MAC_BYTES, LIBREOFFICE_MAC_SHA256, ".dmg")
+    if sys.platform == "win32":
+        return (LIBREOFFICE_WIN_URL, LIBREOFFICE_WIN_BYTES, LIBREOFFICE_WIN_SHA256, ".msi")
+    return None
+
+
+def libreoffice_available() -> bool:
+    return _libreoffice_platform_spec() is not None
+
+
+def libreoffice_executable() -> Optional[str]:
+    base = libreoffice_dir()
+    if sys.platform == "win32":
+        cand = os.path.join(base, "program", "soffice.exe")
+        return cand if os.path.isfile(cand) else None
+    cand = os.path.join(base, "LibreOffice.app", "Contents", "MacOS", "soffice")
+    if os.path.isfile(cand):
+        return cand
+    if sys.platform != "darwin":
+        win_cand = os.path.join(base, "program", "soffice.exe")
+        if os.path.isfile(win_cand):
+            return win_cand
+    return None
+
+
+def libreoffice_ready() -> bool:
+    return libreoffice_executable() is not None
+
+
+def libreoffice_part_path() -> str:
+    spec = _libreoffice_platform_spec()
+    ext = spec[3] if spec is not None else ".dmg"
+    return os.path.join(components_dir(), f"libreoffice{ext}.part")
+
+
+def _libreoffice_partial_bytes() -> int:
+    total = sum(
+        _entry_size(os.path.join(components_dir(), name))
+        for name in ("libreoffice.dmg.part", "libreoffice.msi.part")
+    )
+    return total + _dir_size(libreoffice_partial_dir())
+
+
+def _libreoffice_ready_bytes() -> int:
+    return _dir_size(libreoffice_dir())
+
+
+def _find_libreoffice_app_fonts_conf() -> Optional[str]:
+    contents = os.path.join(libreoffice_dir(), "LibreOffice.app", "Contents")
+    for rel in (
+        ("Resources", "fontconfig", "fonts.conf"),
+        ("Resources", "fonts", "fonts.conf"),
+        ("etc", "fonts", "fonts.conf"),
+    ):
+        cand = os.path.join(contents, *rel)
+        if os.path.isfile(cand):
+            return cand
+    return None
+
+
+def _ensure_libreoffice_registry_substitutions(profile_dir: str) -> None:
+    user_dir = os.path.join(profile_dir, "user")
+    os.makedirs(user_dir, exist_ok=True)
+    xcu_path = os.path.join(user_dir, "registrymodifications.xcu")
+    if os.path.isfile(xcu_path):
+        try:
+            with open(xcu_path, encoding="utf-8") as f:
+                existing = f.read()
+            if "cambriamath" in existing and "STIX Two Math" in existing:
+                return
+        except OSError:
+            pass
+    items = [
+        ("calibri", "Carlito", "Normal,SansSerif"),
+        ("cambria", "Caladea", "Normal,Serif"),
+        ("cambriamath", "STIX Two Math", "Normal,Symbol"),
+    ]
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<oor:items xmlns:oor="http://openoffice.org/2001/registry" '
+        'xmlns:xs="http://www.w3.org/2001/XMLSchema" '
+        'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
+    ]
+    for font_key, subst, font_type in items:
+        lines.append(
+            f'<item oor:path="/org.openoffice.VCL/FontSubstitutions">'
+            f'<node oor:name="{xml_escape(font_key)}" oor:op="replace">'
+            f'<prop oor:name="SubstFonts" oor:op="fuse"><value>{xml_escape(subst)}</value></prop>'
+            f'<prop oor:name="FontType" oor:op="fuse"><value>{xml_escape(font_type)}</value></prop>'
+            f'</node></item>'
+        )
+    lines.append("</oor:items>\n")
+    tmp = f"{xcu_path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    os.replace(tmp, xcu_path)
+
+
+def prepare_libreoffice_runtime() -> Dict[str, str]:
+    """Prepara profilo RT e (su macOS) fontconfig + sostituzioni font per LibreOffice headless."""
+    profile_dir = libreoffice_profile_dir()
+    os.makedirs(profile_dir, exist_ok=True)
+    if sys.platform != "darwin":
+        return {}
+
+    _ensure_libreoffice_registry_substitutions(profile_dir)
+    fontcache_dir = libreoffice_fontcache_dir()
+    os.makedirs(fontcache_dir, exist_ok=True)
+    fonts_conf = libreoffice_fonts_conf_path()
+    os.makedirs(os.path.dirname(fonts_conf), exist_ok=True)
+
+    app_fonts_conf = _find_libreoffice_app_fonts_conf()
+    lines = [
+        '<?xml version="1.0"?>',
+        '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">',
+        "<fontconfig>",
+    ]
+    if app_fonts_conf:
+        lines.append(f'  <include ignore_missing="yes">{xml_escape(app_fonts_conf)}</include>')
+    for font_dir in (
+        "/System/Library/Fonts",
+        "/System/Library/Fonts/Supplemental",
+        "/Library/Fonts",
+        os.path.expanduser("~/Library/Fonts"),
+    ):
+        lines.append(f"  <dir>{xml_escape(font_dir)}</dir>")
+    lines.append(f"  <cachedir>{xml_escape(fontcache_dir)}</cachedir>")
+    lines.append("</fontconfig>\n")
+    content = "\n".join(lines)
+    try:
+        with open(fonts_conf, encoding="utf-8") as f:
+            if f.read() == content:
+                return {"FONTCONFIG_FILE": fonts_conf}
+    except OSError:
+        pass
+    tmp = f"{fonts_conf}.{os.getpid()}.{threading.get_ident()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(content)
+    os.replace(tmp, fonts_conf)
+    return {"FONTCONFIG_FILE": fonts_conf}
+
+
+def keynote_blocked_until() -> Optional[float]:
+    val = _read_all_states().get("keynote_blocked_until")
+    return float(val) if isinstance(val, (int, float)) else None
+
+
+def is_keynote_blocked(now: Optional[float] = None) -> bool:
+    until = keynote_blocked_until()
+    if until is None:
+        return False
+    current = time.time() if now is None else now
+    return current < until
+
+
+def _write_root_state(key: str, value: Any) -> None:
+    path = _state_file()
+    with _state_io_lock:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                data = {}
+        except (OSError, ValueError):
+            data = {}
+        if value is None:
+            if key not in data:
+                return
+            data.pop(key, None)
+        else:
+            data[key] = value
+        tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+
+
+def mark_keynote_blocked(seconds: float = KEYNOTE_BLOCK_SECONDS) -> float:
+    until = time.time() + seconds
+    _write_root_state("keynote_blocked_until", until)
+    return until
+
+
+def clear_keynote_blocked() -> None:
+    _write_root_state("keynote_blocked_until", None)
+
+
+def detect_system_slide_app() -> Optional[str]:
+    from rt.core import materials
+
+    if sys.platform == "win32":
+        if materials._has_powerpoint():
+            return "Microsoft PowerPoint"
+        if materials._soffice():
+            return "LibreOffice"
+        return None
+    if sys.platform == "darwin":
+        if materials._has_keynote() and not is_keynote_blocked():
+            return "Keynote"
+        if materials._soffice():
+            return "LibreOffice"
+        return None
+    if materials._soffice():
+        return "LibreOffice"
+    return None
 
 
 def _read_all_states() -> Dict[str, Dict[str, Any]]:
@@ -509,6 +764,45 @@ def _component_meta(component_id: str) -> Dict[str, Any]:
             "system_browser": sb_name,
             "in_use": in_use,
         }
+    if component_id == LIBREOFFICE_ID:
+        spec = _libreoffice_platform_spec()
+        avail = spec is not None
+        approx = spec[1] if spec is not None else LIBREOFFICE_MAC_BYTES
+        sys_app = detect_system_slide_app()
+        ready = (not is_download_active(LIBREOFFICE_ID)) and libreoffice_ready()
+        keynote_blocked = (sys.platform == "darwin") and is_keynote_blocked()
+        if ready:
+            in_use_lo: Optional[str] = "component"
+            desc_lo = "RT usa questo convertitore per le slide delle presentazioni"
+        elif sys_app:
+            in_use_lo = "system"
+            desc_lo = f"Rilevato {sys_app}: RT usa quello, scaricare questo componente non è necessario"
+        elif keynote_blocked:
+            in_use_lo = None
+            desc_lo = (
+                "Keynote non risponde: consenti a RT di controllarlo in Impostazioni di "
+                "Sistema › Privacy e sicurezza › Automazione, oppure scarica il convertitore"
+            )
+        else:
+            in_use_lo = None
+            desc_lo = "Serve per trasformare le presentazioni (.pptx) in slide: scaricalo"
+        unavail_reason = (
+            "Disponibile solo su Mac con Apple Silicon."
+            if sys.platform == "darwin"
+            else "Disponibile solo su Mac (Apple Silicon) e Windows."
+        )
+        return {
+            "id": LIBREOFFICE_ID,
+            "name": "Convertitore delle presentazioni",
+            "description": desc_lo,
+            "detail": f"LibreOffice {LIBREOFFICE_VERSION} (MPL-2.0)",
+            "approx_bytes": approx,
+            "required": sys_app is None,
+            "available": avail,
+            "unavailable_reason": None if avail else unavail_reason,
+            "system_app": sys_app,
+            "in_use": in_use_lo,
+        }
     raise ComponentNotFound(f"Componente sconosciuto: {component_id}")
 
 
@@ -522,6 +816,9 @@ def get_component(component_id: str) -> Dict[str, Any]:
     elif component_id == MACPARAKEET_ID:
         ready = (not active) and macparakeet_ready()
         disk_bytes = _macparakeet_ready_bytes() if ready else _macparakeet_partial_bytes()
+    elif component_id == LIBREOFFICE_ID:
+        ready = (not active) and libreoffice_ready()
+        disk_bytes = _libreoffice_ready_bytes() if ready else _libreoffice_partial_bytes()
     else:
         ready = (not active) and browser_ready()
         disk_bytes = _browser_disk_bytes() if ready else 0
@@ -552,7 +849,9 @@ def get_component(component_id: str) -> Dict[str, Any]:
         eta_seconds = None
         eta_label = None
         error = saved.get("error") or "Download non riuscito."
-    elif saved.get("state") == "paused" or (component_id in (TRANSCRIPTION_ID, MACPARAKEET_ID) and disk_bytes > 0):
+    elif saved.get("state") == "paused" or (
+        component_id in (TRANSCRIPTION_ID, MACPARAKEET_ID, LIBREOFFICE_ID) and disk_bytes > 0
+    ):
         state = "paused" if (saved.get("state") == "paused" or disk_bytes > 0) else "not_downloaded"
         downloaded = disk_bytes
         total = saved.get("total_bytes")
@@ -725,16 +1024,21 @@ def _validate_safe_member_name(name: str) -> None:
         raise ComponentError(f"Percorso non sicuro nell'archivio macparakeet: {name!r}")
 
 
-def _download_macparakeet_tarball(
+def _download_resumable_file(
+    url: str,
     part_path: str,
     *,
+    expected_sha256: str,
+    offline_env: str,
+    label: str,
+    cancel_message: str,
     on_bytes: Optional[Callable[[int, Optional[int]], None]] = None,
     cancel_token: Optional[Any] = None,
 ) -> None:
     import requests
 
-    if os.environ.get("RT_MACPARAKEET_OFFLINE") == "1" and not MACPARAKEET_URL.startswith(("http://127.0.0.1", "http://localhost")):
-        raise ComponentError("Download di macparakeet-cli disattivato nei test.")
+    if os.environ.get(offline_env) == "1" and not url.startswith(("http://127.0.0.1", "http://localhost")):
+        raise ComponentError(f"Download di {label} disattivato nei test.")
 
     os.makedirs(os.path.dirname(part_path), exist_ok=True)
     resume_from = os.path.getsize(part_path) if os.path.isfile(part_path) else 0
@@ -750,7 +1054,7 @@ def _download_macparakeet_tarball(
         with open(part_path, mode) as stream:
             for chunk in resp.iter_content(chunk_size=64 * 1024):
                 if cancel_token is not None and getattr(cancel_token, "cancelled", False):
-                    raise RuntimeError("Trascrizione annullata")
+                    raise RuntimeError(cancel_message)
                 if not chunk:
                     continue
                 stream.write(chunk)
@@ -759,12 +1063,12 @@ def _download_macparakeet_tarball(
                     on_bytes(downloaded, total_hint)
 
     try:
-        with requests.get(MACPARAKEET_URL, headers=headers, stream=True, timeout=(15, 60), allow_redirects=True) as resp:
+        with requests.get(url, headers=headers, stream=True, timeout=(15, 60), allow_redirects=True) as resp:
             if resp.status_code == 416 and resume_from > 0:
-                if _sha256_file(part_path) == MACPARAKEET_TARBALL_SHA256.lower():
+                if _sha256_file(part_path) == expected_sha256.lower():
                     return
                 os.unlink(part_path)
-                with requests.get(MACPARAKEET_URL, stream=True, timeout=(15, 60), allow_redirects=True) as resp2:
+                with requests.get(url, stream=True, timeout=(15, 60), allow_redirects=True) as resp2:
                     resp2.raise_for_status()
                     _stream(resp2, 0)
                 return
@@ -779,7 +1083,25 @@ def _download_macparakeet_tarball(
     except RuntimeError:
         raise
     except Exception as exc:
-        raise ComponentError(f"Download di macparakeet-cli non riuscito: {exc}") from exc
+        raise ComponentError(f"Download di {label} non riuscito: {exc}") from exc
+
+
+def _download_macparakeet_tarball(
+    part_path: str,
+    *,
+    on_bytes: Optional[Callable[[int, Optional[int]], None]] = None,
+    cancel_token: Optional[Any] = None,
+) -> None:
+    _download_resumable_file(
+        MACPARAKEET_URL,
+        part_path,
+        expected_sha256=MACPARAKEET_TARBALL_SHA256,
+        offline_env="RT_MACPARAKEET_OFFLINE",
+        label="macparakeet-cli",
+        cancel_message="Trascrizione annullata",
+        on_bytes=on_bytes,
+        cancel_token=cancel_token,
+    )
 
 
 def _extract_and_verify_macparakeet(part_path: str, bin_path: str) -> None:
@@ -1478,6 +1800,265 @@ def _run_browser_thread(active_entry: _ActiveDownload) -> None:
                 _active.pop(BROWSER_ID, None)
 
 
+def _extract_libreoffice_macos(dmg_path: str, partial_dir: str) -> str:
+    shutil.rmtree(partial_dir, ignore_errors=True)
+    os.makedirs(partial_dir, exist_ok=True)
+    mount_dir = tempfile.mkdtemp(prefix="rt-lo-mnt-")
+    mounted = False
+    try:
+        subprocess.run(
+            ["hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", mount_dir, dmg_path],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        mounted = True
+        src_app = os.path.join(mount_dir, "LibreOffice.app")
+        if not os.path.isdir(src_app):
+            raise ComponentError("Immagine LibreOffice incompleta: LibreOffice.app mancante.")
+        dst_app = os.path.join(partial_dir, "LibreOffice.app")
+        subprocess.run(["ditto", src_app, dst_app], check=True, capture_output=True, text=True, timeout=240)
+    except ComponentError:
+        raise
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ComponentError(f"Estrazione di LibreOffice non riuscita: {exc}") from exc
+    finally:
+        if mounted:
+            subprocess.run(["hdiutil", "detach", mount_dir], check=False, capture_output=True, timeout=30)
+        shutil.rmtree(mount_dir, ignore_errors=True)
+    return os.path.join(partial_dir, "LibreOffice.app", "Contents", "MacOS", "soffice")
+
+
+def _find_windows_soffice_root(root_dir: str) -> Optional[str]:
+    for walk_root, _dirs, files in os.walk(root_dir):
+        if os.path.basename(walk_root).lower() == "program" and any(f.lower() == "soffice.exe" for f in files):
+            return os.path.dirname(walk_root)
+    return None
+
+
+def _extract_libreoffice_windows(msi_path: str, partial_dir: str) -> str:
+    shutil.rmtree(partial_dir, ignore_errors=True)
+    os.makedirs(partial_dir, exist_ok=True)
+    tmp_dir = os.path.join(components_dir(), "libreoffice-tmp")
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    os.makedirs(tmp_dir, exist_ok=True)
+    try:
+        kwargs: Dict[str, Any] = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+        subprocess.run(
+            ["msiexec", "/a", msi_path, "/qn", f"TARGETDIR={tmp_dir}"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            **kwargs,
+        )
+        found_root = _find_windows_soffice_root(tmp_dir)
+        if not found_root:
+            raise ComponentError("Estrazione di LibreOffice non riuscita: program\\soffice.exe mancante.")
+        for entry in os.listdir(found_root):
+            shutil.move(os.path.join(found_root, entry), os.path.join(partial_dir, entry))
+    except ComponentError:
+        raise
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ComponentError(f"Estrazione di LibreOffice non riuscita: {exc}") from exc
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return os.path.join(partial_dir, "program", "soffice.exe")
+
+
+def _verify_libreoffice_binary(exe_path: str) -> None:
+    if not os.path.isfile(exe_path):
+        raise ComponentError("Installazione di LibreOffice incompleta: eseguibile soffice mancante.")
+    kwargs: Dict[str, Any] = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+    try:
+        subprocess.run(
+            [exe_path, "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            **kwargs,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ComponentError(f"Verifica di LibreOffice non riuscita: {exc}") from exc
+
+
+def _download_libreoffice_under_lock(cancel_token: Optional[Any] = None) -> str:
+    spec = _libreoffice_platform_spec()
+    if spec is None:
+        raise ComponentUnavailable("LibreOffice portabile non disponibile su questo sistema.")
+    url, approx_bytes, expected_sha256, ext = spec
+    part_path = os.path.join(components_dir(), f"libreoffice{ext}.part")
+    partial_dir = libreoffice_partial_dir()
+    final_dir = libreoffice_dir()
+
+    started = time.monotonic()
+    initial_bytes = _entry_size(part_path)
+    last_emit = started - 1.5
+    last_pct = -1
+
+    def on_bytes(done: int, total_hint: Optional[int]) -> None:
+        nonlocal last_emit, last_pct
+        total = total_hint or approx_bytes
+        pct = min(99, max(0, int(done * 99 / total))) if total else 0
+        now = time.monotonic()
+        if pct != last_pct and (now - last_emit >= 0.5 or pct in (0, 99)):
+            last_emit = now
+            last_pct = pct
+            elapsed = now - started
+            session_bytes = max(0, done - initial_bytes)
+            remaining = max(0, total - done)
+            eta_seconds: Optional[float] = None
+            eta_label: Optional[str] = None
+            if elapsed >= 2.0 and session_bytes > 0 and remaining > 0:
+                speed = session_bytes / elapsed
+                if speed > 0:
+                    eta_seconds = remaining / speed
+                    eta_label = onnx_stt._format_eta_short(eta_seconds)
+            _write_component_state(LIBREOFFICE_ID, {
+                "state": "downloading",
+                "auto_resume": True,
+                "pid": os.getpid(),
+                "downloaded_bytes": done,
+                "total_bytes": total,
+                "percent": pct,
+                "eta_seconds": eta_seconds,
+                "eta_label": eta_label,
+                "error": None,
+            })
+
+    _download_resumable_file(
+        url,
+        part_path,
+        expected_sha256=expected_sha256,
+        offline_env="RT_LIBREOFFICE_OFFLINE",
+        label="LibreOffice",
+        cancel_message="Download annullato",
+        on_bytes=on_bytes,
+        cancel_token=cancel_token,
+    )
+
+    if cancel_token is not None and getattr(cancel_token, "cancelled", False):
+        raise RuntimeError("Download annullato")
+
+    downloaded_size = _entry_size(part_path) or approx_bytes
+    _write_component_state(LIBREOFFICE_ID, {
+        "state": "downloading",
+        "auto_resume": True,
+        "pid": os.getpid(),
+        "downloaded_bytes": downloaded_size,
+        "total_bytes": downloaded_size,
+        "percent": 99,
+        "eta_seconds": None,
+        "eta_label": "Preparo…",
+        "error": None,
+    })
+
+    actual_sha = _sha256_file(part_path)
+    if actual_sha != expected_sha256.lower():
+        try:
+            os.unlink(part_path)
+        except OSError:
+            pass
+        raise ComponentError("Verifica SHA256 di LibreOffice non riuscita.")
+
+    try:
+        if ext == ".dmg":
+            exe_in_partial = _extract_libreoffice_macos(part_path, partial_dir)
+        else:
+            exe_in_partial = _extract_libreoffice_windows(part_path, partial_dir)
+        if cancel_token is not None and getattr(cancel_token, "cancelled", False):
+            raise RuntimeError("Download annullato")
+        _verify_libreoffice_binary(exe_in_partial)
+        shutil.rmtree(final_dir, ignore_errors=True)
+        os.makedirs(os.path.dirname(final_dir), exist_ok=True)
+        os.replace(partial_dir, final_dir)
+    except BaseException:
+        shutil.rmtree(partial_dir, ignore_errors=True)
+        raise
+
+    try:
+        os.unlink(part_path)
+    except OSError:
+        pass
+
+    prepare_libreoffice_runtime()
+    ready_size = _libreoffice_ready_bytes() or downloaded_size
+    _write_component_state(LIBREOFFICE_ID, {
+        "state": "ready",
+        "auto_resume": False,
+        "pid": None,
+        "downloaded_bytes": ready_size,
+        "total_bytes": ready_size,
+        "percent": 100,
+        "eta_seconds": None,
+        "eta_label": None,
+        "error": None,
+    })
+    return final_dir
+
+
+def _run_libreoffice_thread(active_entry: _ActiveDownload) -> None:
+    lpath = lock_path_for(LIBREOFFICE_ID)
+    if not _acquire_nonblocking(lpath):
+        return
+    stopped = threading.Event()
+    renewer = threading.Thread(target=_renew_lock_loop, args=(lpath, stopped), daemon=True)
+    renewer.start()
+    try:
+        if libreoffice_ready():
+            ready_size = _libreoffice_ready_bytes()
+            _write_component_state(LIBREOFFICE_ID, {
+                "state": "ready",
+                "auto_resume": False,
+                "pid": None,
+                "downloaded_bytes": ready_size,
+                "total_bytes": ready_size,
+                "percent": 100,
+                "eta_seconds": None,
+                "eta_label": None,
+                "error": None,
+            })
+            return
+        _download_libreoffice_under_lock(cancel_token=_CancelFlag(active_entry.cancel_event))
+    except RuntimeError as exc:
+        if "annullat" in str(exc).lower():
+            _write_component_state(LIBREOFFICE_ID, {
+                "state": "paused",
+                "auto_resume": False,
+                "pid": None,
+                "eta_seconds": None,
+                "eta_label": None,
+                "error": None,
+            })
+        else:
+            _write_component_state(LIBREOFFICE_ID, {
+                "state": "error",
+                "auto_resume": False,
+                "pid": None,
+                "eta_seconds": None,
+                "eta_label": None,
+                "error": str(exc),
+            })
+    except Exception as exc:
+        _write_component_state(LIBREOFFICE_ID, {
+            "state": "error",
+            "auto_resume": False,
+            "pid": None,
+            "eta_seconds": None,
+            "eta_label": None,
+            "error": str(exc),
+        })
+    finally:
+        stopped.set()
+        renewer.join(timeout=1.0)
+        release_file_lock(lpath)
+        with _active_lock:
+            if _active.get(LIBREOFFICE_ID) is active_entry:
+                _active.pop(LIBREOFFICE_ID, None)
+
+
 def start_download(component_id: str) -> Dict[str, Any]:
     meta = _component_meta(component_id)
     if not meta["available"]:
@@ -1502,6 +2083,8 @@ def start_download(component_id: str) -> Dict[str, Any]:
             target = _run_transcription_thread
         elif component_id == MACPARAKEET_ID:
             target = _run_macparakeet_thread
+        elif component_id == LIBREOFFICE_ID:
+            target = _run_libreoffice_thread
         else:
             target = _run_browser_thread
         entry = _ActiveDownload(thread=threading.Thread(), cancel_event=cancel_event)
@@ -1549,6 +2132,8 @@ def cancel_download(component_id: str) -> Dict[str, Any]:
             label = "Il modello" if component_id == TRANSCRIPTION_ID else "Il motore di trascrizione"
             raise ComponentBusy(f"{label} si sta scaricando per una lezione in corso: "
                                 "per fermarlo annulla la lezione.")
+        if component_id == LIBREOFFICE_ID:
+            raise ComponentBusy("Il convertitore delle presentazioni si sta scaricando in un altro processo.")
         # Browser: si termina solo il processo dedicato lanciato da ensure_browser_detached, e
         # solo se è lui a tenere il lock (mai un PID salvato e magari riusato da altri).
         detached = saved.get("detached_pid")
@@ -1564,6 +2149,9 @@ def cancel_download(component_id: str) -> Dict[str, Any]:
     elif component_id == MACPARAKEET_ID:
         ready = macparakeet_ready()
         partial = _macparakeet_partial_bytes()
+    elif component_id == LIBREOFFICE_ID:
+        ready = libreoffice_ready()
+        partial = _libreoffice_partial_bytes()
     else:
         ready = browser_ready()
         partial = 0
@@ -1626,6 +2214,25 @@ def delete_component(component_id: str) -> Dict[str, Any]:
                     os.unlink(entry_path)
                 except OSError:
                     pass
+    elif component_id == LIBREOFFICE_ID:
+        for dir_path in (
+            libreoffice_dir(),
+            libreoffice_partial_dir(),
+            os.path.join(components_dir(), "libreoffice-tmp"),
+            libreoffice_profile_dir(),
+            libreoffice_fontcache_dir(),
+        ):
+            shutil.rmtree(dir_path, ignore_errors=True)
+        for file_path in (
+            os.path.join(components_dir(), "libreoffice.dmg.part"),
+            os.path.join(components_dir(), "libreoffice.msi.part"),
+            libreoffice_fonts_conf_path(),
+        ):
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                try:
+                    os.unlink(file_path)
+                except OSError:
+                    pass
     else:
         folder = browsers_dir()
         if os.path.isdir(folder):
@@ -1657,17 +2264,26 @@ def resume_interrupted_downloads() -> List[str]:
     return resumed
 
 
-def ensure_browser_fallback_download() -> Dict[str, Any]:
-    """Avvia il download del browser minimo come ripiego se non è già in corso, in pausa o in errore."""
-    status = get_component(BROWSER_ID)
+def _ensure_fallback_download(component_id: str) -> Dict[str, Any]:
+    status = get_component(component_id)
     if not status.get("available"):
         return status
-    if status["state"] == "not_downloaded" and not is_download_active(BROWSER_ID):
+    if status["state"] == "not_downloaded" and not is_download_active(component_id):
         try:
-            return start_download(BROWSER_ID)
+            return start_download(component_id)
         except ComponentError:
-            return get_component(BROWSER_ID)
+            return get_component(component_id)
     return status
+
+
+def ensure_browser_fallback_download() -> Dict[str, Any]:
+    """Avvia il download del browser minimo come ripiego se non è già in corso, in pausa o in errore."""
+    return _ensure_fallback_download(BROWSER_ID)
+
+
+def ensure_libreoffice_fallback_download() -> Dict[str, Any]:
+    """Avvia il download di LibreOffice alla prima .pptx se non c'è altro convertitore."""
+    return _ensure_fallback_download(LIBREOFFICE_ID)
 
 
 def pdf_browser_missing_message(status: Dict[str, Any]) -> str:

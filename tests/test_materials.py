@@ -79,6 +79,7 @@ def test_image_and_pptx_extract_text_and_embedded_images_without_quicklook(tmp_p
 def test_quicklook_attempt_and_missing_fallback(tmp_path, monkeypatch):
     from rt.core.materials import _quicklook_slides
     monkeypatch.setattr('rt.core.materials.sys.platform', 'darwin')
+    monkeypatch.setattr('rt.core.materials._component_soffice', lambda: None)
     monkeypatch.setattr('rt.core.materials._soffice', lambda: None)
     monkeypatch.setattr('rt.core.materials._has_keynote', lambda: False)
     monkeypatch.setattr('rt.core.materials.shutil.which', lambda _: None)
@@ -94,31 +95,48 @@ def test_quicklook_attempt_and_missing_fallback(tmp_path, monkeypatch):
         assert render(0).startswith(b'\x89PNG')
 
 
-def test_slide_render_methods_order(monkeypatch):
+def test_slide_render_methods_order(tmp_path, monkeypatch):
     from rt.core.materials import _slide_render_methods
+    monkeypatch.setenv('RT_DATA_DIR', str(tmp_path))
     monkeypatch.setattr('rt.core.materials.sys.platform', 'darwin')
+    monkeypatch.setattr('rt.core.materials._component_soffice', lambda: None)
     monkeypatch.setattr('rt.core.materials._soffice', lambda: '/usr/local/bin/soffice')
     monkeypatch.setattr('rt.core.materials._has_keynote', lambda: True)
+    monkeypatch.setattr('rt.core.materials._is_keynote_blocked', lambda: False)
     monkeypatch.setattr('rt.core.materials.shutil.which', lambda cmd: f'/bin/{cmd}')
 
+    # Mac: Keynote -> LibreOffice -> Quick Look
     methods = _slide_render_methods('slides.pptx', '/tmp/target')
-    assert [name for name, _ in methods] == ['LibreOffice', 'Keynote', 'Quick Look']
+    assert [name for name, _ in methods] == ['Keynote', 'LibreOffice', 'Quick Look']
 
-    # Senza LibreOffice: Keynote -> Quick Look
-    monkeypatch.setattr('rt.core.materials._soffice', lambda: None)
+    # Componente LibreOffice ha la precedenza sul LibreOffice di sistema e usa il profilo dedicato
+    comp_bin = '/fake/components/libreoffice/LibreOffice.app/Contents/MacOS/soffice'
+    monkeypatch.setattr('rt.core.materials._component_soffice', lambda: comp_bin)
     methods = _slide_render_methods('slides.pptx', '/tmp/target')
-    assert [name for name, _ in methods] == ['Keynote', 'Quick Look']
+    assert [name for name, _ in methods] == ['Keynote', 'LibreOffice', 'Quick Look']
+    lo_cmd = dict(methods)['LibreOffice']
+    assert lo_cmd[0] == comp_bin
+    assert lo_cmd[1].startswith('-env:UserInstallation=file://')
+    assert 'libreoffice-profile' in lo_cmd[1]
+    assert '--headless' in lo_cmd and '--norestore' in lo_cmd
 
-    # Senza Keynote: Quick Look
+    # Senza Keynote (o bloccato): LibreOffice -> Quick Look
     monkeypatch.setattr('rt.core.materials._has_keynote', lambda: False)
+    methods = _slide_render_methods('slides.pptx', '/tmp/target')
+    assert [name for name, _ in methods] == ['LibreOffice', 'Quick Look']
+
+    # Senza LibreOffice: Quick Look
+    monkeypatch.setattr('rt.core.materials._component_soffice', lambda: None)
+    monkeypatch.setattr('rt.core.materials._soffice', lambda: None)
     methods = _slide_render_methods('slides.pptx', '/tmp/target')
     assert [name for name, _ in methods] == ['Quick Look']
 
 
-def test_slide_render_methods_windows_powerpoint_after_libreoffice_without_path_interpolation(monkeypatch):
+def test_slide_render_methods_windows_powerpoint_before_libreoffice_without_path_interpolation(monkeypatch):
     from rt.core.materials import _slide_render_methods, _quicklook_slides
     from pathlib import Path
     monkeypatch.setattr('rt.core.materials.sys.platform', 'win32')
+    monkeypatch.setattr('rt.core.materials._component_soffice', lambda: None)
     monkeypatch.setattr('rt.core.materials._soffice', lambda: 'C:\\LibreOffice\\soffice.exe')
     monkeypatch.setattr('rt.core.materials._has_powerpoint', lambda: True)
     monkeypatch.setattr('rt.core.materials.shutil.which', lambda cmd: 'C:\\Windows\\powershell.exe' if cmd == 'powershell' else None)
@@ -126,7 +144,7 @@ def test_slide_render_methods_windows_powerpoint_after_libreoffice_without_path_
     pptx_path = "C:\\Users\\Mario's\\Desktop\\lezione $test.pptx"
     target_dir = "C:\\Temp\\rt-slides-xyz"
     methods = _slide_render_methods(pptx_path, target_dir)
-    assert [name for name, _ in methods] == ['LibreOffice', 'PowerPoint']
+    assert [name for name, _ in methods] == ['PowerPoint', 'LibreOffice']
 
     ps_command = dict(methods)['PowerPoint']
     script = ps_command[-1]
@@ -160,25 +178,28 @@ def test_slide_render_page_count_verification_and_worker_log(monkeypatch, caplog
     from pathlib import Path
 
     monkeypatch.setattr('rt.core.materials.sys.platform', 'darwin')
+    monkeypatch.setattr('rt.core.materials._component_soffice', lambda: None)
     monkeypatch.setattr('rt.core.materials._soffice', lambda: '/bin/soffice')
     monkeypatch.setattr('rt.core.materials._has_keynote', lambda: True)
+    monkeypatch.setattr('rt.core.materials._is_keynote_blocked', lambda: False)
     monkeypatch.setattr('rt.core.materials.shutil.which', lambda cmd: f'/bin/{cmd}')
 
     called_methods = []
     def fake_subprocess_run(cmd, **kwargs):
         prog = cmd[0]
-        if 'soffice' in prog:
-            called_methods.append('LibreOffice')
-            outdir = cmd[5]
-            # 1 pagina solo (fallisce il conteggio di 28)
-            Path(outdir, 'soffice.pdf').write_bytes(pdf_bytes())
-        elif prog == 'osascript':
+        if prog == 'osascript':
             called_methods.append('Keynote')
+            assert kwargs.get('timeout') == 45
+            # 1 pagina solo (fallisce il conteggio di 28)
+            Path(cmd[4]).write_bytes(pdf_bytes())
+        elif 'soffice' in prog:
+            called_methods.append('LibreOffice')
+            outdir = cmd[cmd.index('--outdir') + 1]
             # 28 pagine (soddisfa il conteggio di 28)
             doc = fitz.open()
             for _ in range(28):
                 doc.new_page(width=842, height=595)
-            Path(cmd[4]).write_bytes(doc.tobytes())
+            Path(outdir, 'soffice.pdf').write_bytes(doc.tobytes())
             doc.close()
         elif 'qlmanage' in prog:
             called_methods.append('Quick Look')
@@ -187,8 +208,7 @@ def test_slide_render_page_count_verification_and_worker_log(monkeypatch, caplog
 
     with _quicklook_slides('sample.pptx', 28) as render:
         assert render is not None
-        assert 'LibreOffice' in called_methods
-        assert 'Keynote' in called_methods
+        assert called_methods == ['Keynote', 'LibreOffice']
         assert 'Quick Look' not in called_methods
 
     # Se tutti i metodi falliscono: riga chiara nel log del worker
@@ -200,7 +220,186 @@ def test_slide_render_page_count_verification_and_worker_log(monkeypatch, caplog
         with _quicklook_slides('sample.pptx', 28) as render:
             assert render is None
         assert "Resa delle slide per 'sample.pptx' non riuscita" in caplog.text
-        assert "LibreOffice, Keynote, Quick Look" in caplog.text
+        assert "Keynote, LibreOffice, Quick Look" in caplog.text
+
+
+def test_keynote_timeout_or_1743_blocks_keynote_and_falls_back_to_libreoffice(tmp_path, monkeypatch):
+    import subprocess
+    from pathlib import Path
+    from rt.core import components, materials
+
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
+
+    monkeypatch.setattr(materials.sys, 'platform', 'darwin')
+    monkeypatch.setattr(materials, '_has_keynote', lambda: True)
+    monkeypatch.setattr(materials, '_soffice', lambda: '/bin/soffice')
+    monkeypatch.setattr(materials, '_component_soffice', lambda: None)
+    monkeypatch.setattr(materials.shutil, 'which', lambda _cmd: None)
+
+    calls = []
+
+    def fail_1743_then_soffice(cmd, **kwargs):
+        calls.append((cmd[0], kwargs.get('timeout')))
+        if cmd[0] == 'osascript':
+            raise subprocess.CalledProcessError(1, cmd, stderr=b'execution error: Not authorized to send Apple events to Keynote. (-1743)')
+        outdir = cmd[cmd.index('--outdir') + 1]
+        Path(outdir, 'out.pdf').write_bytes(pdf_bytes())
+
+    monkeypatch.setattr(materials.subprocess, 'run', fail_1743_then_soffice)
+    with materials._quicklook_slides('slides.pptx', 1) as render:
+        assert render is not None
+    assert calls == [('osascript', 45), ('/bin/soffice', 120)]
+    assert components.is_keynote_blocked()
+    assert 'Keynote' not in materials.available_slide_methods()
+
+    # Seconda conversione: Keynote viene saltato subito
+    calls.clear()
+    with materials._quicklook_slides('slides.pptx', 1) as render:
+        assert render is not None
+    assert calls == [('/bin/soffice', 120)]
+
+    # Anche timeout su Keynote lo blocca per 7 giorni
+    components.clear_keynote_blocked()
+    assert not components.is_keynote_blocked()
+
+    def timeout_then_soffice(cmd, **kwargs):
+        calls.append((cmd[0], kwargs.get('timeout')))
+        if cmd[0] == 'osascript':
+            raise subprocess.TimeoutExpired(cmd, kwargs.get('timeout'))
+        outdir = cmd[cmd.index('--outdir') + 1]
+        Path(outdir, 'out.pdf').write_bytes(pdf_bytes())
+
+    calls.clear()
+    monkeypatch.setattr(materials.subprocess, 'run', timeout_then_soffice)
+    with materials._quicklook_slides('slides.pptx', 1) as render:
+        assert render is not None
+    assert components.is_keynote_blocked()
+    until = components.keynote_blocked_until()
+    assert until is not None and until > 0
+
+
+def test_component_libreoffice_fontconfig_and_registry_profile(tmp_path, monkeypatch):
+    from pathlib import Path
+    from rt.core import components, materials
+
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
+
+    monkeypatch.setattr(materials.sys, 'platform', 'darwin')
+    monkeypatch.setattr(components.sys, 'platform', 'darwin')
+    monkeypatch.setattr(materials, '_has_keynote', lambda: False)
+    monkeypatch.setattr(materials, '_soffice', lambda: None)
+    monkeypatch.setattr(materials.shutil, 'which', lambda _cmd: None)
+
+    lo_app = tmp_path / "components" / "libreoffice" / "LibreOffice.app" / "Contents"
+    soffice_bin = lo_app / "MacOS" / "soffice"
+    app_fonts = lo_app / "Resources" / "fontconfig" / "fonts.conf"
+    soffice_bin.parent.mkdir(parents=True)
+    soffice_bin.write_bytes(b"fake")
+    app_fonts.parent.mkdir(parents=True)
+    app_fonts.write_text("<fontconfig/>", encoding="utf-8")
+
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured['cmd'] = cmd
+        captured['env'] = kwargs.get('env', {})
+        outdir = cmd[cmd.index('--outdir') + 1]
+        Path(outdir, 'out.pdf').write_bytes(pdf_bytes())
+
+    monkeypatch.setattr(materials.subprocess, 'run', fake_run)
+    with materials._quicklook_slides('slides.pptx', 1) as render:
+        assert render is not None
+
+    fonts_conf_path = tmp_path / "components" / "libreoffice-fonts.conf"
+    assert captured['env'].get('FONTCONFIG_FILE') == str(fonts_conf_path)
+    conf_text = fonts_conf_path.read_text(encoding='utf-8')
+    assert '/System/Library/Fonts' in conf_text
+    assert '/System/Library/Fonts/Supplemental' in conf_text
+    assert '/Library/Fonts' in conf_text
+    assert str(fake_home / 'Library' / 'Fonts') in conf_text
+    assert f'<include ignore_missing="yes">{app_fonts}</include>' in conf_text
+    assert str(tmp_path / 'components' / 'libreoffice-fontcache') in conf_text
+
+    xcu = tmp_path / "components" / "libreoffice-profile" / "user" / "registrymodifications.xcu"
+    xcu_text = xcu.read_text(encoding='utf-8')
+    assert 'Carlito' in xcu_text and 'Caladea' in xcu_text and 'STIX Two Math' in xcu_text
+
+    # Su Windows non crea libreoffice-fonts.conf né imposta FONTCONFIG_FILE
+    monkeypatch.setattr(components.sys, 'platform', 'win32')
+    assert components.prepare_libreoffice_runtime() == {}
+
+
+def test_first_pptx_without_converters_starts_libreoffice_download_once(tmp_path, monkeypatch):
+    from pptx import Presentation
+    from pptx.util import Inches
+    from rt.core import components, materials
+    from rt.services.context import RunContext
+    from rt.services.events import ListReporter
+
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
+
+    monkeypatch.setattr(materials, 'available_slide_methods', lambda: [])
+    monkeypatch.setattr(materials, '_quicklook_slides', lambda *args: nullcontext())
+    monkeypatch.setattr(materials, '_describe', lambda *args: 'Testo visivo')
+
+    started = []
+
+    def fake_start_download(cid):
+        started.append(cid)
+        components._write_component_state(cid, {'state': 'downloading', 'auto_resume': True})
+        return {
+            'id': cid,
+            'available': True,
+            'state': 'downloading',
+        }
+
+    monkeypatch.setattr(components, 'libreoffice_available', lambda: True)
+    monkeypatch.setattr(components, '_libreoffice_platform_spec', lambda: ('http://127.0.0.1/lo.dmg', 100, '0' * 64, '.dmg'))
+    monkeypatch.setattr(components, 'start_download', fake_start_download)
+    # Seconda chiamata: simula download già attivo
+    monkeypatch.setattr(components, 'is_download_active', lambda cid: cid == components.LIBREOFFICE_ID and len(started) > 0)
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    slide.shapes.add_textbox(Inches(1), Inches(1), Inches(4), Inches(1)).text = 'Slide senza convertitore'
+    buf = io.BytesIO()
+    prs.save(buf)
+
+    lesson = str(tmp_path / "lesson")
+    (tmp_path / "lesson").mkdir()
+    (tmp_path / "lesson" / "info.yaml").write_text("materia: Test\n")
+    s1 = add_source(lesson, 'materiale', 'uno.pptx', buf.getvalue())
+    s2 = add_source(lesson, 'materiale', 'due.pptx', buf.getvalue())
+
+    reporter = ListReporter()
+    ctx = RunContext(reporter=reporter)
+    pages1 = material_pages(lesson, s1, ctx=ctx)
+    pages2 = material_pages(lesson, s2, ctx=ctx)
+
+    assert len(pages1) == 1 and 'Slide senza convertitore' in pages1[0]['testo']
+    assert len(pages2) == 1
+    assert started == [components.LIBREOFFICE_ID]
+    messages = [getattr(e, 'message', '') for e in reporter.events]
+    assert any(
+        'Slide importate senza resa grafica: sto scaricando il convertitore delle presentazioni (circa 300 MB). '
+        'Le prossime presentazioni avranno le slide complete.' in m
+        for m in messages
+    )
 
 
 def test_filter_slide_images_small_and_corrupt():

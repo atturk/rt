@@ -40,6 +40,8 @@ def _isolate_encrypted_secret_store(tmp_path_factory):
     os.environ["RT_MACPARAKEET_OFFLINE"] = "1"
     # Nessun test deve scaricare il vero modello ONNX da GitHub (i test usano mock o server finto locale)
     os.environ["RT_ONNX_OFFLINE"] = "1"
+    # Nessun test deve scaricare il vero LibreOffice da documentfoundation.org (i test usano server finto locale)
+    os.environ["RT_LIBREOFFICE_OFFLINE"] = "1"
     # GET /api/v1/system/update non deve interrogare GitHub dai test (i test dell'updater
     # sostituiscono _get_json con le loro release finte)
     from rt.core import app_update

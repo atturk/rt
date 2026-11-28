@@ -194,7 +194,7 @@ def _folder_access_status() -> dict:
 def permissions_status() -> dict:
     """Stato dei permessi dell'app desktop senza mostrare alert bloccanti."""
     from rt.core.lan import lan_enabled
-    from rt.core.materials import _soffice
+    from rt.core.materials import _effective_soffice
     from rt.services import service_manager as sm
 
     platform = sys.platform
@@ -212,7 +212,7 @@ def permissions_status() -> dict:
             "platform": platform,
             "microfono": mic_status(),
             "file_e_cartelle": _folder_access_status(),
-            "automazione_keynote": {"rilevante": _soffice() is None},
+            "automazione_keynote": {"rilevante": _effective_soffice() is None},
             "elementi_background": {"stato": "denied" if bg_disabled else "authorized"},
             "rete_locale": {"attivo": lan_active},
         }

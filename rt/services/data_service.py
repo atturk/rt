@@ -515,7 +515,7 @@ def _rewrite_config_and_env(new_dir: str, old_prefixes: Sequence[str],
 
 def _reset_downloading_components(new_dir: str, saved_files_rel: Dict[str, bytes]) -> None:
     models_dir = os.path.join(new_dir, "models")
-    for lock_name in (".lock", ".browser.lock"):
+    for lock_name in (".lock", ".macparakeet.lock", ".browser.lock", ".libreoffice.lock"):
         lpath = os.path.join(models_dir, lock_name)
         if os.path.exists(lpath):
             try:

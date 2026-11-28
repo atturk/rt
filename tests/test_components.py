@@ -39,18 +39,23 @@ def isolated_data(tmp_path, monkeypatch):
 
 
 def test_components_api_initial_and_404(api_client, isolated_data, monkeypatch):
+    from rt.core import materials
     from rt.llm import enrichment_media
 
     monkeypatch.setattr(onnx_stt, "available", lambda: True)
     monkeypatch.setattr(components, "browser_available", lambda: True)
+    monkeypatch.setattr(components.sys, "platform", "darwin")
     monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
     monkeypatch.setattr("rt.core.config.effective_engine", lambda cfg=None: "macparakeet")
     monkeypatch.setattr(enrichment_media, "detect_system_browser", lambda: None)
+    monkeypatch.setattr(materials, "_has_keynote", lambda: False)
+    monkeypatch.setattr(materials, "_has_powerpoint", lambda: False)
+    monkeypatch.setattr(materials, "_soffice", lambda: None)
 
     res = api_client.get("/api/v1/components")
     assert res.status_code == 200
     items = {c["id"]: c for c in res.json()}
-    assert set(items) == {"macparakeet", "transcription", "browser"}
+    assert set(items) == {"macparakeet", "transcription", "browser", "libreoffice"}
     assert items["macparakeet"]["state"] == "not_downloaded"
     assert items["macparakeet"]["required"] is True
     assert items["transcription"]["state"] == "not_downloaded"
@@ -65,6 +70,14 @@ def test_components_api_initial_and_404(api_client, isolated_data, monkeypatch):
     assert items["browser"]["name"] == "Browser per PDF e catture"
     assert items["browser"]["detail"] == "Chrome Headless Shell (versione minima)"
     assert items["browser"]["description"] == "Serve per esportare in PDF e per le visualizzazioni: scaricalo"
+    assert items["libreoffice"]["state"] == "not_downloaded"
+    assert items["libreoffice"]["required"] is True
+    assert items["libreoffice"]["system_app"] is None
+    assert items["libreoffice"]["in_use"] is None
+    assert items["libreoffice"]["name"] == "Convertitore delle presentazioni"
+    assert items["libreoffice"]["detail"] == f"LibreOffice {components.LIBREOFFICE_VERSION} (MPL-2.0)"
+    assert items["libreoffice"]["approx_bytes"] == components.LIBREOFFICE_MAC_BYTES
+    assert items["libreoffice"]["description"] == "Serve per trasformare le presentazioni (.pptx) in slide: scaricalo"
 
     monkeypatch.setattr(
         enrichment_media,
@@ -820,3 +833,191 @@ def test_snapshot_triggers_fallback_download_on_missing_browser(isolated_data, m
     with pytest.raises(enrichment_media.BrowserMissingError):
         enrichment_media.snapshot("<html></html>")
     assert started == [components.BROWSER_ID]
+
+
+def test_libreoffice_download_sha256_extract_mac_and_delete(api_client, isolated_data, monkeypatch):
+    import hashlib
+    from pathlib import Path
+    from rt.core import materials
+
+    payload = b"fake-libreoffice-dmg-payload" * 1024
+    sha = hashlib.sha256(payload).hexdigest()
+    srv, url = _serve_bytes(payload)
+    try:
+        monkeypatch.setattr(components.sys, "platform", "darwin")
+        monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
+        monkeypatch.setattr(materials, "_has_keynote", lambda: False)
+        monkeypatch.setattr(materials, "_soffice", lambda: None)
+        monkeypatch.setattr(components, "LIBREOFFICE_MAC_URL", url)
+        monkeypatch.setattr(components, "LIBREOFFICE_MAC_BYTES", len(payload))
+
+        # 1. SHA256 errato -> errore e nessuna cartella finale
+        monkeypatch.setattr(components, "LIBREOFFICE_MAC_SHA256", "0" * 64)
+        with pytest.raises(components.ComponentError, match="SHA256"):
+            components._download_libreoffice_under_lock()
+        assert not components.libreoffice_ready()
+        assert not Path(components.libreoffice_part_path()).exists()
+        assert not Path(components.libreoffice_partial_dir()).exists()
+
+        # 2. Download valido + estrazione finta hdiutil/ditto + controllo --version + 99% Preparo…
+        monkeypatch.setattr(components, "LIBREOFFICE_MAC_SHA256", sha)
+        seen_states = []
+        orig_write = components._write_component_state
+
+        def spy_write(cid, patch):
+            if cid == components.LIBREOFFICE_ID:
+                seen_states.append(dict(patch))
+            orig_write(cid, patch)
+
+        monkeypatch.setattr(components, "_write_component_state", spy_write)
+
+        commands = []
+
+        def fake_run(cmd, **kwargs):
+            commands.append(cmd)
+            if cmd[:2] == ["hdiutil", "attach"]:
+                mountpoint = cmd[cmd.index("-mountpoint") + 1]
+                (Path(mountpoint) / "LibreOffice.app" / "Contents" / "MacOS").mkdir(parents=True, exist_ok=True)
+                (Path(mountpoint) / "LibreOffice.app" / "Contents" / "MacOS" / "soffice").write_bytes(b"soffice-bin")
+            elif cmd[0] == "ditto":
+                src, dst = Path(cmd[1]), Path(cmd[2])
+                (dst / "Contents" / "MacOS").mkdir(parents=True, exist_ok=True)
+                (dst / "Contents" / "MacOS" / "soffice").write_bytes((src / "Contents" / "MacOS" / "soffice").read_bytes())
+            elif len(cmd) >= 2 and cmd[1] == "--version":
+                assert kwargs.get("timeout") == 60
+                assert "libreoffice.partial" in cmd[0]
+            return SimpleNamespace(returncode=0, stdout="LibreOffice 26.8.3\n", stderr="")
+
+        monkeypatch.setattr(components.subprocess, "run", fake_run)
+
+        res = api_client.post("/api/v1/components/libreoffice/download")
+        assert res.status_code == 202
+
+        deadline = time.monotonic() + 5.0
+        item = {}
+        while time.monotonic() < deadline:
+            item = {c["id"]: c for c in api_client.get("/api/v1/components").json()}["libreoffice"]
+            if item["state"] == "ready":
+                break
+            assert item["state"] != "error", item.get("error")
+            time.sleep(0.02)
+
+        assert item["state"] == "ready"
+        assert item["percent"] == 100
+        assert item["in_use"] == "component"
+        assert any(s.get("percent") == 99 and s.get("eta_label") == "Preparo…" for s in seen_states)
+        assert any(c[:2] == ["hdiutil", "attach"] for c in commands)
+        assert any(c[:2] == ["hdiutil", "detach"] for c in commands)
+        assert any(c[0] == "ditto" for c in commands)
+        assert components.libreoffice_ready()
+        assert not Path(components.libreoffice_partial_dir()).exists()
+        assert not Path(components.libreoffice_part_path()).exists()
+        assert (isolated_data / "components" / "libreoffice-fonts.conf").is_file()
+        assert (isolated_data / "components" / "libreoffice-profile" / "user" / "registrymodifications.xcu").is_file()
+
+        # 3. Elimina -> toglie app, profilo, fontconfig e fontcache
+        (isolated_data / "components" / "libreoffice-fontcache" / "cache.bin").write_bytes(b"cache")
+        deleted = api_client.delete("/api/v1/components/libreoffice")
+        assert deleted.status_code == 200
+        assert deleted.json()["state"] == "not_downloaded"
+        assert not (isolated_data / "components" / "libreoffice").exists()
+        assert not (isolated_data / "components" / "libreoffice-profile").exists()
+        assert not (isolated_data / "components" / "libreoffice-fontcache").exists()
+        assert not (isolated_data / "components" / "libreoffice-fonts.conf").exists()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_libreoffice_windows_extract_and_resume_range(isolated_data, monkeypatch):
+    import hashlib
+    from pathlib import Path
+
+    payload = b"fake-msi-payload" * 512
+    sha = hashlib.sha256(payload).hexdigest()
+    srv, url = _serve_bytes(payload)
+    try:
+        monkeypatch.setattr(components.sys, "platform", "win32")
+        monkeypatch.setattr(components, "LIBREOFFICE_WIN_URL", url)
+        monkeypatch.setattr(components, "LIBREOFFICE_WIN_BYTES", len(payload))
+        monkeypatch.setattr(components, "LIBREOFFICE_WIN_SHA256", sha)
+
+        # Pre-popola metà .part per verificare ripresa con Range
+        part = Path(components.libreoffice_part_path())
+        part.parent.mkdir(parents=True, exist_ok=True)
+        half = len(payload) // 2
+        part.write_bytes(payload[:half])
+
+        def fake_run(cmd, **kwargs):
+            if cmd[0] == "msiexec":
+                assert cmd[1] == "/a" and "/qn" in cmd
+                target_arg = next(arg for arg in cmd if arg.startswith("TARGETDIR="))
+                target_dir = Path(target_arg.removeprefix("TARGETDIR="))
+                prog = target_dir / "LibreOffice" / "program"
+                prog.mkdir(parents=True, exist_ok=True)
+                (prog / "soffice.exe").write_bytes(b"win-soffice")
+            elif len(cmd) >= 2 and cmd[1] == "--version":
+                assert cmd[0].endswith("soffice.exe")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(components.subprocess, "run", fake_run)
+        components._download_libreoffice_under_lock()
+
+        exe = isolated_data / "components" / "libreoffice" / "program" / "soffice.exe"
+        assert exe.is_file()
+        assert exe.read_bytes() == b"win-soffice"
+        assert not (isolated_data / "components" / "libreoffice-tmp").exists()
+        assert not Path(components.libreoffice_partial_dir()).exists()
+        assert not part.exists()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_component_meta_libreoffice_cases(isolated_data, monkeypatch):
+    from rt.core import materials
+
+    monkeypatch.setattr(components.sys, "platform", "darwin")
+    monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
+    monkeypatch.setattr(materials, "_has_keynote", lambda: False)
+    monkeypatch.setattr(materials, "_has_powerpoint", lambda: False)
+    monkeypatch.setattr(materials, "_soffice", lambda: None)
+
+    # 1. Nessuna app di sistema -> required=True
+    meta_missing = components._component_meta(components.LIBREOFFICE_ID)
+    assert meta_missing["required"] is True
+    assert meta_missing["system_app"] is None
+    assert meta_missing["in_use"] is None
+    assert meta_missing["description"] == "Serve per trasformare le presentazioni (.pptx) in slide: scaricalo"
+
+    # 2. Keynote presente -> required=False, system_app="Keynote"
+    monkeypatch.setattr(materials, "_has_keynote", lambda: True)
+    meta_keynote = components._component_meta(components.LIBREOFFICE_ID)
+    assert meta_keynote["required"] is False
+    assert meta_keynote["system_app"] == "Keynote"
+    assert meta_keynote["in_use"] == "system"
+    assert meta_keynote["description"] == "Rilevato Keynote: RT usa quello, scaricare questo componente non è necessario"
+
+    # 3. Keynote bloccato (senza LibreOffice di sistema) -> NON conta come app rilevata, required=True, avviso
+    components.mark_keynote_blocked()
+    meta_blocked = components._component_meta(components.LIBREOFFICE_ID)
+    assert meta_blocked["required"] is True
+    assert meta_blocked["system_app"] is None
+    assert meta_blocked["in_use"] is None
+    assert meta_blocked["description"].startswith("Keynote non risponde: consenti a RT di controllarlo")
+
+    # 4. LibreOffice di sistema presente (anche con Keynote bloccato) -> required=False, system_app="LibreOffice"
+    monkeypatch.setattr(materials, "_soffice", lambda: "/Applications/LibreOffice.app/Contents/MacOS/soffice")
+    meta_sys_lo = components._component_meta(components.LIBREOFFICE_ID)
+    assert meta_sys_lo["required"] is False
+    assert meta_sys_lo["system_app"] == "LibreOffice"
+    assert meta_sys_lo["in_use"] == "system"
+
+    # 5. Componente pronto -> in_use="component"
+    exe = isolated_data / "components" / "libreoffice" / "LibreOffice.app" / "Contents" / "MacOS" / "soffice"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"soffice")
+    meta_ready = components._component_meta(components.LIBREOFFICE_ID)
+    assert meta_ready["required"] is False
+    assert meta_ready["in_use"] == "component"
+    assert meta_ready["description"] == "RT usa questo convertitore per le slide delle presentazioni"
