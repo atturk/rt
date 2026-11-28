@@ -17,6 +17,11 @@ from rt.services.pipeline_service import emit_stt_progress
 
 @pytest.fixture
 def isolated_data(tmp_path, monkeypatch):
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
     monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("RT_STT_MODELS_DIR", raising=False)
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "browsers"))
@@ -41,6 +46,9 @@ def test_components_api_initial_and_404(api_client, isolated_data, monkeypatch):
     assert items["macparakeet"]["required"] is True
     assert items["transcription"]["state"] == "not_downloaded"
     assert items["transcription"]["required"] is False
+    assert items["transcription"]["approx_bytes"] == 900 * 1024 * 1024
+    assert items["transcription"]["description"] == "per Windows (e alternativa sul Mac)"
+    assert items["transcription"]["detail"] == "Parakeet TDT 0.6B v3 di NVIDIA, CC-BY-4.0"
     assert items["browser"]["state"] == "not_downloaded"
     assert items["browser"]["required"] is False
     assert items["browser"]["name"] == "Browser per PDF e catture"
@@ -59,32 +67,39 @@ def test_components_api_initial_and_404(api_client, isolated_data, monkeypatch):
 def test_transcription_download_progress_lock_pause_resume_and_delete(api_client, isolated_data, monkeypatch):
     monkeypatch.setattr(onnx_stt, "available", lambda: True)
     models_root = isolated_data / "models"
+    # Pre-popola vecchio modello int8 e VAD Silero per verificare la pulizia post-download
+    legacy_int8 = models_root / onnx_stt.LEGACY_MODEL_NAME
+    legacy_vad = models_root / onnx_stt.LEGACY_VAD_NAME
+    legacy_int8.mkdir(parents=True)
+    legacy_vad.mkdir(parents=True)
+    (legacy_int8 / "encoder-model.int8.onnx").write_bytes(b"old")
+    (legacy_vad / "silero_vad.onnx").write_bytes(b"vad")
+
     lock_seen = []
     started = threading.Event()
     allow_finish = threading.Event()
 
-    def fake_download(name, quantization, *, vad=False, on_progress=None, on_stats=None, cancel_token=None):
+    def fake_download(name=onnx_stt.MODEL_DIR_NAME, quantization=onnx_stt.QUANTIZATION, *, on_progress=None, on_stats=None, cancel_token=None):
         lock_seen.append((name, (models_root / ".lock").exists()))
         target = models_root / name
         partial = models_root / f"{name}.partial"
         partial.mkdir(parents=True, exist_ok=True)
-        (partial / "weights.bin.part").write_bytes(b"123456")
-        if name == onnx_stt.MODEL_NAME:
-            if on_stats:
-                on_stats({
-                    "downloaded_bytes": 335 * 1024 * 1024,
-                    "total_bytes": 670 * 1024 * 1024,
-                    "percent": 50,
-                    "eta_seconds": 120.0,
-                    "eta_label": "circa 2 min",
-                })
-            started.set()
-            while not allow_finish.is_set():
-                if cancel_token is not None and getattr(cancel_token, "cancelled", False):
-                    raise RuntimeError("Trascrizione annullata")
-                time.sleep(0.02)
+        (partial / "encoder-model.q8pc.onnx.part").write_bytes(b"123456")
+        if on_stats:
+            on_stats({
+                "downloaded_bytes": 450 * 1024 * 1024,
+                "total_bytes": 900 * 1024 * 1024,
+                "percent": 50,
+                "eta_seconds": 120.0,
+                "eta_label": "circa 2 min",
+            })
+        started.set()
+        while not allow_finish.is_set():
+            if cancel_token is not None and getattr(cancel_token, "cancelled", False):
+                raise RuntimeError("Trascrizione annullata")
+            time.sleep(0.02)
         target.mkdir(parents=True, exist_ok=True)
-        (target / "model.onnx").write_bytes(b"ok" * 100)
+        (target / "encoder-model.q8pc.onnx").write_bytes(b"ok" * 100)
         return str(target)
 
     monkeypatch.setattr(onnx_stt, "_download_resumable", fake_download)
@@ -93,7 +108,7 @@ def test_transcription_download_progress_lock_pause_resume_and_delete(api_client
     res = api_client.post("/api/v1/components/transcription/download")
     assert res.status_code == 202
     assert started.wait(timeout=3.0)
-    assert lock_seen == [(onnx_stt.MODEL_NAME, True)]
+    assert lock_seen == [(onnx_stt.MODEL_DIR_NAME, True)]
 
     res_dup = api_client.post("/api/v1/components/transcription/download")
     assert res_dup.status_code == 202
@@ -108,10 +123,10 @@ def test_transcription_download_progress_lock_pause_resume_and_delete(api_client
     paused = api_client.post("/api/v1/components/transcription/cancel")
     assert paused.status_code == 200
     assert paused.json()["state"] == "paused"
-    assert (models_root / f"{onnx_stt.MODEL_NAME}.partial" / "weights.bin.part").is_file()
+    assert (models_root / f"{onnx_stt.MODEL_DIR_NAME}.partial" / "encoder-model.q8pc.onnx.part").is_file()
     assert not (models_root / ".lock").exists()
 
-    # 3. Riprendi e completa -> ready
+    # 3. Riprendi e completa -> ready (e vecchio int8 + silero eliminati)
     allow_finish.set()
     resumed = api_client.post("/api/v1/components/transcription/download")
     assert resumed.status_code == 202
@@ -124,6 +139,8 @@ def test_transcription_download_progress_lock_pause_resume_and_delete(api_client
     assert t["state"] == "ready"
     assert t["percent"] == 100
     assert onnx_stt.model_ready()
+    assert not legacy_int8.exists()
+    assert not legacy_vad.exists()
 
     # 4. Elimina -> pulisce file e stato in memoria
     onnx_stt._loaded["asr"] = object()
@@ -228,27 +245,25 @@ def test_worker_waits_for_active_download_and_emits_progress(isolated_data, monk
     components._write_component_state(components.TRANSCRIPTION_ID, {
         "state": "downloading",
         "auto_resume": True,
-        "downloaded_bytes": 280 * 1024 * 1024,
-        "total_bytes": 670 * 1024 * 1024,
+        "downloaded_bytes": 450 * 1024 * 1024,
+        "total_bytes": 900 * 1024 * 1024,
         "percent": 42,
         "eta_label": "circa 6 min",
     })
 
     def finish_other_download():
         time.sleep(0.15)
-        (models_root / onnx_stt.MODEL_NAME).mkdir(parents=True, exist_ok=True)
-        (models_root / onnx_stt.VAD_NAME).mkdir(parents=True, exist_ok=True)
+        (models_root / onnx_stt.MODEL_DIR_NAME).mkdir(parents=True, exist_ok=True)
         release_file_lock(lpath)
 
     t = threading.Thread(target=finish_other_download, daemon=True)
     t.start()
 
     seen = []
-    model_path, vad_path = components.ensure_transcription_model(on_progress=seen.append)
+    model_path = components.ensure_transcription_model(on_progress=seen.append)
     t.join(timeout=2.0)
 
-    assert model_path == str(models_root / onnx_stt.MODEL_NAME)
-    assert vad_path == str(models_root / onnx_stt.VAD_NAME)
+    assert model_path == str(models_root / onnx_stt.MODEL_DIR_NAME)
     assert any("42%" in m and "circa 6 min" in m for m in seen)
 
 

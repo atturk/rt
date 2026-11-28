@@ -356,7 +356,7 @@ export function NewLessonDialog({
     transcriptionComp.available &&
     transcriptionComp.state !== 'ready'
   const compNoun = effectiveEngine === 'macparakeet' ? 'Il motore di trascrizione' : 'Il modello di trascrizione'
-  const approxLabel = effectiveEngine === 'macparakeet' ? '~500 MB' : '~670 MB'
+  const approxLabel = effectiveEngine === 'macparakeet' ? '~500 MB' : '~900 MB'
   const transcriptionNotice = !needsTranscriptionComp || !transcriptionComp
     ? null
     : transcriptionComp.state === 'downloading'
