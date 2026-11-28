@@ -7,6 +7,7 @@ Fornisce funzioni riusabili per la CLI nativa (`rt setup`, `rt run <audio>`).
 import os
 import re
 import shutil
+import sys
 import tempfile
 import json
 import subprocess
@@ -162,6 +163,11 @@ def find_macparakeet_binary() -> str:
     local_bin = os.path.join(paths.data_dir(), "bin", "macparakeet-cli")
     if fs.exists(local_bin) and os.access(local_bin, os.X_OK):
         return local_bin
+    # Un macparakeet-cli di Homebrew più vecchio può non leggere il database aggiornato da una
+    # versione più nuova (errore «column not found»): RT usa la propria copia verificata (5.1.0)
+    # e quella di sistema solo se richiesta esplicitamente.
+    if sys.platform == "darwin" and os.environ.get("RT_USE_SYSTEM_MACPARAKEET", "") != "1":
+        return ""
     which_bin = shutil.which("macparakeet-cli")
     if which_bin:
         return which_bin
@@ -370,6 +376,7 @@ def _run_transcribe_with_spinner(cmd: List[str], label: str,
 def _read_transcription(proc, cmd, label, console, start, on_percent, on_message):
     last_pct = None
     last_status_text = label
+    tail: List[str] = []
     with console.status(f"[cyan]{label}...", spinner="dots") as status:
         if proc.stdout:
             while True:
@@ -379,6 +386,7 @@ def _read_transcription(proc, cmd, label, console, start, on_percent, on_message
                 if line:
                     line_str = line.strip()
                     if line_str:
+                        tail = (tail + [line_str])[-20:]
                         if on_message:
                             on_message(line_str)
                         match = re.search(r"(\d+)%", line_str)
@@ -396,7 +404,15 @@ def _read_transcription(proc, cmd, label, console, start, on_percent, on_message
                     elapsed = int(time.monotonic() - start)
                     status.update(f"[cyan]{last_status_text} ({elapsed}s)")
     proc.wait()
-    return subprocess.CompletedProcess(cmd, proc.returncode, stdout="", stderr="")
+    # Se macparakeet stampa un JSON con "error", quello è il messaggio da mostrare
+    for line_str in reversed(tail):
+        try:
+            err = json.loads(line_str).get("error") if line_str.startswith("{") else None
+        except (ValueError, AttributeError):
+            err = None
+        if err:
+            return subprocess.CompletedProcess(cmd, proc.returncode, stdout="", stderr=str(err))
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout="\n".join(tail[-5:]), stderr="")
 
 
 def resolve_setup_request(

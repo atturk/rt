@@ -8,6 +8,7 @@ from rt.services import doctor_service, settings_service
 
 
 def _homebrew_only(monkeypatch):
+    monkeypatch.setenv("RT_USE_SYSTEM_MACPARAKEET", "1")
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(shutil, "which", lambda name, *a, **k: None)
     monkeypatch.setattr(setup.fs, "exists", lambda path: path == "/opt/homebrew/bin/macparakeet-cli")
@@ -28,6 +29,13 @@ def test_settings_finds_macparakeet_outside_path(monkeypatch):
     engines = settings_service.transcription_engines()
     assert engines["macparakeet_installed"] is True
     assert engines["recommended"] == "macparakeet"
+
+
+def test_homebrew_macparakeet_ignored_by_default(monkeypatch):
+    # un 3.1.0 di Homebrew può non leggere il database aggiornato dal 5.1.0: RT usa la propria copia
+    _homebrew_only(monkeypatch)
+    monkeypatch.delenv("RT_USE_SYSTEM_MACPARAKEET")
+    assert setup.find_macparakeet_binary() == ""
 
 
 def test_doctor_and_settings_on_mac_without_binary(monkeypatch):

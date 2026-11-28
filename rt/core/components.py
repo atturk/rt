@@ -1561,7 +1561,11 @@ def delete_component(component_id: str) -> Dict[str, Any]:
                         os.unlink(os.path.join(bin_dir, name))
                     except OSError:
                         pass
-        for entry_path in _macparakeet_model_entries():
+        # Il modello in FluidAudio/Models è condiviso con l'app MacParakeet: se c'è, non lo tocchiamo
+        # (la cartella Application Support/MacParakeet la crea anche la CLI: conta solo l'app installata)
+        shared = any(os.path.isdir(os.path.join(d, "MacParakeet.app"))
+                     for d in ("/Applications", os.path.expanduser("~/Applications")))
+        for entry_path in ([] if shared else _macparakeet_model_entries()):
             if os.path.isdir(entry_path):
                 shutil.rmtree(entry_path, ignore_errors=True)
             else:
