@@ -1,5 +1,15 @@
 # Novità di RT
 
+## 4.3.10b7 — 2026-11-28
+
+Settima beta della 4.3.10: LibreOffice come componente per le presentazioni.
+
+### Cambiamenti
+
+- **Presentazioni senza installare nulla**: se sul computer non c'è Keynote, PowerPoint o LibreOffice, al primo `.pptx` usato in una lezione RT avvisa e scarica LibreOffice come componente (circa 800 MB, in Impostazioni → Componenti, dove si può anche eliminare). Se c'è già un programma adatto il componente risulta «non necessario».
+- **Slide più fedeli**: i font di sistema del Mac vengono usati anche da LibreOffice, con sostituti compatibili per Calibri, Cambria e Cambria Math; emoji e formule si vedono correttamente.
+- **Keynote che non risponde**: se Keynote non converte entro 45 secondi (per esempio perché manca il permesso di Automazione) RT usa LibreOffice e non riprova Keynote per 7 giorni.
+
 ## 4.3.10b6 — 2026-11-28
 
 Sesta beta della 4.3.10: PDF e catture con il browser già installato, Parakeet ONNX rifatto per Windows e macparakeet più affidabile sul Mac.
