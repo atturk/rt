@@ -390,7 +390,8 @@ def _component_meta(component_id: str) -> Dict[str, Any]:
         return {
             "id": MACPARAKEET_ID,
             "name": "Motore di trascrizione",
-            "description": "necessario per trascrivere l'audio",
+            "description": ("usato da RT per trascrivere l'audio" if avail and effective == "macparakeet"
+                            else "motore alternativo, non usato con le impostazioni attuali"),
             "detail": "macparakeet + modello parakeet-v3",
             "approx_bytes": MACPARAKEET_APPROX_BYTES,
             "required": bool(avail and effective == "macparakeet"),
@@ -401,7 +402,8 @@ def _component_meta(component_id: str) -> Dict[str, Any]:
         return {
             "id": TRANSCRIPTION_ID,
             "name": "Modello di trascrizione",
-            "description": "necessario per trascrivere l'audio",
+            "description": ("usato da RT per trascrivere l'audio" if effective == "parakeet"
+                            else "alternativa a macparakeet: non serve, puoi eliminarlo"),
             "detail": "Parakeet ONNX + VAD",
             "approx_bytes": TRANSCRIPTION_APPROX_BYTES,
             "required": effective == "parakeet",
