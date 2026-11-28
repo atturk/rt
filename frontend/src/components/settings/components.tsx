@@ -277,7 +277,7 @@ export function ComponentsSection() {
     }
     if (c.id === 'transcription') {
       if (stt?.macparakeet_available) {
-        return stt.engine === 'parakeet' || stt.effective_engine === 'parakeet' || c.state === 'downloading'
+        return stt.engine === 'parakeet' || stt.effective_engine === 'parakeet' || c.state !== 'not_downloaded'
       }
       return true
     }

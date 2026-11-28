@@ -292,6 +292,9 @@ def launch_capture_browser(p, **kwargs):
     raise BrowserMissingError("Browser per le catture non trovato o non ancora installato.")
 
 
+_CAPTURE_HOST_URL = "https://rt-capture.invalid/"
+
+
 def snapshot(html: str) -> bytes:
     """Capture the same sandboxed frame used in-app, with all network blocked."""
     from playwright.sync_api import sync_playwright
@@ -307,10 +310,20 @@ def snapshot(html: str) -> bytes:
             raise
         try:
             context = browser.new_context(viewport={"width": 1200, "height": 900}, device_scale_factor=1)
-            context.route("**/*", lambda route: route.abort())
+            # Pagina ospite servita da un'origine finta: Chrome 158 di sistema va in crash
+            # (site_instance_impl has_site_) con un iframe sandbox dentro about:blank.
+            host_html = '<!doctype html><iframe sandbox="allow-scripts" style="border:0;width:1160px;height:800px"></iframe>'
+
+            def _route(route):
+                if route.request.url == _CAPTURE_HOST_URL:
+                    route.fulfill(status=200, content_type="text/html; charset=utf-8", body=host_html)
+                else:
+                    route.abort()
+
+            context.route("**/*", _route)
             page = context.new_page()
+            page.goto(_CAPTURE_HOST_URL)
             # srcdoc is set from Python, never interpolated into HTML.
-            page.set_content('<iframe sandbox="allow-scripts" style="border:0;width:1160px;height:800px"></iframe>')
             page.locator("iframe").evaluate("(el, html) => el.srcdoc = html", html)
             frame = page.frames[-1]
             frame.wait_for_selector("#rt-visualization-root", timeout=10000)
