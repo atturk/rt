@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils'
 import { UPDATE_NOTICE_LABELS, useUpdateNotice } from './useAppUpdate'
 import { useComponentNotice } from './useComponentNotice'
 
-/** Pallino di avviso aggiornamento (stesso stile del badge dei Job, colore primario). */
+/** Pallino di avviso aggiornamento (verde pieno, visibile anche in modalità chiara). */
 export function UpdateNoticeDot({ className }: { className?: string }) {
   const { notice } = useUpdateNotice()
   if (!notice) return null
@@ -10,7 +10,7 @@ export function UpdateNoticeDot({ className }: { className?: string }) {
     <span
       aria-label={UPDATE_NOTICE_LABELS[notice]}
       data-testid="update-notice-dot"
-      className={cn('inline-block size-2.5 shrink-0 rounded-full bg-primary', className)}
+      className={cn('inline-block size-2.5 shrink-0 rounded-full bg-success', className)}
     />
   )
 }
@@ -23,7 +23,7 @@ export function ComponentNoticeDot({ className }: { className?: string }) {
     <span
       aria-label={label}
       data-testid="component-notice-dot"
-      className={cn('inline-block size-2.5 shrink-0 rounded-full bg-primary', className)}
+      className={cn('inline-block size-2.5 shrink-0 rounded-full bg-success', className)}
     />
   )
 }
