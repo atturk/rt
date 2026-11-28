@@ -56,7 +56,9 @@ def test_components_api_initial_and_404(api_client, isolated_data, monkeypatch):
     assert items["transcription"]["state"] == "not_downloaded"
     assert items["transcription"]["required"] is False
     assert items["transcription"]["approx_bytes"] == 900 * 1024 * 1024
-    assert items["transcription"]["description"] == "non necessario: alternativa al motore scelto, puoi eliminarlo"
+    expected = ("Modello di trascrizione per Windows" if sys.platform == "win32"
+                else "non necessario: alternativa al motore scelto, puoi eliminarlo")
+    assert items["transcription"]["description"] == expected
     assert items["transcription"]["detail"] == "Parakeet TDT 0.6B v3 di NVIDIA, CC-BY-4.0"
     assert items["browser"]["state"] == "not_downloaded"
     assert items["browser"]["required"] is True
@@ -602,6 +604,8 @@ def test_detect_system_browser_windows_mac_linux(isolated_data, monkeypatch):
     present = set()
     assert enrichment_media.detect_system_browser() is None
 
+    if _os.name == "nt":
+        return  # i percorsi Mac/Linux simulati non hanno senso con ntpath
     # 2. Mac: Chrome prima di Edge prima di Chromium
     monkeypatch.setattr(enrichment_media.sys, "platform", "darwin")
     fake_home = isolated_data / "fake_home"

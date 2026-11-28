@@ -8,6 +8,7 @@ export function UpdateNoticeDot({ className }: { className?: string }) {
   if (!notice) return null
   return (
     <span
+      role="img"
       aria-label={UPDATE_NOTICE_LABELS[notice]}
       data-testid="update-notice-dot"
       className={cn('inline-block size-2.5 shrink-0 rounded-full bg-success', className)}
@@ -21,6 +22,7 @@ export function ComponentNoticeDot({ className }: { className?: string }) {
   if (missing.length === 0 || !label) return null
   return (
     <span
+      role="img"
       aria-label={label}
       data-testid="component-notice-dot"
       className={cn('inline-block size-2.5 shrink-0 rounded-full bg-success', className)}
