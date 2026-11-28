@@ -33,10 +33,13 @@ def isolated_data(tmp_path, monkeypatch):
 
 
 def test_components_api_initial_and_404(api_client, isolated_data, monkeypatch):
+    from rt.llm import enrichment_media
+
     monkeypatch.setattr(onnx_stt, "available", lambda: True)
     monkeypatch.setattr(components, "browser_available", lambda: True)
     monkeypatch.setattr("rt.core.config.is_apple_silicon", lambda: True)
     monkeypatch.setattr("rt.core.config.effective_engine", lambda cfg=None: "macparakeet")
+    monkeypatch.setattr(enrichment_media, "detect_system_browser", lambda: None)
 
     res = api_client.get("/api/v1/components")
     assert res.status_code == 200
@@ -50,9 +53,22 @@ def test_components_api_initial_and_404(api_client, isolated_data, monkeypatch):
     assert items["transcription"]["description"] == "alternativa a macparakeet: non serve, puoi eliminarlo"
     assert items["transcription"]["detail"] == "Parakeet TDT 0.6B v3 di NVIDIA, CC-BY-4.0"
     assert items["browser"]["state"] == "not_downloaded"
-    assert items["browser"]["required"] is False
+    assert items["browser"]["required"] is True
+    assert items["browser"]["system_browser"] is None
+    assert items["browser"]["in_use"] is None
     assert items["browser"]["name"] == "Browser per PDF e catture"
-    assert "esportare in PDF" in items["browser"]["description"]
+    assert items["browser"]["detail"] == "Chrome Headless Shell (versione minima)"
+    assert items["browser"]["description"] == "Serve per esportare in PDF e per le visualizzazioni: scaricalo"
+
+    monkeypatch.setattr(
+        enrichment_media,
+        "detect_system_browser",
+        lambda: enrichment_media.SystemBrowser(name="Microsoft Edge", channel="msedge"),
+    )
+    items_with_edge = {c["id"]: c for c in api_client.get("/api/v1/components").json()}
+    assert items_with_edge["browser"]["required"] is False
+    assert items_with_edge["browser"]["system_browser"] == "Microsoft Edge"
+    assert items_with_edge["browser"]["in_use"] == "system"
 
     monkeypatch.setattr("rt.core.config.effective_engine", lambda cfg=None: "parakeet")
     items_onnx = {c["id"]: c for c in api_client.get("/api/v1/components").json()}
@@ -217,25 +233,38 @@ def test_resume_interrupted_downloads_restarts_only_auto_resume(isolated_data, m
     assert started == ["transcription"]
 
 
-def test_ensure_capture_browser_uses_component_manager(isolated_data, monkeypatch):
+def test_ensure_capture_browser_does_not_download_and_cleans_old_browsers(isolated_data, monkeypatch):
     monkeypatch.setattr(desktop.bundle, "kind", lambda: "macos")
-    monkeypatch.setattr(components, "browser_available", lambda: True)
+    monkeypatch.setattr(components, "current_playwright_headless_revision", lambda: "1243")
 
-    spawned = []
+    browsers = isolated_data / "browsers"
+    old_full = browsers / "chromium-1200"
+    old_shell = browsers / "chromium_headless_shell-1100"
+    cur_shell = browsers / "chromium_headless_shell-1243" / "chrome-headless-shell-mac-arm64" / "chrome-headless-shell"
+    old_full.mkdir(parents=True)
+    (old_full / "big.bin").write_bytes(b"x" * 2048)
+    old_shell.mkdir(parents=True)
+    (old_shell / "old.bin").write_bytes(b"y" * 1024)
+    cur_shell.parent.mkdir(parents=True)
+    cur_shell.write_bytes(b"shell")
 
-    class FakePopen:
-        def __init__(self, cmd, **kw):
-            spawned.append(cmd)
-
-    monkeypatch.setattr(components.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(
+        components.subprocess,
+        "Popen",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("Nessun download automatico all'avvio")),
+    )
     messages = []
     desktop.ensure_capture_browser(messages.append)
 
-    assert len(spawned) == 1
-    assert spawned[0] == [sys.executable, "-m", "rt.core.components", "--install-browser"]
-    assert any("browser per PDF e catture" in m for m in messages)
-    status = components.get_component(components.BROWSER_ID)
-    assert status["state"] in ("downloading", "paused") or (isolated_data / "models" / "components.json").is_file()
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline and (old_full.exists() or old_shell.exists()):
+        time.sleep(0.02)
+
+    assert messages == []
+    assert not old_full.exists()
+    assert not old_shell.exists()
+    assert cur_shell.is_file()
+    assert components.get_component(components.BROWSER_ID)["state"] == "ready"
 
 
 def test_worker_waits_for_active_download_and_emits_progress(isolated_data, monkeypatch):
@@ -539,3 +568,249 @@ def test_find_capture_browser_executable_finds_headless_shell(tmp_path, monkeypa
         chromium=SimpleNamespace(executable_path=str(browsers / "chromium-1243" / "chrome-mac-arm64" / "Google Chrome"))
     )
     assert find_capture_browser_executable(fake_playwright) == str(shell_bin)
+
+
+def test_detect_system_browser_windows_mac_linux(isolated_data, monkeypatch):
+    import os as _os
+    from rt.llm import enrichment_media
+
+    # 1. Windows: Edge ha precedenza su Chrome
+    monkeypatch.setattr(enrichment_media.sys, "platform", "win32")
+    monkeypatch.setenv("ProgramFiles(x86)", "C:/PF86")
+    monkeypatch.setenv("ProgramFiles", "C:/PF")
+    monkeypatch.setenv("LOCALAPPDATA", "C:/Local")
+    edge_path = _os.path.join("C:/PF86", "Microsoft", "Edge", "Application", "msedge.exe")
+    chrome_path = _os.path.join("C:/PF", "Google", "Chrome", "Application", "chrome.exe")
+
+    present = {edge_path, chrome_path}
+    monkeypatch.setattr(enrichment_media.os.path, "isfile", lambda p: p in present)
+    sb = enrichment_media.detect_system_browser()
+    assert sb == enrichment_media.SystemBrowser(name="Microsoft Edge", channel="msedge")
+
+    # Solo Chrome presente su Windows
+    present = {chrome_path}
+    sb = enrichment_media.detect_system_browser()
+    assert sb == enrichment_media.SystemBrowser(name="Google Chrome", channel="chrome")
+
+    # Niente su Windows
+    present = set()
+    assert enrichment_media.detect_system_browser() is None
+
+    # 2. Mac: Chrome prima di Edge prima di Chromium
+    monkeypatch.setattr(enrichment_media.sys, "platform", "darwin")
+    fake_home = isolated_data / "fake_home"
+    mac_chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    mac_edge = _os.path.join(str(fake_home), "Applications", "Microsoft Edge.app", "Contents", "MacOS", "Microsoft Edge")
+    mac_chromium = "/Applications/Chromium.app/Contents/MacOS/Chromium"
+
+    present = {mac_chrome, mac_edge, mac_chromium}
+    assert enrichment_media.detect_system_browser() == enrichment_media.SystemBrowser(name="Google Chrome", channel="chrome")
+
+    present = {mac_edge, mac_chromium}
+    assert enrichment_media.detect_system_browser() == enrichment_media.SystemBrowser(name="Microsoft Edge", channel="msedge")
+
+    present = {mac_chromium}
+    assert enrichment_media.detect_system_browser() == enrichment_media.SystemBrowser(name="Chromium", executable_path=mac_chromium)
+
+    present = set()
+    assert enrichment_media.detect_system_browser() is None
+
+    # 3. Linux/Docker: chromium poi google-chrome
+    monkeypatch.setattr(enrichment_media.sys, "platform", "linux")
+    monkeypatch.setattr(enrichment_media.shutil, "which", lambda cmd: "/usr/bin/chromium" if cmd == "chromium" else "/usr/bin/google-chrome")
+    assert enrichment_media.detect_system_browser() == enrichment_media.SystemBrowser(name="Chromium", executable_path="/usr/bin/chromium")
+    monkeypatch.setattr(enrichment_media.shutil, "which", lambda cmd: "/usr/bin/google-chrome" if cmd == "google-chrome" else None)
+    assert enrichment_media.detect_system_browser() == enrichment_media.SystemBrowser(name="Google Chrome", executable_path="/usr/bin/google-chrome")
+    monkeypatch.setattr(enrichment_media.shutil, "which", lambda _cmd: None)
+    assert enrichment_media.detect_system_browser() is None
+
+
+def test_launch_capture_browser_priority_fallback_and_missing(isolated_data, monkeypatch, caplog):
+    from rt.llm import enrichment_media
+
+    monkeypatch.delenv("RT_ENRICHMENT_CHROMIUM", raising=False)
+    browsers = isolated_data / "browsers"
+    shell_bin = browsers / "chromium_headless_shell-1243" / "chrome-headless-shell-mac-arm64" / "chrome-headless-shell"
+    shell_bin.parent.mkdir(parents=True)
+    shell_bin.write_bytes(b"shell")
+
+    edge = enrichment_media.SystemBrowser(name="Microsoft Edge", channel="msedge")
+    chrome = enrichment_media.SystemBrowser(name="Google Chrome", channel="chrome")
+    monkeypatch.setattr(
+        enrichment_media,
+        "_iter_system_browser_candidates",
+        lambda: [(edge, "/fake/msedge"), (chrome, "/fake/chrome")],
+    )
+
+    calls = []
+    fake_browser = object()
+
+    def make_p(fail_on=()):
+        def fake_launch(**kw):
+            calls.append(kw)
+            key = kw.get("channel") or kw.get("executable_path") or "component"
+            if key in fail_on:
+                raise RuntimeError(f"boom {key}")
+            return fake_browser
+
+        return SimpleNamespace(chromium=SimpleNamespace(launch=fake_launch, executable_path=""))
+
+    # 1. Componente pronto -> usato per primo anche se c'è Edge
+    calls.clear()
+    with caplog.at_level("INFO"):
+        res = enrichment_media.launch_capture_browser(make_p())
+    assert res is fake_browser
+    assert calls == [{"headless": True}]
+    assert any("uso browser scaricato" in r.message for r in caplog.records)
+
+    # 2. Componente che non parte -> passa a Edge (sistema)
+    calls.clear()
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        res = enrichment_media.launch_capture_browser(make_p(fail_on=("component",)))
+    assert res is fake_browser
+    assert calls == [{"headless": True}, {"headless": True, "channel": "msedge"}]
+    assert any("browser scaricato non si avvia" in r.message for r in caplog.records)
+
+    # 3. Componente assente -> usa subito canale di sistema (Edge)
+    shell_bin.unlink()
+    calls.clear()
+    res = enrichment_media.launch_capture_browser(make_p())
+    assert res is fake_browser
+    assert calls == [{"headless": True, "channel": "msedge"}]
+
+    # 4. Edge non parte -> passa a Chrome
+    calls.clear()
+    res = enrichment_media.launch_capture_browser(make_p(fail_on=("msedge",)))
+    assert res is fake_browser
+    assert calls == [{"headless": True, "channel": "msedge"}, {"headless": True, "channel": "chrome"}]
+
+    # 5. Tutti i candidati falliscono -> RuntimeError con motivo e suggerimento
+    with pytest.raises(RuntimeError, match="boom chrome.*Impostazioni › Lavorazione delle lezioni › Componenti"):
+        enrichment_media.launch_capture_browser(make_p(fail_on=("msedge", "chrome")))
+
+    # 6. Nessun candidato -> BrowserMissingError
+    monkeypatch.setattr(enrichment_media, "_iter_system_browser_candidates", lambda: [])
+    with pytest.raises(enrichment_media.BrowserMissingError):
+        enrichment_media.launch_capture_browser(make_p())
+
+
+def test_browser_ready_ignores_full_chromium_and_checks_headless_executable(isolated_data):
+    browsers = isolated_data / "browsers"
+    full_dir = browsers / "chromium-1243" / "chrome-mac-arm64"
+    full_dir.mkdir(parents=True)
+    (full_dir / "Google Chrome").write_bytes(b"full")
+    assert not components.browser_ready()
+
+    empty_shell = browsers / "chromium_headless_shell-1243"
+    empty_shell.mkdir(parents=True)
+    assert not components.browser_ready()
+
+    shell_exe = empty_shell / "chrome-headless-shell-mac-arm64" / "chrome-headless-shell"
+    shell_exe.parent.mkdir(parents=True)
+    shell_exe.write_bytes(b"shell")
+    assert components.browser_ready()
+
+
+def test_cleanup_old_browsers_and_skips_when_download_active(isolated_data, monkeypatch):
+    monkeypatch.setattr(components, "current_playwright_headless_revision", lambda: "1243")
+    browsers = isolated_data / "browsers"
+    old_full = browsers / "chromium-1243"
+    old_shell = browsers / "chromium_headless_shell-1100"
+    cur_shell = browsers / "chromium_headless_shell-1243" / "chrome-headless-shell-mac-arm64" / "chrome-headless-shell"
+    for folder in (old_full, old_shell):
+        folder.mkdir(parents=True)
+        (folder / "data.bin").write_bytes(b"a" * (1024 * 1024))
+    cur_shell.parent.mkdir(parents=True)
+    cur_shell.write_bytes(b"keep")
+
+    # Con download attivo non tocca nulla
+    lpath = components.lock_path_for(components.BROWSER_ID)
+    acquire_file_lock(lpath)
+    try:
+        assert components.cleanup_old_browsers() == 0
+        assert old_full.exists()
+        assert old_shell.exists()
+    finally:
+        release_file_lock(lpath)
+
+    freed = components.cleanup_old_browsers()
+    assert freed == 2 * 1024 * 1024
+    assert not old_full.exists()
+    assert not old_shell.exists()
+    assert cur_shell.is_file()
+    log_text = (isolated_data / "logs" / "browser-install.log").read_text(encoding="utf-8")
+    assert "Pulizia browser obsoleti" in log_text
+    assert "2.0 MB" in log_text
+
+
+def test_component_meta_browser_three_cases(isolated_data, monkeypatch):
+    from rt.llm import enrichment_media
+
+    monkeypatch.setattr(components, "browser_available", lambda: True)
+
+    # Caso 1: non scaricato, niente browser
+    monkeypatch.setattr(enrichment_media, "detect_system_browser", lambda: None)
+    meta_missing = components._component_meta(components.BROWSER_ID)
+    assert meta_missing["required"] is True
+    assert meta_missing["system_browser"] is None
+    assert meta_missing["in_use"] is None
+    assert meta_missing["detail"] == "Chrome Headless Shell (versione minima)"
+    assert meta_missing["description"] == "Serve per esportare in PDF e per le visualizzazioni: scaricalo"
+
+    # Caso 2: non scaricato, browser di sistema rilevato
+    monkeypatch.setattr(
+        enrichment_media,
+        "detect_system_browser",
+        lambda: enrichment_media.SystemBrowser(name="Google Chrome", channel="chrome"),
+    )
+    meta_sys = components._component_meta(components.BROWSER_ID)
+    assert meta_sys["required"] is False
+    assert meta_sys["system_browser"] == "Google Chrome"
+    assert meta_sys["in_use"] == "system"
+    assert meta_sys["description"] == (
+        "Rilevato Google Chrome: RT usa quello, scaricare questo componente non è necessario. "
+        "Se lo scarichi, RT usa questo"
+    )
+
+    # Caso 3: componente pronto (ha precedenza sul browser di sistema)
+    shell_exe = isolated_data / "browsers" / "chromium_headless_shell-1243" / "chrome-headless-shell"
+    shell_exe.parent.mkdir(parents=True)
+    shell_exe.write_bytes(b"shell")
+    meta_ready = components._component_meta(components.BROWSER_ID)
+    assert meta_ready["required"] is False
+    assert meta_ready["system_browser"] == "Google Chrome"
+    assert meta_ready["in_use"] == "component"
+    assert meta_ready["description"] == "RT usa il browser scaricato per esportare in PDF e per le visualizzazioni"
+
+
+def test_snapshot_triggers_fallback_download_on_missing_browser(isolated_data, monkeypatch):
+    from rt.llm import enrichment_media
+
+    started = []
+    monkeypatch.setattr(components, "browser_available", lambda: True)
+    monkeypatch.setattr(enrichment_media, "detect_system_browser", lambda: None)
+    monkeypatch.setattr(
+        components,
+        "start_download",
+        lambda cid: started.append(cid) or {**components.get_component(cid), "state": "downloading"},
+    )
+
+    class FakeSyncPlaywright:
+        def __enter__(self):
+            return SimpleNamespace(chromium=SimpleNamespace(launch=lambda **kw: None, executable_path=""))
+
+        def __exit__(self, *a):
+            return False
+
+    import playwright.sync_api as sync_api
+    monkeypatch.setattr(sync_api, "sync_playwright", FakeSyncPlaywright)
+    monkeypatch.setattr(
+        enrichment_media,
+        "launch_capture_browser",
+        lambda _p: (_ for _ in ()).throw(enrichment_media.BrowserMissingError("manca")),
+    )
+
+    with pytest.raises(enrichment_media.BrowserMissingError):
+        enrichment_media.snapshot("<html></html>")
+    assert started == [components.BROWSER_ID]

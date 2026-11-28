@@ -319,7 +319,11 @@ def _stamp_first_page(pdf: bytes, stamp: bytes) -> bytes:
 def _render_pdf(lesson_id: int, port: int) -> bytes:
     from playwright.sync_api import sync_playwright
     from rt.api import auth
+    from rt.core import components
     from rt.llm.enrichment_media import launch_capture_browser, BrowserMissingError
+
+    if not os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip():
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = components.browsers_dir()
 
     session_id = auth.create_session()
     try:
@@ -327,15 +331,17 @@ def _render_pdf(lesson_id: int, port: int) -> bytes:
             p_context = sync_playwright()
             p = p_context.__enter__()
         except Exception as exc:
-            raise ApiError(409, "pdf_browser_missing", "Il browser per il PDF si sta ancora scaricando. Riprova tra poco.") from exc
+            status = components.ensure_browser_fallback_download()
+            raise ApiError(409, "pdf_browser_missing", components.pdf_browser_missing_message(status)) from exc
 
         try:
             try:
                 browser = launch_capture_browser(p)
             except BrowserMissingError as exc:
-                # Nel registro il motivo vero: browser assente oppure presente ma non avviabile.
+                # Nel registro il motivo vero: nessun browser disponibile.
                 logging.getLogger(__name__).warning("PDF: browser non disponibile: %s", exc)
-                raise ApiError(409, "pdf_browser_missing", "Il browser per il PDF si sta ancora scaricando. Riprova tra poco.") from exc
+                status = components.ensure_browser_fallback_download()
+                raise ApiError(409, "pdf_browser_missing", components.pdf_browser_missing_message(status)) from exc
             except Exception as exc:
                 # Un browser presente che non parte non si risolve aspettando: si dice il motivo.
                 logging.getLogger(__name__).exception("PDF: avvio del browser non riuscito")

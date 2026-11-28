@@ -232,7 +232,7 @@ function ScrollToMissingComponent() {
   const { missing } = useComponentNotice()
   const done = useRef(false)
   useEffect(() => {
-    if (hash || !missing || done.current) return
+    if (hash || missing.length === 0 || done.current) return
     const target = document.getElementById('componenti')
     if (!target) return
     done.current = true

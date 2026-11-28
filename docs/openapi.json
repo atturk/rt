@@ -3807,6 +3807,21 @@
             "title": "Id",
             "type": "string"
           },
+          "in_use": {
+            "anyOf": [
+              {
+                "enum": [
+                  "component",
+                  "system"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Use"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -3838,6 +3853,17 @@
             ],
             "title": "State",
             "type": "string"
+          },
+          "system_browser": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Browser"
           },
           "total_bytes": {
             "anyOf": [

@@ -17,6 +17,7 @@ import os
 import plistlib
 import subprocess
 import sys
+import threading
 import time
 from typing import Callable, Optional
 
@@ -103,16 +104,19 @@ def _browsers_dir() -> Optional[str]:
     return os.environ.get("PLAYWRIGHT_BROWSERS_PATH") if bundle.kind() else None
 
 
-def ensure_capture_browser(say: Callable[[str], None]) -> None:
-    """Chromium per le catture delle visualizzazioni: si scarica in background la prima volta
-    usando il gestore componenti (stato visibile in Impostazioni, log in browser-install.log)."""
+def ensure_capture_browser(say: Optional[Callable[[str], None]] = None) -> None:
+    """Non scarica più il browser all'avvio: ripulisce in background eventuali vecchie
+    installazioni di Chromium completo o di revisioni obsolete di headless shell."""
     target = _browsers_dir()
-    if not target:
-        return
     from rt.core import components
-    if components.browser_ready(target):
-        return
-    components.ensure_browser_detached(say)
+
+    def _cleanup() -> None:
+        try:
+            components.cleanup_old_browsers(target)
+        except Exception:
+            pass
+
+    threading.Thread(target=_cleanup, name="rt-browser-cleanup", daemon=True).start()
 
 
 def _services_match_app() -> bool:

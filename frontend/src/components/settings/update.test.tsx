@@ -379,4 +379,127 @@ describe('Avviso e pallino aggiornamenti', () => {
     await new Promise((r) => setTimeout(r, 30))
     expect(screen.queryAllByTestId('component-notice-dot')).toHaveLength(0)
   })
+
+  it('non mostra il pallino quando il browser di sistema è rilevato (required false)', async () => {
+    const noUpdate = { ...base, available: false, ready: false, progress: idle }
+    const readyMac = {
+      id: 'macparakeet',
+      name: 'Motore di trascrizione',
+      description: 'usato da RT per trascrivere l\'audio',
+      detail: 'macparakeet + modello parakeet-v3',
+      required: true,
+      state: 'ready',
+      downloaded_bytes: 500 * 1024 * 1024,
+      total_bytes: 500 * 1024 * 1024,
+      approx_bytes: 500 * 1024 * 1024,
+      percent: 100,
+      eta_seconds: null,
+      eta_label: null,
+      error: null,
+      available: true,
+      unavailable_reason: null,
+    }
+    const systemBrowser = {
+      id: 'browser',
+      name: 'Browser per PDF e catture',
+      description: 'Rilevato Microsoft Edge: RT usa quello',
+      detail: 'Chrome Headless Shell (versione minima)',
+      required: false,
+      state: 'not_downloaded',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      approx_bytes: 110 * 1024 * 1024,
+      percent: null,
+      eta_seconds: null,
+      eta_label: null,
+      error: null,
+      available: true,
+      unavailable_reason: null,
+      system_browser: 'Microsoft Edge',
+      in_use: 'system',
+    }
+    renderAppShell(noUpdate, { initialPath: '/impostazioni/aspetto', componentsData: [readyMac, systemBrowser] })
+    await screen.findByRole('link', { name: 'Impostazioni' })
+    await new Promise((r) => setTimeout(r, 30))
+    expect(screen.queryAllByTestId('component-notice-dot')).toHaveLength(0)
+  })
+
+  it('mostra il pallino per il solo browser mancante (nessun browser di sistema)', async () => {
+    const noUpdate = { ...base, available: false, ready: false, progress: idle }
+    const missingBrowser = {
+      id: 'browser',
+      name: 'Browser per PDF e catture',
+      description: 'Serve per esportare in PDF e per le visualizzazioni: scaricalo',
+      detail: 'Chrome Headless Shell (versione minima)',
+      required: true,
+      state: 'not_downloaded',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      approx_bytes: 110 * 1024 * 1024,
+      percent: null,
+      eta_seconds: null,
+      eta_label: null,
+      error: null,
+      available: true,
+      unavailable_reason: null,
+      system_browser: null,
+      in_use: null,
+    }
+    renderAppShell(noUpdate, { initialPath: '/impostazioni/aspetto', componentsData: [missingBrowser] })
+
+    const settingsNavLink = await screen.findByRole('link', { name: 'Impostazioni' })
+    expect(await within(settingsNavLink).findByLabelText('Browser per PDF e catture da scaricare')).toBeInTheDocument()
+
+    const sectionsNav = screen.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
+    const workLink = within(sectionsNav).getByRole('link', { name: /Lavorazione delle lezioni/ })
+    expect(await within(workLink).findByLabelText('Browser per PDF e catture da scaricare')).toBeInTheDocument()
+  })
+
+  it('mostra etichetta al plurale quando mancano due componenti richiesti', async () => {
+    const noUpdate = { ...base, available: false, ready: false, progress: idle }
+    const missingMac = {
+      id: 'macparakeet',
+      name: 'Motore di trascrizione',
+      description: "usato da RT per trascrivere l'audio",
+      detail: 'macparakeet + modello parakeet-v3',
+      required: true,
+      state: 'not_downloaded',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      approx_bytes: 500 * 1024 * 1024,
+      percent: null,
+      eta_seconds: null,
+      eta_label: null,
+      error: null,
+      available: true,
+      unavailable_reason: null,
+    }
+    const missingBrowser = {
+      id: 'browser',
+      name: 'Browser per PDF e catture',
+      description: 'Serve per esportare in PDF e per le visualizzazioni: scaricalo',
+      detail: 'Chrome Headless Shell (versione minima)',
+      required: true,
+      state: 'not_downloaded',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      approx_bytes: 110 * 1024 * 1024,
+      percent: null,
+      eta_seconds: null,
+      eta_label: null,
+      error: null,
+      available: true,
+      unavailable_reason: null,
+      system_browser: null,
+      in_use: null,
+    }
+    renderAppShell(noUpdate, { initialPath: '/impostazioni/aspetto', componentsData: [missingMac, missingBrowser] })
+
+    const settingsNavLink = await screen.findByRole('link', { name: 'Impostazioni' })
+    expect(await within(settingsNavLink).findByLabelText('Componenti da scaricare')).toBeInTheDocument()
+
+    const sectionsNav = screen.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
+    const workLink = within(sectionsNav).getByRole('link', { name: /Lavorazione delle lezioni/ })
+    expect(await within(workLink).findByLabelText('Componenti da scaricare')).toBeInTheDocument()
+  })
 })

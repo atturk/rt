@@ -227,11 +227,77 @@ def browser_available() -> bool:
     return importlib.util.find_spec("playwright") is not None
 
 
+def current_playwright_headless_revision() -> Optional[str]:
+    """Revisione di chromium-headless-shell richiesta dal pacchetto playwright installato."""
+    try:
+        spec = importlib.util.find_spec("playwright")
+        if spec is None or not spec.origin:
+            return None
+        browsers_json = os.path.join(os.path.dirname(spec.origin), "driver", "package", "browsers.json")
+        if not os.path.isfile(browsers_json):
+            return None
+        with open(browsers_json, encoding="utf-8") as f:
+            data = json.load(f)
+        for entry in data.get("browsers", []):
+            if entry.get("name") == "chromium-headless-shell" and entry.get("revision"):
+                return str(entry["revision"])
+    except Exception:
+        return None
+    return None
+
+
 def browser_ready(target: Optional[str] = None) -> bool:
+    from rt.llm.enrichment_media import find_headless_shell_in_dir
+
+    folder = target or browsers_dir()
+    return find_headless_shell_in_dir(folder) is not None
+
+
+def cleanup_old_browsers(target: Optional[str] = None) -> int:
+    """Rimuove le vecchie cartelle chromium-* (completo) e le revisioni obsolete di headless shell."""
+    if is_download_active(BROWSER_ID):
+        return 0
     folder = target or browsers_dir()
     if not os.path.isdir(folder):
-        return False
-    return any(name.startswith("chromium") for name in os.listdir(folder))
+        return 0
+    current_rev = current_playwright_headless_revision()
+    freed = 0
+    removed: List[str] = []
+    for name in sorted(os.listdir(folder)):
+        if is_download_active(BROWSER_ID):
+            break
+        remove = False
+        if name.startswith("chromium-"):
+            remove = True
+        elif name.startswith("chromium_headless_shell-"):
+            rev = name[len("chromium_headless_shell-"):]
+            if current_rev and rev != current_rev:
+                remove = True
+        if not remove:
+            continue
+        path = os.path.join(folder, name)
+        freed += _entry_size(path)
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        removed.append(name)
+
+    if removed:
+        log_file_path = os.path.join(paths.data_dir(), "logs", "browser-install.log")
+        try:
+            os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+            with open(log_file_path, "a", encoding="utf-8") as f:
+                f.write(
+                    f"{time.strftime('%Y-%m-%d %H:%M:%S')} Pulizia browser obsoleti "
+                    f"({', '.join(removed)}): liberati {freed / (1024 * 1024):.1f} MB\n"
+                )
+        except OSError:
+            pass
+    return freed
 
 
 def _read_all_states() -> Dict[str, Dict[str, Any]]:
@@ -350,7 +416,7 @@ def _browser_disk_bytes() -> int:
     return sum(
         _dir_size(os.path.join(folder, name))
         for name in os.listdir(folder)
-        if name.startswith("chromium")
+        if name.startswith("chromium_headless_shell")
     )
 
 
@@ -407,15 +473,34 @@ def _component_meta(component_id: str) -> Dict[str, Any]:
         }
     if component_id == BROWSER_ID:
         avail = browser_available()
+        from rt.llm.enrichment_media import detect_system_browser
+
+        sb = detect_system_browser()
+        sb_name = sb.name if sb is not None else None
+        ready = (not is_download_active(BROWSER_ID)) and browser_ready()
+        if ready:
+            in_use: Optional[str] = "component"
+            description = "RT usa il browser scaricato per esportare in PDF e per le visualizzazioni"
+        elif sb_name:
+            in_use = "system"
+            description = (
+                f"Rilevato {sb_name}: RT usa quello, scaricare questo componente non è necessario. "
+                "Se lo scarichi, RT usa questo"
+            )
+        else:
+            in_use = None
+            description = "Serve per esportare in PDF e per le visualizzazioni: scaricalo"
         return {
             "id": BROWSER_ID,
             "name": "Browser per PDF e catture",
-            "description": "serve per esportare in PDF e per le visualizzazioni",
-            "detail": "Chromium Playwright",
+            "description": description,
+            "detail": "Chrome Headless Shell (versione minima)",
             "approx_bytes": BROWSER_APPROX_BYTES,
-            "required": False,
+            "required": sb_name is None,
             "available": avail,
             "unavailable_reason": None if avail else "Pacchetto playwright non installato.",
+            "system_browser": sb_name,
+            "in_use": in_use,
         }
     raise ComponentNotFound(f"Componente sconosciuto: {component_id}")
 
@@ -1563,6 +1648,42 @@ def resume_interrupted_downloads() -> List[str]:
         except ComponentError:
             pass
     return resumed
+
+
+def ensure_browser_fallback_download() -> Dict[str, Any]:
+    """Avvia il download del browser minimo come ripiego se non è già in corso, in pausa o in errore."""
+    status = get_component(BROWSER_ID)
+    if not status.get("available"):
+        return status
+    if status["state"] == "not_downloaded" and not is_download_active(BROWSER_ID):
+        try:
+            return start_download(BROWSER_ID)
+        except ComponentError:
+            return get_component(BROWSER_ID)
+    return status
+
+
+def pdf_browser_missing_message(status: Dict[str, Any]) -> str:
+    """Messaggio 409 per PDF senza nessun browser disponibile."""
+    if not status.get("available"):
+        return "Per il PDF serve un browser, ma il pacchetto playwright non è installato."
+    state = status.get("state")
+    if state == "paused":
+        return (
+            "Per il PDF serve un browser, ma il download del browser minimo è in pausa. "
+            "Riprendilo in Impostazioni › Lavorazione delle lezioni › Componenti, poi riprova."
+        )
+    if state == "error":
+        err = status.get("error")
+        detail = f" ({err})" if err else ""
+        return (
+            f"Per il PDF serve un browser, ma il download del browser minimo non è riuscito{detail}. "
+            "Riprova in Impostazioni › Lavorazione delle lezioni › Componenti."
+        )
+    return (
+        "Per il PDF serve un browser: sto scaricando il browser minimo (circa 110 MB). "
+        "Vedi l'avanzamento in Impostazioni › Lavorazione delle lezioni › Componenti, poi riprova."
+    )
 
 
 def ensure_browser_detached(say: Callable[[str], None]) -> None:

@@ -4,12 +4,15 @@ Inspired by Classic298/inline-visualizer-v2 (BSD-3-Clause), without copying its
 OpenWebUI DOM extraction/runtime. Native HTML/SVG/canvas/JS needs no CDN at runtime.
 """
 import base64
+from dataclasses import dataclass
 import io
+import logging
 import os
 import re
 import shutil
+import sys
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import uuid
 
 import requests
@@ -81,9 +84,11 @@ def standalone(body: str) -> str:
 </style></head><body><main id="rt-visualization-root">{body}</main>{_RESIZE_BRIDGE}</body></html>'''
 
 
-# Su macOS Chrome non è nel PATH: se manca il browser di Playwright si usa quello installato.
-_MAC_BROWSERS = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-                 "/Applications/Chromium.app/Contents/MacOS/Chromium")
+@dataclass(frozen=True)
+class SystemBrowser:
+    name: str
+    channel: Optional[str] = None
+    executable_path: Optional[str] = None
 
 
 class BrowserMissingError(RuntimeError):
@@ -96,97 +101,208 @@ class VisualizationValidationError(ValueError):
         self.reason = reason
 
 
-def _find_headless_shell_executable(p) -> Optional[str]:
-    """Individua chrome-headless-shell installato con `playwright install chromium --only-shell`."""
-    roots: List[str] = []
-    explicit = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
-    if explicit:
-        roots.append(explicit)
-    try:
-        exec_path = p.chromium.executable_path
-        if exec_path:
-            cur = os.path.dirname(exec_path)
-            while cur and cur != os.path.dirname(cur):
-                base = os.path.basename(cur)
-                if base.startswith("chromium"):
-                    roots.append(os.path.dirname(cur))
-                    break
-                cur = os.path.dirname(cur)
-    except Exception:
-        pass
-    try:
-        from rt.core.components import browsers_dir
-        roots.append(browsers_dir())
-    except Exception:
-        pass
+_SHELL_NAMES = ("chrome-headless-shell.exe", "chrome-headless-shell", "headless_shell.exe", "headless_shell")
 
-    shell_names = ("chrome-headless-shell.exe", "chrome-headless-shell", "headless_shell.exe", "headless_shell")
-    seen = set()
-    for root_dir in roots:
-        if not root_dir or root_dir in seen or not os.path.isdir(root_dir):
+
+def _win_env(var: str) -> str:
+    return (os.environ.get(var) or os.environ.get(var.upper()) or "").strip()
+
+
+def _iter_system_browser_candidates() -> List[Tuple[SystemBrowser, str]]:
+    """Restituisce i browser di sistema presenti su disco con il relativo percorso."""
+    found: List[Tuple[SystemBrowser, str]] = []
+    if sys.platform == "win32":
+        for var in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"):
+            base = _win_env(var)
+            if not base:
+                continue
+            cand = os.path.join(base, "Microsoft", "Edge", "Application", "msedge.exe")
+            if os.path.isfile(cand):
+                found.append((SystemBrowser(name="Microsoft Edge", channel="msedge"), cand))
+                break
+        for var in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"):
+            base = _win_env(var)
+            if not base:
+                continue
+            cand = os.path.join(base, "Google", "Chrome", "Application", "chrome.exe")
+            if os.path.isfile(cand):
+                found.append((SystemBrowser(name="Google Chrome", channel="chrome"), cand))
+                break
+        return found
+
+    if sys.platform == "darwin":
+        roots = ("/Applications", os.path.expanduser("~/Applications"))
+        for root in roots:
+            cand = os.path.join(root, "Google Chrome.app", "Contents", "MacOS", "Google Chrome")
+            if os.path.isfile(cand):
+                found.append((SystemBrowser(name="Google Chrome", channel="chrome"), cand))
+                break
+        for root in roots:
+            cand = os.path.join(root, "Microsoft Edge.app", "Contents", "MacOS", "Microsoft Edge")
+            if os.path.isfile(cand):
+                found.append((SystemBrowser(name="Microsoft Edge", channel="msedge"), cand))
+                break
+        for root in roots:
+            cand = os.path.join(root, "Chromium.app", "Contents", "MacOS", "Chromium")
+            if os.path.isfile(cand):
+                found.append((SystemBrowser(name="Chromium", executable_path=cand), cand))
+                break
+        return found
+
+    chromium_path = shutil.which("chromium")
+    if chromium_path:
+        found.append((SystemBrowser(name="Chromium", executable_path=chromium_path), chromium_path))
+    chrome_path = shutil.which("google-chrome")
+    if chrome_path:
+        found.append((SystemBrowser(name="Google Chrome", executable_path=chrome_path), chrome_path))
+    return found
+
+
+def detect_system_browser() -> Optional[SystemBrowser]:
+    """Rileva il primo browser di sistema disponibile solo controllando il disco."""
+    candidates = _iter_system_browser_candidates()
+    return candidates[0][0] if candidates else None
+
+
+def find_headless_shell_in_dir(root_dir: str, preferred_revision: Optional[str] = None) -> Optional[str]:
+    """Cerca l'eseguibile chrome-headless-shell dentro una directory browser di Playwright."""
+    if not root_dir or not os.path.isdir(root_dir):
+        return None
+    try:
+        entries = sorted(
+            (e for e in os.listdir(root_dir) if e.startswith("chromium_headless_shell")),
+            reverse=True,
+        )
+    except OSError:
+        return None
+    if preferred_revision:
+        preferred_name = f"chromium_headless_shell-{preferred_revision}"
+        if preferred_name in entries:
+            entries = [preferred_name] + [e for e in entries if e != preferred_name]
+    for entry in entries:
+        entry_path = os.path.join(root_dir, entry)
+        if not os.path.isdir(entry_path):
             continue
-        seen.add(root_dir)
+        for name in _SHELL_NAMES:
+            direct = os.path.join(entry_path, name)
+            if os.path.isfile(direct):
+                return direct
         try:
-            entries = sorted(os.listdir(root_dir), reverse=True)
+            subs = os.listdir(entry_path)
         except OSError:
             continue
-        for entry in entries:
-            if not entry.startswith("chromium_headless_shell"):
+        for sub in subs:
+            sub_dir = os.path.join(entry_path, sub)
+            if not os.path.isdir(sub_dir):
                 continue
-            entry_path = os.path.join(root_dir, entry)
-            if not os.path.isdir(entry_path):
-                continue
-            try:
-                subs = os.listdir(entry_path)
-            except OSError:
-                continue
-            for sub in subs:
-                sub_dir = os.path.join(entry_path, sub)
-                for name in shell_names:
-                    cand = os.path.join(sub_dir, name)
-                    if os.path.isfile(cand):
-                        return cand
+            for name in _SHELL_NAMES:
+                cand = os.path.join(sub_dir, name)
+                if os.path.isfile(cand):
+                    return cand
     return None
 
 
-def find_capture_browser_executable(p) -> Optional[str]:
-    executable = os.environ.get("RT_ENRICHMENT_CHROMIUM") or shutil.which("chromium") or shutil.which("google-chrome")
-    if executable:
-        return executable
+def _find_headless_shell_executable(p=None) -> Optional[str]:
+    """Individua chrome-headless-shell installato con `playwright install chromium --only-shell`."""
+    roots: List[str] = []
+    preferred_revision: Optional[str] = None
     try:
-        if os.path.isfile(p.chromium.executable_path):
-            return p.chromium.executable_path
+        from rt.core.components import browsers_dir, current_playwright_headless_revision
+        roots.append(browsers_dir())
+        preferred_revision = current_playwright_headless_revision()
     except Exception:
-        pass
+        explicit = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
+        if explicit:
+            roots.append(explicit)
+    if p is not None:
+        try:
+            exec_path = p.chromium.executable_path
+            if exec_path:
+                cur = os.path.dirname(exec_path)
+                while cur and cur != os.path.dirname(cur):
+                    if os.path.basename(cur).startswith("chromium"):
+                        roots.append(os.path.dirname(cur))
+                        break
+                    cur = os.path.dirname(cur)
+        except Exception:
+            pass
+
+    seen = set()
+    for root_dir in roots:
+        if not root_dir or root_dir in seen:
+            continue
+        seen.add(root_dir)
+        found = find_headless_shell_in_dir(root_dir, preferred_revision=preferred_revision)
+        if found:
+            return found
+    return None
+
+
+def find_capture_browser_executable(p=None) -> Optional[str]:
+    override = os.environ.get("RT_ENRICHMENT_CHROMIUM", "").strip()
+    if override:
+        return override
     shell = _find_headless_shell_executable(p)
     if shell:
         return shell
-    return next((path for path in _MAC_BROWSERS if os.path.isfile(path)), None)
+    candidates = _iter_system_browser_candidates()
+    return candidates[0][1] if candidates else None
 
 
 def launch_capture_browser(p, **kwargs):
-    # Senza executable_path Playwright usa chromium-headless-shell: niente icona nel Dock
-    # né notifiche di "Chrome for Testing" sul Mac.
-    override = os.environ.get("RT_ENRICHMENT_CHROMIUM") or shutil.which("chromium") or shutil.which("google-chrome")
-    if not override:
+    log = logging.getLogger(__name__)
+    candidates = []
+
+    override = os.environ.get("RT_ENRICHMENT_CHROMIUM", "").strip()
+    if override:
+        candidates.append(("RT_ENRICHMENT_CHROMIUM", lambda path=override: p.chromium.launch(headless=True, executable_path=path, **kwargs), "override"))
+
+    if _find_headless_shell_executable(p):
+        candidates.append(("browser scaricato", lambda: p.chromium.launch(headless=True, **kwargs), "component"))
+
+    for sb, _disk_path in _iter_system_browser_candidates():
+        if sb.channel:
+            candidates.append((sb.name, lambda ch=sb.channel: p.chromium.launch(headless=True, channel=ch, **kwargs), "system"))
+        elif sb.executable_path:
+            candidates.append((sb.name, lambda ep=sb.executable_path: p.chromium.launch(headless=True, executable_path=ep, **kwargs), "system"))
+
+    had_candidate = False
+    last_error: Optional[Exception] = None
+    for label, launch_fn, kind in candidates:
+        had_candidate = True
         try:
-            return p.chromium.launch(headless=True, **kwargs)
-        except Exception:
-            pass
-    executable = override or find_capture_browser_executable(p)
-    if not executable:
-        raise BrowserMissingError("Browser per le catture non trovato o non ancora installato.")
-    try:
-        return p.chromium.launch(headless=True, executable_path=executable, **kwargs)
-    except Exception as exc:
-        raise BrowserMissingError(str(exc)) from exc
+            browser = launch_fn()
+            if kind == "component":
+                log.info("PDF/catture: uso browser scaricato")
+            elif kind == "system":
+                log.info("PDF/catture: uso %s (sistema)", label)
+            else:
+                log.info("PDF/catture: uso %s", label)
+            return browser
+        except Exception as exc:
+            last_error = exc
+            log.warning("PDF/catture: %s non si avvia: %s", label, exc)
+
+    if had_candidate:
+        raise RuntimeError(
+            f"{last_error}. Scarica il browser minimo da Impostazioni › Lavorazione delle lezioni › Componenti"
+        ) from last_error
+    raise BrowserMissingError("Browser per le catture non trovato o non ancora installato.")
 
 
 def snapshot(html: str) -> bytes:
     """Capture the same sandboxed frame used in-app, with all network blocked."""
     from playwright.sync_api import sync_playwright
+    from rt.core.components import browsers_dir, ensure_browser_fallback_download
+
+    if not os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip():
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browsers_dir()
     with sync_playwright() as p:
-        browser = launch_capture_browser(p)
+        try:
+            browser = launch_capture_browser(p)
+        except BrowserMissingError:
+            ensure_browser_fallback_download()
+            raise
         try:
             context = browser.new_context(viewport={"width": 1200, "height": 900}, device_scale_factor=1)
             context.route("**/*", lambda route: route.abort())

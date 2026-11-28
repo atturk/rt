@@ -1,21 +1,28 @@
 import { useComponents, type ComponentStatus } from '@/api/components'
 
-/** Restituisce il componente necessario al motore effettivo se non è né pronto né in download. */
-export function computeMissingTranscriptionComponent(
+export function isComponentMissing(c: ComponentStatus): boolean {
+  return c.required && c.available && c.state !== 'ready' && c.state !== 'downloading'
+}
+
+/** Restituisce tutti i componenti necessari (trascrizione e browser) non pronti e non in download. */
+export function computeMissingComponents(
   items: ComponentStatus[] | undefined,
-): ComponentStatus | null {
-  if (!Array.isArray(items)) return null
-  const required = items.find((c) => c.required && c.available)
-  if (!required) return null
-  if (required.state === 'ready' || required.state === 'downloading') return null
-  return required
+): ComponentStatus[] {
+  if (!Array.isArray(items)) return []
+  return items.filter(isComponentMissing)
 }
 
 export function useComponentNotice() {
   const { data } = useComponents()
-  const missing = computeMissingTranscriptionComponent(Array.isArray(data) ? data : undefined)
+  const missing = computeMissingComponents(Array.isArray(data) ? data : undefined)
+  const label =
+    missing.length === 0
+      ? null
+      : missing.length === 1
+        ? `${missing[0].name} da scaricare`
+        : 'Componenti da scaricare'
   return {
     missing,
-    label: missing ? `${missing.name} da scaricare` : null,
+    label,
   }
 }

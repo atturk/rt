@@ -184,8 +184,20 @@ def test_export_lesson_pdf_print_page_timeout_returns_504(api_client, ws, monkey
     mock_browser.close.assert_called_once()
 
 
-def test_export_lesson_pdf_browser_missing_returns_409(api_client, ws, monkeypatch):
-    """Senza browser risponde 409 pdf_browser_missing."""
+def test_export_lesson_pdf_browser_missing_returns_409(api_client, ws, tmp_path, monkeypatch):
+    """Senza browser avvia il download una sola volta e risponde 409 pdf_browser_missing."""
+    from rt.core import components
+    from rt.llm import enrichment_media
+
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "browsers"))
+    monkeypatch.setattr(components, "browser_available", lambda: True)
+    monkeypatch.setattr(enrichment_media, "detect_system_browser", lambda: None)
+
     lesson = make_lesson(ws)
     run_mock_pipeline(lesson)
     lid = api_client.get("/api/v1/lessons").json()[0]["id"]
@@ -195,11 +207,74 @@ def test_export_lesson_pdf_browser_missing_returns_409(api_client, ws, monkeypat
 
     monkeypatch.setattr("rt.llm.enrichment_media.launch_capture_browser", fail_browser)
 
+    started = []
+
+    def fake_start_download(cid):
+        started.append(cid)
+        components._write_component_state(cid, {
+            "state": "downloading",
+            "auto_resume": True,
+            "pid": os.getpid(),
+            "error": None,
+        })
+        return {**components.get_component(cid), "state": "downloading"}
+
+    monkeypatch.setattr(components, "start_download", fake_start_download)
+
     res = api_client.get(f"/api/v1/lessons/{lid}/export?format=pdf")
     assert res.status_code == 409
     data = res.json()
     assert data["error"]["code"] == "pdf_browser_missing"
-    assert "Il browser per il PDF si sta ancora scaricando" in data["error"]["message"]
+    assert data["error"]["message"] == (
+        "Per il PDF serve un browser: sto scaricando il browser minimo (circa 110 MB). "
+        "Vedi l'avanzamento in Impostazioni › Lavorazione delle lezioni › Componenti, poi riprova."
+    )
+    assert started == [components.BROWSER_ID]
+
+    # Seconda richiesta mentre è già attivo/scaricando (lock simulato): non riavvia il download
+    monkeypatch.setattr(components, "is_download_active", lambda cid: cid == components.BROWSER_ID)
+    res2 = api_client.get(f"/api/v1/lessons/{lid}/export?format=pdf")
+    assert res2.status_code == 409
+    assert started == [components.BROWSER_ID]
+
+    # Stato paused -> dice che è in pausa
+    monkeypatch.setattr(components, "is_download_active", lambda _cid: False)
+    components._write_component_state(components.BROWSER_ID, {"state": "paused", "auto_resume": False, "error": None})
+    res_paused = api_client.get(f"/api/v1/lessons/{lid}/export?format=pdf")
+    assert res_paused.status_code == 409
+    assert "in pausa" in res_paused.json()["error"]["message"]
+    assert started == [components.BROWSER_ID]
+
+    # Stato error -> dice che è in errore
+    components._write_component_state(components.BROWSER_ID, {"state": "error", "auto_resume": False, "error": "rete giù"})
+    res_err = api_client.get(f"/api/v1/lessons/{lid}/export?format=pdf")
+    assert res_err.status_code == 409
+    assert "non è riuscito" in res_err.json()["error"]["message"]
+    assert "rete giù" in res_err.json()["error"]["message"]
+    assert started == [components.BROWSER_ID]
+
+
+def test_export_lesson_pdf_browser_failed_to_launch_returns_500(api_client, ws, tmp_path, monkeypatch):
+    """Se un browser esisteva ma non si avvia, restituisce 500 pdf_browser_failed senza avviare download."""
+    from rt.core import components
+
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "browsers"))
+    started = []
+    monkeypatch.setattr(components, "start_download", lambda cid: started.append(cid))
+    monkeypatch.setattr(
+        "rt.llm.enrichment_media.launch_capture_browser",
+        lambda p, **kw: (_ for _ in ()).throw(RuntimeError("crash. Scarica il browser minimo da Impostazioni › Lavorazione delle lezioni › Componenti")),
+    )
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = api_client.get("/api/v1/lessons").json()[0]["id"]
+
+    res = api_client.get(f"/api/v1/lessons/{lid}/export?format=pdf")
+    assert res.status_code == 500
+    assert res.json()["error"]["code"] == "pdf_browser_failed"
+    assert "Impostazioni › Lavorazione delle lezioni › Componenti" in res.json()["error"]["message"]
+    assert started == []
 
 
 def test_export_lesson_real_pdf_with_three_images(ws, monkeypatch):

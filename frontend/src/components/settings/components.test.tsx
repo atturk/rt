@@ -49,9 +49,9 @@ const baseMacparakeet: ComponentStatus = {
 const baseBrowser: ComponentStatus = {
   id: 'browser',
   name: 'Browser per PDF e catture',
-  description: 'serve per esportare in PDF e per le visualizzazioni',
-  detail: 'Chromium Playwright',
-  required: false,
+  description: 'Serve per esportare in PDF e per le visualizzazioni: scaricalo',
+  detail: 'Chrome Headless Shell (versione minima)',
+  required: true,
   state: 'not_downloaded',
   downloaded_bytes: 0,
   total_bytes: null,
@@ -62,6 +62,8 @@ const baseBrowser: ComponentStatus = {
   error: null,
   available: true,
   unavailable_reason: null,
+  system_browser: null,
+  in_use: null,
 }
 
 function renderComponents(
@@ -109,6 +111,8 @@ describe('ComponentsSection', () => {
       {
         ...baseBrowser,
         state: 'ready',
+        description: 'RT usa il browser scaricato per esportare in PDF e per le visualizzazioni',
+        in_use: 'component',
         downloaded_bytes: 165 * 1024 * 1024,
         total_bytes: 165 * 1024 * 1024,
         percent: 100,
@@ -116,7 +120,8 @@ describe('ComponentsSection', () => {
     ])
 
     const transRow = await screen.findByTestId('component-row-transcription')
-    expect(transRow).toHaveTextContent("Modello di trascrizione — necessario per trascrivere l'audio")
+    expect(transRow).toHaveTextContent('Modello di trascrizione')
+    expect(transRow).toHaveTextContent("necessario per trascrivere l'audio")
     expect(transRow).toHaveTextContent('42%')
     expect(transRow).toHaveTextContent('circa 6 min')
     expect(within(transRow).getByTestId('component-badge-transcription')).toHaveTextContent('In download')
@@ -126,8 +131,10 @@ describe('ComponentsSection', () => {
     expect(post).toHaveBeenCalledWith('/api/v1/components/{component_id}/cancel', { params: { path: { component_id: 'transcription' } } })
 
     const browserRow = screen.getByTestId('component-row-browser')
-    expect(browserRow).toHaveTextContent('Browser per PDF e catture — serve per esportare in PDF e per le visualizzazioni')
+    expect(browserRow).toHaveTextContent('Browser per PDF e catture')
+    expect(browserRow).toHaveTextContent('RT usa il browser scaricato per esportare in PDF e per le visualizzazioni')
     expect(within(browserRow).getByTestId('component-badge-browser')).toHaveTextContent('Pronto')
+    expect(within(browserRow).queryByTestId('component-row-dot-browser')).toBeNull()
     await user.click(within(browserRow).getByRole('button', { name: 'Elimina' }))
     const dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Elimina' }))
@@ -219,5 +226,43 @@ describe('ComponentsSection', () => {
     )
     expect(await screen.findByTestId('component-row-transcription')).toBeVisible()
     expect(screen.queryByTestId('component-row-macparakeet')).toBeNull()
+  })
+
+  it('browser di sistema rilevato: nessun pallino, badge Non necessario e Scarica presente', async () => {
+    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ ...baseBrowser, state: 'downloading' }))
+    renderComponents([
+      { ...baseTranscription, state: 'ready' },
+      {
+        ...baseBrowser,
+        required: false,
+        system_browser: 'Microsoft Edge',
+        in_use: 'system',
+        description:
+          'Rilevato Microsoft Edge: RT usa quello, scaricare questo componente non è necessario. Se lo scarichi, RT usa questo',
+      },
+    ])
+
+    const browserRow = await screen.findByTestId('component-row-browser')
+    expect(within(browserRow).queryByTestId('component-row-dot-browser')).toBeNull()
+    expect(within(browserRow).getByTestId('component-badge-browser')).toHaveTextContent('Non necessario')
+    expect(browserRow).toHaveTextContent('Rilevato Microsoft Edge: RT usa quello, scaricare questo componente non è necessario.')
+
+    const user = userEvent.setup()
+    await user.click(within(browserRow).getByRole('button', { name: 'Scarica' }))
+    expect(post).toHaveBeenCalledWith('/api/v1/components/{component_id}/download', { params: { path: { component_id: 'browser' } } })
+  })
+
+  it('nessun browser e componente trascrizione richiesto: mostra pallino sulla riga solo quando mancante', async () => {
+    renderComponents([
+      baseTranscription,
+      baseBrowser,
+    ])
+
+    const transRow = await screen.findByTestId('component-row-transcription')
+    const browserRow = screen.getByTestId('component-row-browser')
+    expect(within(transRow).getByTestId('component-row-dot-transcription')).toBeInTheDocument()
+    expect(within(browserRow).getByTestId('component-row-dot-browser')).toBeInTheDocument()
+    expect(within(browserRow).getByTestId('component-badge-browser')).toHaveTextContent('Non scaricato')
+    expect(browserRow).toHaveTextContent('Serve per esportare in PDF e per le visualizzazioni: scaricalo')
   })
 })

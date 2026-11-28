@@ -27,6 +27,8 @@ class ComponentStatus(BaseModel):
     error: Optional[str] = None
     available: bool = True
     unavailable_reason: Optional[str] = None
+    system_browser: Optional[str] = None
+    in_use: Optional[Literal["component", "system"]] = None
 
 
 def _handle_error(exc: components.ComponentError) -> ApiError:

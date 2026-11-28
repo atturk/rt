@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { formatBytes } from '@/lib/jobs'
 import { SettingsGroup, SettingsRow } from './ui'
+import { isComponentMissing } from './useComponentNotice'
 
 const STATE_BADGE: Record<ComponentStatus['state'], { label: string; tone: 'neutral' | 'success' | 'warning' | 'danger' }> = {
   not_downloaded: { label: 'Non scaricato', tone: 'neutral' },
@@ -24,6 +25,13 @@ const STATE_BADGE: Record<ComponentStatus['state'], { label: string; tone: 'neut
   paused: { label: 'In pausa', tone: 'warning' },
   ready: { label: 'Pronto', tone: 'success' },
   error: { label: 'Errore', tone: 'danger' },
+}
+
+function badgeForComponent(c: ComponentStatus): { label: string; tone: 'neutral' | 'success' | 'warning' | 'danger' } {
+  if (c.id === 'browser' && c.state === 'not_downloaded' && c.system_browser) {
+    return { label: 'Non necessario', tone: 'neutral' }
+  }
+  return STATE_BADGE[c.state]
 }
 
 const LIBREOFFICE_URL = 'https://www.libreoffice.org/download/'
@@ -286,13 +294,31 @@ export function ComponentsSection() {
         </div>
       )}
       {items.map((c) => {
-        const badge = STATE_BADGE[c.state]
+        const badge = badgeForComponent(c)
+        const showDot = isComponentMissing(c)
         return (
           <SettingsRow
             key={c.id}
             testId={`component-row-${c.id}`}
-            label={`${c.name} — ${c.description}`}
-            description={<ComponentProgressDetails component={c} />}
+            infoLabel={c.name}
+            label={
+              <span className="inline-flex items-center gap-2">
+                <span>{c.name}</span>
+                {showDot && (
+                  <span
+                    aria-label={`${c.name} da scaricare`}
+                    data-testid={`component-row-dot-${c.id}`}
+                    className="inline-block size-2.5 shrink-0 rounded-full bg-primary"
+                  />
+                )}
+              </span>
+            }
+            description={
+              <span className="flex flex-col gap-1">
+                <span>{c.description}</span>
+                <ComponentProgressDetails component={c} />
+              </span>
+            }
             control={
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Badge tone={badge.tone} data-testid={`component-badge-${c.id}`}>

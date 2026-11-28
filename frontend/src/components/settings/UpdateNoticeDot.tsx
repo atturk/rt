@@ -15,10 +15,10 @@ export function UpdateNoticeDot({ className }: { className?: string }) {
   )
 }
 
-/** Pallino di avviso quando il motore/modello di trascrizione necessario non è pronto né in download. */
+/** Pallino di avviso quando almeno un componente necessario non è pronto né in download. */
 export function ComponentNoticeDot({ className }: { className?: string }) {
   const { missing, label } = useComponentNotice()
-  if (!missing || !label) return null
+  if (missing.length === 0 || !label) return null
   return (
     <span
       aria-label={label}

@@ -5500,6 +5500,8 @@ export interface components {
              * @enum {string}
              */
             id: "transcription" | "macparakeet" | "browser";
+            /** In Use */
+            in_use?: ("component" | "system") | null;
             /** Name */
             name: string;
             /** Percent */
@@ -5511,6 +5513,8 @@ export interface components {
              * @enum {string}
              */
             state: "not_downloaded" | "downloading" | "paused" | "ready" | "error";
+            /** System Browser */
+            system_browser?: string | null;
             /** Total Bytes */
             total_bytes?: number | null;
             /** Unavailable Reason */
