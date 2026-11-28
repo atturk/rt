@@ -561,7 +561,8 @@ def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
     log = open(os.path.join(_updates_dir(), "install.log"), "a", encoding="utf-8")
     try:
         subprocess.Popen(["/bin/sh", "-c", script],
-                         env={**os.environ, "APP": app, "NEW": staging, "OLD": old,
+                         # senza RT_DATA_DIR dei servizi: "open" la passerebbe alla nuova RT.app
+                         env={**{k: v for k, v in os.environ.items() if k != paths.DATA_DIR_ENV}, "APP": app, "NEW": staging, "OLD": old,
                               "DMG": dmg,
                               "WINDOW_PID": os.path.join(paths.data_dir(), "run", "window.pid"),
                               "INSTALLING_JSON": installing_file(),

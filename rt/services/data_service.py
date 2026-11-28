@@ -662,6 +662,67 @@ def _reopen_log_streams(suspended: Sequence[Tuple[str, str]], target_dir: str) -
             pass
 
 
+_ALREADY_MOVED = "già nella cartella di sistema"
+
+
+def _same_path(a: str, b: str) -> bool:
+    return os.path.normcase(os.path.abspath(os.path.expanduser(a))) == \
+        os.path.normcase(os.path.abspath(os.path.expanduser(b)))
+
+
+def _drop_inherited_legacy_data_dir() -> None:
+    """Fino alla 4.3.10b5 i servizi (LaunchAgents) ricevevano RT_DATA_DIR=~/.rt e l'app riaperta
+    dopo un aggiornamento la ereditava: non è una scelta dell'utente (l'app non usa RT_DATA_DIR)
+    e bloccava lo spostamento. Solo per l'app installata (bundle.kind() non None)."""
+    explicit = paths.explicit_data_dir()
+    if explicit and _same_path(explicit, paths.legacy_data_dir()) \
+            and not _same_path(paths.legacy_data_dir(), paths.platform_data_dir()):
+        os.environ.pop(paths.DATA_DIR_ENV, None)
+
+
+def _platform_move_skip_reason() -> Optional[str]:
+    """None se ~/.rt va spostata nella cartella di sistema, altrimenti il motivo per non farlo."""
+    explicit = paths.explicit_data_dir()
+    if explicit:
+        if _same_path(explicit, paths.platform_data_dir()):
+            return _ALREADY_MOVED  # servizi installati dopo lo spostamento
+        return f"scelta con RT_DATA_DIR ({explicit})"
+    old_dir = paths.legacy_data_dir()
+    new_dir = paths.platform_data_dir()
+    if _same_path(old_dir, new_dir) or paths.is_initialized(new_dir):
+        return _ALREADY_MOVED
+    if not paths.is_initialized(old_dir):
+        return _ALREADY_MOVED  # installazione nuova o disposizione 3.x non ancora migrata
+    location = paths.read_marker(old_dir).get("location")
+    if location and not _same_path(location, old_dir):
+        if _same_path(location, new_dir):
+            return _ALREADY_MOVED
+        return f"{old_dir} rimanda a {location}, che resta dov'è"
+    return None
+
+
+def platform_move_pending() -> bool:
+    """True se l'app installata deve ancora spostare ~/.rt nella cartella di sistema e niente
+    la blocca in modo permanente: l'app ritenta a ogni apertura, non solo dopo un aggiornamento."""
+    from rt.core import bundle
+    if bundle.kind() not in (bundle.MACOS, bundle.WINDOWS):
+        return False
+    explicit = paths.explicit_data_dir()
+    if explicit and _same_path(explicit, paths.legacy_data_dir()):
+        explicit = None  # ereditata dai servizi: verrà tolta
+    if explicit:
+        return False
+    saved = os.environ.pop(paths.DATA_DIR_ENV, None)
+    try:
+        if _platform_move_skip_reason() is not None:
+            return False
+    finally:
+        if saved is not None:
+            os.environ[paths.DATA_DIR_ENV] = saved
+    new_dir = paths.platform_data_dir()
+    return not os.path.lexists(new_dir) or (os.path.isdir(new_dir) and not os.listdir(new_dir))
+
+
 def _migrate_platform_data_dir(say: Callable[[str], None],
                                installed_services: Sequence[str] = ()) -> bool:
     """Sposta la cartella dati dell'app desktop da ~/.rt ad Application Support (macOS) o
@@ -673,19 +734,15 @@ def _migrate_platform_data_dir(say: Callable[[str], None],
 
     if bundle.kind() not in (bundle.MACOS, bundle.WINDOWS):
         return True
-    if paths.explicit_data_dir():
+    _drop_inherited_legacy_data_dir()
+    reason = _platform_move_skip_reason()
+    if reason:
+        if reason != _ALREADY_MOVED:
+            say(f"ℹ️  Cartella dati non spostata: {reason}.")
         return True
     old_dir = paths.legacy_data_dir()
     new_dir = paths.platform_data_dir()
-    if os.path.abspath(old_dir) == os.path.abspath(new_dir):
-        return True
-    if paths.is_initialized(new_dir):
-        return True
-    if not paths.is_initialized(old_dir):
-        return True
-    old_marker = paths.read_marker(old_dir)
-    if old_marker.get("location"):
-        return True
+    say(f"📦 Sposto la cartella dati da {old_dir} a {new_dir}...")
     if os.path.isdir(new_dir) and not os.path.islink(new_dir) and not os.listdir(new_dir):
         try:
             os.rmdir(new_dir)  # cartella vuota creata da altri: non deve bloccare per sempre lo spostamento

@@ -684,3 +684,77 @@ def test_empty_platform_dir_does_not_block_migration(sandbox, monkeypatch):
     assert (new_dir / paths.DATA_MARKER).is_file()
     assert (new_dir / "rt.db").is_file()
     assert paths.read_marker(str(old_dir)).get("location") == str(new_dir)
+
+
+def _air_like_marker(old_dir):
+    """rt-data.json come sul MacBook Air (migrazione 3.x del 27/9, niente location)."""
+    (old_dir / paths.DATA_MARKER).write_text(
+        json.dumps({"layout": 1, "created": "2026-09-27T11:51:07", "from_layout": "3.x", "migrated": []},
+                   indent=2) + "\n", encoding="utf-8")
+
+
+def test_inherited_rt_data_dir_from_services_does_not_block_move(sandbox, monkeypatch):
+    """Fino alla b5 i LaunchAgents passavano RT_DATA_DIR=~/.rt a tutti i processi, compresa l'app
+    riaperta dopo l'aggiornamento: lo spostamento veniva saltato senza dire niente (MacBook Air)."""
+    _root, home, _local, _agents = sandbox
+    monkeypatch.setattr(paths.sys, "platform", "darwin")
+    monkeypatch.setattr(bundle, "kind", lambda _r=None: bundle.MACOS)
+    old_dir, _folder, _db_lesson_path, _ext = _seed_legacy_app_data(home, include_folder_lesson=False)
+    _air_like_marker(old_dir)
+    monkeypatch.setenv("RT_DATA_DIR", str(old_dir) + "/")
+    new_dir = home / "Library" / "Application Support" / "RT"
+
+    assert data_service.platform_move_pending()
+    messages = []
+    assert data_service.post_update(say=messages.append)
+    assert "RT_DATA_DIR" not in os.environ
+    assert (new_dir / "rt.db").is_file()
+    assert paths.read_marker(str(old_dir)).get("location") == str(new_dir)
+    assert paths.data_dir() == str(new_dir)
+    assert any("Cartella dati spostata" in m for m in messages)
+    assert not data_service.platform_move_pending()
+
+    # I servizi reinstallati dopo lo spostamento passano la cartella nuova: niente avvisi
+    monkeypatch.setenv("RT_DATA_DIR", str(new_dir))
+    messages.clear()
+    assert data_service.post_update(say=messages.append)
+    assert not any("non spostata" in m for m in messages)
+
+
+def test_self_location_marker_does_not_block_move(sandbox, monkeypatch):
+    _root, home, _local, _agents = sandbox
+    monkeypatch.setattr(paths.sys, "platform", "darwin")
+    monkeypatch.setattr(bundle, "kind", lambda _r=None: bundle.MACOS)
+    old_dir, _folder, _db_lesson_path, _ext = _seed_legacy_app_data(home, include_folder_lesson=False)
+    paths.write_marker(str(old_dir), location=str(old_dir))
+    assert data_service.platform_move_pending()
+    assert data_service.post_update(say=lambda _m: None)
+    new_dir = home / "Library" / "Application Support" / "RT"
+    assert (new_dir / "rt.db").is_file()
+    assert paths.read_marker(str(old_dir)).get("location") == str(new_dir)
+
+
+def test_explicit_other_data_dir_is_logged_and_not_pending(sandbox, tmp_path, monkeypatch):
+    _root, home, _local, _agents = sandbox
+    monkeypatch.setattr(paths.sys, "platform", "darwin")
+    monkeypatch.setattr(bundle, "kind", lambda _r=None: bundle.MACOS)
+    _seed_legacy_app_data(home, include_folder_lesson=False)
+    explicit = tmp_path / "custom-data"
+    data_service.init_data_dir(str(explicit), say=lambda _m: None)
+    monkeypatch.setenv("RT_DATA_DIR", str(explicit))
+    assert not data_service.platform_move_pending()
+    messages = []
+    assert data_service.post_update(say=messages.append)
+    assert any("non spostata" in m and "RT_DATA_DIR" in m for m in messages)
+    assert os.environ["RT_DATA_DIR"] == str(explicit)
+
+
+def test_desktop_retries_pending_move_without_version_change(sandbox, monkeypatch):
+    """Se lo spostamento è rimasto da fare, l'app lo ritenta anche senza un aggiornamento."""
+    _root, home, _local, _agents = sandbox
+    monkeypatch.setattr(paths.sys, "platform", "darwin")
+    monkeypatch.setattr(bundle, "kind", lambda _r=None: bundle.MACOS)
+    _seed_legacy_app_data(home, include_folder_lesson=False)
+    assert desktop._move_pending()
+    monkeypatch.setattr(bundle, "kind", lambda _r=None: None)
+    assert not desktop._move_pending()

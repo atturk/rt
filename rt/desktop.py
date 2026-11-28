@@ -60,6 +60,15 @@ def needs_setup(version: str) -> bool:
     return not paths.is_initialized() or _read(_stamp()) != version
 
 
+def _move_pending() -> bool:
+    """Spostamento della cartella dati rimasto da fare (rimandato o saltato da una beta)."""
+    try:
+        from rt.services import data_service
+        return data_service.platform_move_pending()
+    except Exception:  # noqa: BLE001 - l'app parte comunque
+        return False
+
+
 def prepare(version: str, say: Callable[[str], None]) -> bool:
     """Cartella dati, database (migrazioni comprese), lezioni da importare, segreti."""
     from rt.services import data_service
@@ -455,7 +464,7 @@ def run(port: Optional[int] = None, open_browser: bool = True, browser: bool = F
     version = get_current_version(paths.project_root())
     if not serve and not check_folder_access(say):
         return 1
-    if needs_setup(version) and not prepare(version, say):
+    if (needs_setup(version) or (not serve and _move_pending())) and not prepare(version, say):
         say("⚠️  Preparazione incompleta: RT parte lo stesso, i dettagli sono qui sopra.")
     if not serve:
         ensure_capture_browser(say)
