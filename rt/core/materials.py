@@ -729,7 +729,7 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
                 'prepare',
                 message=(
                     'Slide importate senza resa grafica: sto scaricando il convertitore '
-                    'delle presentazioni (circa 300 MB). Le prossime presentazioni avranno le slide complete.'
+                    'delle presentazioni. Le prossime presentazioni avranno le slide complete.'
                 ),
             )
 

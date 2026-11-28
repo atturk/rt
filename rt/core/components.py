@@ -452,7 +452,7 @@ def prepare_libreoffice_runtime() -> Dict[str, str]:
         "/System/Library/Fonts",
         "/System/Library/Fonts/Supplemental",
         "/Library/Fonts",
-        os.path.expanduser("~/Library/Fonts"),
+        os.path.join(os.path.expanduser("~"), "Library", "Fonts"),
     ):
         lines.append(f"  <dir>{xml_escape(font_dir)}</dir>")
     for font, subst in LIBREOFFICE_FONT_ALIASES:

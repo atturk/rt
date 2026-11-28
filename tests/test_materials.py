@@ -368,6 +368,9 @@ def test_first_pptx_without_converters_starts_libreoffice_download_once(tmp_path
             'state': 'downloading',
         }
 
+    # Flusso del Mac anche sui runner Windows (dove PowerPoint o LibreOffice di sistema cambierebbero l'esito).
+    monkeypatch.setattr(components.sys, 'platform', 'darwin')
+    monkeypatch.setattr(components, 'detect_system_slide_app', lambda: None)
     monkeypatch.setattr(components, 'libreoffice_available', lambda: True)
     monkeypatch.setattr(components, '_libreoffice_platform_spec', lambda: ('http://127.0.0.1/lo.dmg', 100, '0' * 64, '.dmg'))
     monkeypatch.setattr(components, 'start_download', fake_start_download)
@@ -396,7 +399,7 @@ def test_first_pptx_without_converters_starts_libreoffice_download_once(tmp_path
     assert started == [components.LIBREOFFICE_ID]
     messages = [getattr(e, 'message', '') for e in reporter.events]
     assert any(
-        'Slide importate senza resa grafica: sto scaricando il convertitore delle presentazioni (circa 300 MB). '
+        'Slide importate senza resa grafica: sto scaricando il convertitore delle presentazioni. '
         'Le prossime presentazioni avranno le slide complete.' in m
         for m in messages
     )
