@@ -18,7 +18,7 @@ RT si collega a servizi esterni solo per quello che chiedi tu:
 - **La ricerca di immagini**, solo se la attivi per arricchire le lezioni. Riceve le parole cercate.
 - **Telegram**, solo se attivi il ripasso via Telegram. Riceve le domande e le tue risposte.
 - **GitHub**, per controllare e scaricare gli aggiornamenti e la guida pubblica. GitHub vede l'indirizzo IP, come per ogni download.
-- **I server dei componenti**, quando li installi (per esempio il modello di trascrizione o il browser per l'arricchimento).
+- **I server dei componenti**, quando li installi (per esempio il modello di trascrizione, il browser per l'arricchimento o il convertitore delle presentazioni LibreOffice).
 
 ## iPhone e agenti
 

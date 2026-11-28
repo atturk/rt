@@ -502,4 +502,36 @@ describe('Avviso e pallino aggiornamenti', () => {
     const workLink = within(sectionsNav).getByRole('link', { name: /Lavorazione delle lezioni/ })
     expect(await within(workLink).findByLabelText('Componenti da scaricare')).toBeInTheDocument()
   })
+
+  it('mostra il pallino per il solo Convertitore delle presentazioni mancante e sparisce con app di sistema', async () => {
+    const noUpdate = { ...base, available: false, ready: false, progress: idle }
+    const missingLo = {
+      id: 'libreoffice',
+      name: 'Convertitore delle presentazioni',
+      description: 'Serve per trasformare le presentazioni (.pptx) in slide: scaricalo',
+      detail: 'LibreOffice 26.8.3 (MPL-2.0)',
+      required: true,
+      state: 'not_downloaded',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      approx_bytes: 299927705,
+      percent: null,
+      eta_seconds: null,
+      eta_label: null,
+      error: null,
+      available: true,
+      unavailable_reason: null,
+      system_browser: null,
+      system_app: null,
+      in_use: null,
+    }
+    renderAppShell(noUpdate, { initialPath: '/impostazioni/aspetto', componentsData: [missingLo] })
+
+    const settingsNavLink = await screen.findByRole('link', { name: 'Impostazioni' })
+    expect(await within(settingsNavLink).findByLabelText('Convertitore delle presentazioni da scaricare')).toBeInTheDocument()
+
+    const sectionsNav = screen.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
+    const workLink = within(sectionsNav).getByRole('link', { name: /Lavorazione delle lezioni/ })
+    expect(await within(workLink).findByLabelText('Convertitore delle presentazioni da scaricare')).toBeInTheDocument()
+  })
 })

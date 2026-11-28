@@ -63,6 +63,28 @@ const baseBrowser: ComponentStatus = {
   available: true,
   unavailable_reason: null,
   system_browser: null,
+  system_app: null,
+  in_use: null,
+}
+
+const baseLibreOffice: ComponentStatus = {
+  id: 'libreoffice',
+  name: 'Convertitore delle presentazioni',
+  description: 'Serve per trasformare le presentazioni (.pptx) in slide: scaricalo',
+  detail: 'LibreOffice 26.8.3 (MPL-2.0)',
+  required: true,
+  state: 'not_downloaded',
+  downloaded_bytes: 0,
+  total_bytes: null,
+  approx_bytes: 299927705,
+  percent: null,
+  eta_seconds: null,
+  eta_label: null,
+  error: null,
+  available: true,
+  unavailable_reason: null,
+  system_browser: null,
+  system_app: null,
   in_use: null,
 }
 
@@ -264,5 +286,63 @@ describe('ComponentsSection', () => {
     expect(within(browserRow).getByTestId('component-row-dot-browser')).toBeInTheDocument()
     expect(within(browserRow).getByTestId('component-badge-browser')).toHaveTextContent('Non scaricato')
     expect(browserRow).toHaveTextContent('Serve per esportare in PDF e per le visualizzazioni: scaricalo')
+  })
+
+  it('libreoffice con app di sistema rilevata: nessun pallino, badge Non necessario e Scarica presente', async () => {
+    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ ...baseLibreOffice, state: 'downloading' }))
+    renderComponents([
+      { ...baseTranscription, state: 'ready' },
+      {
+        ...baseLibreOffice,
+        required: false,
+        system_app: 'Keynote',
+        in_use: 'system',
+        description: 'Rilevato Keynote: RT usa quello, scaricare questo componente non è necessario',
+      },
+    ])
+
+    const loRow = await screen.findByTestId('component-row-libreoffice')
+    expect(within(loRow).queryByTestId('component-row-dot-libreoffice')).toBeNull()
+    expect(within(loRow).getByTestId('component-badge-libreoffice')).toHaveTextContent('Non necessario')
+    expect(loRow).toHaveTextContent('Rilevato Keynote: RT usa quello, scaricare questo componente non è necessario')
+    expect(loRow).toHaveTextContent('LibreOffice 26.8.3 (MPL-2.0)')
+
+    const user = userEvent.setup()
+    await user.click(within(loRow).getByRole('button', { name: 'Scarica' }))
+    expect(post).toHaveBeenCalledWith('/api/v1/components/{component_id}/download', { params: { path: { component_id: 'libreoffice' } } })
+  })
+
+  it('libreoffice mancante o Keynote bloccato: mostra pallino sulla riga e messaggio Preparo… al 99%', async () => {
+    renderComponents([
+      { ...baseTranscription, state: 'ready' },
+      {
+        ...baseLibreOffice,
+        description:
+          'Keynote non risponde: consenti a RT di controllarlo in Impostazioni di Sistema › Privacy e sicurezza › Automazione, oppure scarica il convertitore',
+      },
+    ])
+
+    const loRow = await screen.findByTestId('component-row-libreoffice')
+    expect(within(loRow).getByTestId('component-row-dot-libreoffice')).toBeInTheDocument()
+    expect(within(loRow).getByTestId('component-badge-libreoffice')).toHaveTextContent('Non scaricato')
+    expect(loRow).toHaveTextContent('Keynote non risponde: consenti a RT di controllarlo')
+
+    cleanup()
+    renderComponents([
+      { ...baseTranscription, state: 'ready' },
+      {
+        ...baseLibreOffice,
+        state: 'downloading',
+        downloaded_bytes: 299927705,
+        total_bytes: 299927705,
+        percent: 99,
+        eta_label: 'Preparo…',
+      },
+    ])
+
+    const downloadingRow = await screen.findByTestId('component-row-libreoffice')
+    expect(within(downloadingRow).queryByTestId('component-row-dot-libreoffice')).toBeNull()
+    expect(downloadingRow).toHaveTextContent('99%')
+    expect(downloadingRow).toHaveTextContent('Preparo…')
   })
 })

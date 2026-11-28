@@ -28,7 +28,10 @@ const STATE_BADGE: Record<ComponentStatus['state'], { label: string; tone: 'neut
 }
 
 function badgeForComponent(c: ComponentStatus): { label: string; tone: 'neutral' | 'success' | 'warning' | 'danger' } {
-  if (c.id === 'browser' && c.state === 'not_downloaded' && c.system_browser) {
+  if (
+    c.state === 'not_downloaded' &&
+    ((c.id === 'browser' && c.system_browser) || (c.id === 'libreoffice' && c.system_app))
+  ) {
     return { label: 'Non necessario', tone: 'neutral' }
   }
   return STATE_BADGE[c.state]

@@ -3802,7 +3802,8 @@
             "enum": [
               "transcription",
               "macparakeet",
-              "browser"
+              "browser",
+              "libreoffice"
             ],
             "title": "Id",
             "type": "string"
@@ -3853,6 +3854,17 @@
             ],
             "title": "State",
             "type": "string"
+          },
+          "system_app": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System App"
           },
           "system_browser": {
             "anyOf": [

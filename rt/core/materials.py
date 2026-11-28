@@ -201,15 +201,41 @@ def _has_powerpoint():
     return False
 
 
+def _component_soffice():
+    """Eseguibile soffice del componente LibreOffice scaricato da RT, se pronto."""
+    from rt.core.components import libreoffice_executable
+    return libreoffice_executable()
+
+
+def _effective_soffice():
+    """LibreOffice disponibile: il componente scaricato ha la precedenza su quello di sistema."""
+    return _component_soffice() or _soffice()
+
+
+def _is_keynote_blocked() -> bool:
+    from rt.core.components import is_keynote_blocked
+    return is_keynote_blocked()
+
+
+def _mark_keynote_blocked() -> None:
+    from rt.core.components import mark_keynote_blocked
+    mark_keynote_blocked()
+
+
+def _clear_keynote_blocked() -> None:
+    from rt.core.components import clear_keynote_blocked
+    clear_keynote_blocked()
+
+
 def available_slide_methods() -> list[str]:
     """Programmi affidabili installati per convertire presentazioni in immagini/PDF (esclude Quick Look)."""
     methods: list[str] = []
-    if _soffice():
-        methods.append('LibreOffice')
     if _has_powerpoint():
         methods.append('PowerPoint')
-    if _has_keynote():
+    if _has_keynote() and not _is_keynote_blocked():
         methods.append('Keynote')
+    if _effective_soffice():
+        methods.append('LibreOffice')
     return methods
 
 
@@ -218,17 +244,32 @@ def has_quicklook() -> bool:
     return sys.platform == 'darwin' and bool(shutil.which('qlmanage'))
 
 
+def _libreoffice_component_command(soffice_bin: str, target: str, real: str) -> list[str]:
+    from pathlib import Path
+    from rt.core.components import libreoffice_profile_dir
+
+    profile_uri = Path(os.path.abspath(libreoffice_profile_dir())).as_uri()
+    return [
+        soffice_bin,
+        f'-env:UserInstallation={profile_uri}',
+        '--headless',
+        '--norestore',
+        '--convert-to',
+        'pdf',
+        '--outdir',
+        target,
+        real,
+    ]
+
+
 def _slide_render_methods(real, target):
     """Genera i metodi di resa disponibili in ordine di priorità:
-    1. LibreOffice (se installato)
-    2. PowerPoint (su Windows se installato)
-    3. Keynote (su macOS se installato)
+    1. PowerPoint (su Windows se installato)
+    2. Keynote (su macOS se installato e non bloccato)
+    3. LibreOffice (componente scaricato da RT oppure installazione di sistema)
     4. Quick Look (su macOS se disponibile qlmanage)
     """
     methods = []
-    soffice = _soffice()
-    if soffice:
-        methods.append(('LibreOffice', [soffice, '--headless', '--convert-to', 'pdf', '--outdir', target, real]))
     if _has_powerpoint():
         ps = shutil.which('powershell') or shutil.which('pwsh') or 'powershell'
         # Percorsi letti da variabili d'ambiente: nessuna interpolazione di stringhe nello script PowerShell.
@@ -244,7 +285,7 @@ def _slide_render_methods(real, target):
             '}'
         )
         methods.append(('PowerPoint', [ps, '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script]))
-    if _has_keynote():
+    if _has_keynote() and not _is_keynote_blocked():
         pdf_out = os.path.join(target, 'keynote_export.pdf')
         # Percorsi passati come argomenti: niente problemi con virgolette nei nomi
         script = (
@@ -259,14 +300,35 @@ def _slide_render_methods(real, target):
             'end run'
         )
         methods.append(('Keynote', ['osascript', '-e', script, real, pdf_out]))
+    comp_soffice = _component_soffice()
+    if comp_soffice:
+        methods.append(('LibreOffice', _libreoffice_component_command(comp_soffice, target, real)))
+    else:
+        sys_soffice = _soffice()
+        if sys_soffice:
+            methods.append(('LibreOffice', [sys_soffice, '--headless', '--convert-to', 'pdf', '--outdir', target, real]))
     if sys.platform == 'darwin' and shutil.which('qlmanage'):
         methods.append(('Quick Look', [shutil.which('qlmanage'), '-p', '-o', target, real]))
     return methods
 
 
+def _is_component_libreoffice_command(command: list[str]) -> bool:
+    return any(isinstance(arg, str) and arg.startswith('-env:UserInstallation=') for arg in command)
+
+
+def _error_output_text(exc: subprocess.CalledProcessError) -> str:
+    parts = []
+    for stream in (exc.stderr, exc.stdout):
+        if isinstance(stream, bytes):
+            parts.append(stream.decode('utf-8', errors='replace'))
+        elif isinstance(stream, str):
+            parts.append(stream)
+    return '\n'.join(parts)
+
+
 @contextmanager
 def _quicklook_slides(real, count):
-    """La resa delle slide (LibreOffice -> PowerPoint -> Keynote -> Quick Look) è facoltativa; si usa solo se copre
+    """La resa delle slide (PowerPoint / Keynote -> LibreOffice -> Quick Look) è facoltativa; si usa solo se copre
     esattamente tutte le slide (count). Altrimenti registra nel log del worker e cede il passo al ripiego."""
     with tempfile.TemporaryDirectory(prefix='rt-slides-') as target:
         methods = _slide_render_methods(real, target)
@@ -280,13 +342,19 @@ def _quicklook_slides(real, count):
         for name, command in methods:
             tried_methods.append(name)
             try:
-                run_kwargs = {'capture_output': True, 'check': True, 'timeout': 120}
+                timeout = 45 if name == 'Keynote' else 120
+                run_kwargs = {'capture_output': True, 'check': True, 'timeout': timeout}
                 if name == 'PowerPoint':
                     run_kwargs['env'] = {
                         **os.environ,
                         'RT_PPTX_INPUT': os.path.abspath(real),
                         'RT_PDF_OUTPUT': os.path.join(target, 'powerpoint_export.pdf'),
                     }
+                elif name == 'LibreOffice' and _is_component_libreoffice_command(command):
+                    from rt.core.components import prepare_libreoffice_runtime
+                    extra_env = prepare_libreoffice_runtime()
+                    if extra_env:
+                        run_kwargs['env'] = {**os.environ, **extra_env}
                 if sys.platform == 'win32':
                     run_kwargs['creationflags'] = 0x08000000
                 subprocess.run(command, **run_kwargs)
@@ -298,10 +366,14 @@ def _quicklook_slides(real, count):
                         break
                     candidate.close()
                 if render is not None:
+                    if name == 'Keynote':
+                        _clear_keynote_blocked()
                     break
                 images = sorted(Path(target).rglob('*.png'))
                 if len(images) == count:
                     render = lambda i, imgs=images: imgs[i].read_bytes()
+                    if name == 'Keynote':
+                        _clear_keynote_blocked()
                     break
                 # Pulisce i file del metodo fallito prima del successivo
                 for p in Path(target).iterdir():
@@ -309,6 +381,16 @@ def _quicklook_slides(real, count):
                         p.unlink()
                     elif p.is_dir():
                         shutil.rmtree(p, ignore_errors=True)
+            except subprocess.TimeoutExpired:
+                if name == 'Keynote':
+                    logger.warning("Keynote ha superato il timeout (%ss) per '%s': passo al convertitore successivo", timeout, os.path.basename(real))
+                    _mark_keynote_blocked()
+                continue
+            except subprocess.CalledProcessError as exc:
+                if name == 'Keynote' and '-1743' in _error_output_text(exc):
+                    logger.warning("Keynote non autorizzato (-1743) per '%s': passo al convertitore successivo", os.path.basename(real))
+                    _mark_keynote_blocked()
+                continue
             except (OSError, subprocess.SubprocessError, ValueError, RuntimeError):
                 continue
 
@@ -632,6 +714,26 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
     folder = entry_dir(source.impronta)
     with lesson_lock(lesson_dir):
         fs.makedirs(folder, exist_ok=True)
+    is_pptx_images = source.file.lower().endswith('.pptx') and extract != 'testo'
+    fallback_notified = False
+
+    def maybe_start_libreoffice_fallback():
+        nonlocal fallback_notified
+        if not is_pptx_images or fallback_notified or available_slide_methods():
+            return
+        from rt.core.components import ensure_libreoffice_fallback_download
+        status = ensure_libreoffice_fallback_download()
+        fallback_notified = True
+        if ctx and status.get('available') and status.get('state') == 'downloading':
+            ctx.progress(
+                'prepare',
+                message=(
+                    'Slide importate senza resa grafica: sto scaricando il convertitore '
+                    'delle presentazioni (circa 300 MB). Le prossime presentazioni avranno le slide complete.'
+                ),
+            )
+
+    maybe_start_libreoffice_fallback()
     extracted = []
     # I PNG si liberano a ogni iterazione, senza accumulare l'intero PDF in RAM.
     with fs.materialize(path) as real:
@@ -662,6 +764,7 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
                         fs.replace(os.path.join(folder, relative) + '.tmp', os.path.join(folder, relative))
                     filenames.append(relative)
             extracted.append((text, filenames, has_figures, page_title))
+    maybe_start_libreoffice_fallback()
     if not extracted:
         raise ValueError('Il materiale non ha pagine')
     cleaned = cleaned_page_texts([text for text, _, _, _ in extracted])
