@@ -330,9 +330,9 @@ def test_component_libreoffice_fontconfig_and_registry_profile(tmp_path, monkeyp
     assert f'<include ignore_missing="yes">{app_fonts}</include>' in conf_text
     assert str(tmp_path / 'components' / 'libreoffice-fontcache') in conf_text
 
-    xcu = tmp_path / "components" / "libreoffice-profile" / "user" / "registrymodifications.xcu"
-    xcu_text = xcu.read_text(encoding='utf-8')
-    assert 'Carlito' in xcu_text and 'Caladea' in xcu_text and 'STIX Two Math' in xcu_text
+    # sostituzioni come alias <accept> (il font vero, se installato, vince)
+    assert '<family>Cambria Math</family><accept><family>STIX Two Math</family></accept>' in conf_text
+    assert 'Carlito' in conf_text and 'Caladea' in conf_text
 
     # Su Windows non crea libreoffice-fonts.conf né imposta FONTCONFIG_FILE
     monkeypatch.setattr(components.sys, 'platform', 'win32')

@@ -913,7 +913,7 @@ def test_libreoffice_download_sha256_extract_mac_and_delete(api_client, isolated
         assert not Path(components.libreoffice_partial_dir()).exists()
         assert not Path(components.libreoffice_part_path()).exists()
         assert (isolated_data / "components" / "libreoffice-fonts.conf").is_file()
-        assert (isolated_data / "components" / "libreoffice-profile" / "user" / "registrymodifications.xcu").is_file()
+        assert (isolated_data / "components" / "libreoffice-profile").is_dir()
 
         # 3. Elimina -> toglie app, profilo, fontconfig e fontcache
         (isolated_data / "components" / "libreoffice-fontcache" / "cache.bin").write_bytes(b"cache")

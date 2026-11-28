@@ -414,42 +414,14 @@ def _find_libreoffice_app_fonts_conf() -> Optional[str]:
     return None
 
 
-def _ensure_libreoffice_registry_substitutions(profile_dir: str) -> None:
-    user_dir = os.path.join(profile_dir, "user")
-    os.makedirs(user_dir, exist_ok=True)
-    xcu_path = os.path.join(user_dir, "registrymodifications.xcu")
-    if os.path.isfile(xcu_path):
-        try:
-            with open(xcu_path, encoding="utf-8") as f:
-                existing = f.read()
-            if "cambriamath" in existing and "STIX Two Math" in existing:
-                return
-        except OSError:
-            pass
-    items = [
-        ("calibri", "Carlito", "Normal,SansSerif"),
-        ("cambria", "Caladea", "Normal,Serif"),
-        ("cambriamath", "STIX Two Math", "Normal,Symbol"),
-    ]
-    lines = [
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        '<oor:items xmlns:oor="http://openoffice.org/2001/registry" '
-        'xmlns:xs="http://www.w3.org/2001/XMLSchema" '
-        'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
-    ]
-    for font_key, subst, font_type in items:
-        lines.append(
-            f'<item oor:path="/org.openoffice.VCL/FontSubstitutions">'
-            f'<node oor:name="{xml_escape(font_key)}" oor:op="replace">'
-            f'<prop oor:name="SubstFonts" oor:op="fuse"><value>{xml_escape(subst)}</value></prop>'
-            f'<prop oor:name="FontType" oor:op="fuse"><value>{xml_escape(font_type)}</value></prop>'
-            f'</node></item>'
-        )
-    lines.append("</oor:items>\n")
-    tmp = f"{xcu_path}.{os.getpid()}.{threading.get_ident()}.tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    os.replace(tmp, xcu_path)
+# Font Microsoft che di solito mancano sul Mac → equivalenti. Si usano come alias <accept> di fontconfig:
+# vengono DOPO il font richiesto, quindi se il font vero è installato vince quello. (La tabella di sostituzione
+# del profilo LibreOffice non funziona in --headless senza Always=true, provato con LibreOffice 24.2.)
+LIBREOFFICE_FONT_ALIASES = (
+    ("Calibri", "Carlito"),
+    ("Cambria", "Caladea"),
+    ("Cambria Math", "STIX Two Math"),
+)
 
 
 def prepare_libreoffice_runtime() -> Dict[str, str]:
@@ -459,7 +431,6 @@ def prepare_libreoffice_runtime() -> Dict[str, str]:
     if sys.platform != "darwin":
         return {}
 
-    _ensure_libreoffice_registry_substitutions(profile_dir)
     fontcache_dir = libreoffice_fontcache_dir()
     os.makedirs(fontcache_dir, exist_ok=True)
     fonts_conf = libreoffice_fonts_conf_path()
@@ -473,6 +444,10 @@ def prepare_libreoffice_runtime() -> Dict[str, str]:
     ]
     if app_fonts_conf:
         lines.append(f'  <include ignore_missing="yes">{xml_escape(app_fonts_conf)}</include>')
+    # i font inclusi nell'app (Carlito, Caladea, Liberation…), che servono alle sostituzioni
+    app_fonts_dir = os.path.join(libreoffice_dir(), "LibreOffice.app", "Contents", "Resources", "fonts")
+    if os.path.isdir(app_fonts_dir):
+        lines.append(f"  <dir>{xml_escape(app_fonts_dir)}</dir>")
     for font_dir in (
         "/System/Library/Fonts",
         "/System/Library/Fonts/Supplemental",
@@ -480,6 +455,11 @@ def prepare_libreoffice_runtime() -> Dict[str, str]:
         os.path.expanduser("~/Library/Fonts"),
     ):
         lines.append(f"  <dir>{xml_escape(font_dir)}</dir>")
+    for font, subst in LIBREOFFICE_FONT_ALIASES:
+        lines.append(
+            f'  <alias binding="same"><family>{xml_escape(font)}</family>'
+            f"<accept><family>{xml_escape(subst)}</family></accept></alias>"
+        )
     lines.append(f"  <cachedir>{xml_escape(fontcache_dir)}</cachedir>")
     lines.append("</fontconfig>\n")
     content = "\n".join(lines)
