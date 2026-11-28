@@ -1,5 +1,15 @@
 # Novità di RT
 
+## 4.3.10b6 — 2026-11-28
+
+Sesta beta della 4.3.10: Parakeet ONNX rifatto per Windows e macparakeet più affidabile sul Mac.
+
+### Cambiamenti
+
+- **Parakeet ONNX (Windows, alternativa sul Mac)**: nuovo modello int8 più preciso scaricato dalla release stt-models-1 (con controllo SHA256), audio letto a blocchi e trascritto in finestre da 6 secondi con cucitura per parole. Non perde più le parti a basso volume, non ripete parole ai confini e usa molta meno memoria. Il vecchio modello e il VAD si cancellano dopo il primo download.
+- **macparakeet**: RT usa sempre la propria copia verificata (5.1.0) invece di quella di Homebrew, che dopo un aggiornamento di MacParakeet poteva non funzionare più. Se la trascrizione fallisce, RT mostra il messaggio d'errore vero di macparakeet.
+- **Componenti**: la descrizione dice quale motore di trascrizione usa RT e quale è solo un'alternativa che si può eliminare; «Elimina» non cancella il modello se è installata l'app MacParakeet. Il pallino sull'ingranaggio porta alla sezione Componenti.
+
 ## 4.3.10b5 — 2026-11-27
 
 Quinta beta della 4.3.10: sul Mac RT scarica da sola il motore di trascrizione, senza Homebrew.
@@ -7,7 +17,7 @@ Quinta beta della 4.3.10: sul Mac RT scarica da sola il motore di trascrizione, 
 ### Novità
 
 - **Motore di trascrizione per Mac** in Impostazioni › Componenti: RT scarica macparakeet 5.1.0 dalla release ufficiale (controllo dell'impronta SHA256) e il suo modello, con percentuale, pausa e ripresa. Se manca quando parte una lezione con audio, lo scarica da sola. Non serve più Homebrew; chi lo ha già installato con brew continua a usarlo.
-- **Pallino sull'ingranaggio** quando manca il componente necessario per trascrivere; il clic porta ai Componenti.
+- **Pallino sull'ingranaggio** quando manca il componente necessario per trascrivere.
 - **Configurazione guidata**: la scheda Trascrizione avvia subito il download del motore consigliato, con un link per sceglierne un altro.
 
 ### Cambiamenti
