@@ -16,6 +16,8 @@ sys.path.insert(0, root)
 
 from rt.core.onnx_stt import MODEL_LABEL, transcribe_onnx  # noqa: E402
 
+import platform  # noqa: E402
+print("CPU:", platform.processor() or platform.machine())
 started = time.monotonic()
 percents = []
 result = transcribe_onnx(audio, on_percent=percents.append, on_progress=print)

@@ -6,7 +6,7 @@ Gira su Windows, Linux e macOS senza GPU; su Mac Apple Silicon resta consigliato
 macparakeet, più veloce sul Neural Engine.
 
 Il modello (~900 MB, CC-BY-4.0 NVIDIA) si scarica dagli asset della release GitHub
-``stt-models-1`` in <cartella dati>/models/parakeet-v3-q8pc/ la prima volta e poi
+``stt-models-2`` in <cartella dati>/models/parakeet-v3-q8pc-rr/ la prima volta e poi
 funziona offline. L'audio viene decodificato con ffmpeg a blocchi a 16 kHz mono s16le,
 normalizzato con guadagno globale e trascritto in finestre fisse da 6 s con
 sovrapposizione di 1,5 s e cucitura per parole.
@@ -29,11 +29,14 @@ import time
 from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 MODEL_NAME = "nemo-parakeet-tdt-0.6b-v3"
-MODEL_DIR_NAME = "parakeet-v3-q8pc"
+MODEL_DIR_NAME = "parakeet-v3-q8pc-rr"
 MODEL_LABEL = "Parakeet TDT 0.6B v3 (ONNX)"
 QUANTIZATION = "q8pc"
 LEGACY_MODEL_NAME = "nemo-parakeet-tdt-0.6b-v3"
 LEGACY_VAD_NAME = "silero"
+# stt-models-1: pesi int8 a 8 bit, che sulle CPU x86 senza VNNI (Intel fino a Comet Lake, AMD Zen 2/3)
+# saturano in onnxruntime e non riconoscono nulla. Si cancella dopo il download di stt-models-2.
+LEGACY_Q8PC_DIR_NAME = "parakeet-v3-q8pc"
 SAMPLE_RATE = 16_000
 
 WINDOW_SECONDS = 6.0
@@ -42,29 +45,29 @@ DECODE_CHUNK_SECONDS = 60
 MAX_SEGMENT_SECONDS = 30.0
 SEGMENT_PAUSE_SECONDS = 0.8
 
-MODEL_RELEASE_BASE_URL = "https://github.com/atturk/rt/releases/download/stt-models-1"
+MODEL_RELEASE_BASE_URL = "https://github.com/atturk/rt/releases/download/stt-models-2"
 
-# File della release stt-models-1 (quantizzati dal fp32 di istupakov/parakeet-tdt-0.6b-v3-onnx,
+# File della release stt-models-2 (reduce_range=True: pesi a 7 bit, vanno anche senza VNNI; quantizzati dal fp32 di istupakov/parakeet-tdt-0.6b-v3-onnx,
 # revisione 8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce, con onnx 1.23.2 + onnxruntime 1.31.0).
 ENCODER_FILENAME = "encoder-model.q8pc.onnx"
 ENCODER_URL = f"{MODEL_RELEASE_BASE_URL}/{ENCODER_FILENAME}"
 ENCODER_BYTES = 881_498_240
-ENCODER_SHA256 = "f5230a6587582aa5d0ea05b7b27185efdf911dc0bcb8a9b1928891c8045fed15"
+ENCODER_SHA256 = "TODO_STT_MODELS_2"
 
 DECODER_FILENAME = "decoder_joint-model.q8pc.onnx"
 DECODER_URL = f"{MODEL_RELEASE_BASE_URL}/{DECODER_FILENAME}"
 DECODER_BYTES = 53_639_765
-DECODER_SHA256 = "6cc5e3ef27047ff2344cfbf11d60fd4f11e0191e647010115c620ce58c99617f"
+DECODER_SHA256 = "TODO_STT_MODELS_2"
 
 VOCAB_FILENAME = "vocab.txt"
 VOCAB_URL = f"{MODEL_RELEASE_BASE_URL}/{VOCAB_FILENAME}"
 VOCAB_BYTES = 93_939
-VOCAB_SHA256 = "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
+VOCAB_SHA256 = "TODO_STT_MODELS_2"
 
 CONFIG_FILENAME = "config.json"
 CONFIG_URL = f"{MODEL_RELEASE_BASE_URL}/{CONFIG_FILENAME}"
 CONFIG_BYTES = 97
-CONFIG_SHA256 = "666903c76b9798caf2c210afd4f6cd60b08a8dbf9800ec8d7a3bc0d2148ac466"
+CONFIG_SHA256 = "TODO_STT_MODELS_2"
 
 _SENTENCE_END_RE = re.compile(r"[.!?…][\"'”»)\]]*$")
 _WORD_STRIP_CHARS = ".,;:!?"
@@ -123,7 +126,7 @@ def _sha256_file(path: str) -> str:
 
 def _cleanup_legacy_models() -> None:
     """Elimina il vecchio modello int8 e il VAD Silero non più usati, se presenti."""
-    legacy_names = [LEGACY_VAD_NAME]
+    legacy_names = [LEGACY_VAD_NAME, LEGACY_Q8PC_DIR_NAME]
     if LEGACY_MODEL_NAME != MODEL_DIR_NAME:
         legacy_names.append(LEGACY_MODEL_NAME)
     for name in legacy_names:
